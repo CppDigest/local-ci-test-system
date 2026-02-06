@@ -54,16 +54,31 @@ Key features:
 | yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
 | act | Local GitHub Actions | `choco install act-cli` / `brew install act` |
 
-### Install from source
+### Install for usage
+
+Install globally so `localci` is always available on your PATH:
 
 ```bash
 cd cli/
-pip install -e .
+pip install .
 ```
 
-To include development tools (pytest, coverage):
+### Install for development
+
+If you are working on the localci source code, use a virtual environment
+with editable mode so your changes take effect immediately:
 
 ```bash
+cd cli/
+python -m venv venv
+
+# Activate the virtual environment
+# Windows (PowerShell):
+.\venv\Scripts\activate
+# Linux / macOS:
+source venv/bin/activate
+
+# Install in editable mode with dev tools (pytest, coverage)
 pip install -e ".[dev]"
 ```
 

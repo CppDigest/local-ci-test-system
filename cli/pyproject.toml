@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "localci"
@@ -25,8 +25,8 @@ dev = [
 [project.scripts]
 localci = "localci.cli.main:cli"
 
-[tool.setuptools.packages.find]
-include = ["localci*"]
+[tool.hatch.build.targets.wheel]
+packages = ["localci"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
