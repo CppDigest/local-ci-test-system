@@ -1,0 +1,129 @@
+# Minimal GitHub Actions workflow for testing the CLI parser.
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [develop]
+
+env:
+  NET_RETRY_COUNT: 5
+
+jobs:
+  build:
+    name: "${{ matrix.name }}"
+    runs-on: ${{ matrix.runs-on }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "MSVC 14.42: C++20"
+            compiler: msvc
+            version: "14.42"
+            cxxstd: "20"
+            runs-on: windows-2022
+            shared: false
+            build-type: Release
+
+          - name: "MinGW: C++20"
+            compiler: mingw
+            version: "12"
+            cxxstd: "20"
+            runs-on: windows-2022
+
+          - name: "Apple-Clang: asan+ubsan"
+            compiler: apple-clang
+            version: "16"
+            cxxstd: "20"
+            runs-on: macos-26
+            asan: true
+            ubsan: true
+
+          - name: "GCC 15: C++20"
+            compiler: gcc
+            version: "15"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:25.04"
+            install: "gcc-15 g++-15 libssl-dev zlib1g-dev"
+
+          - name: "GCC 15: C++20 asan+ubsan"
+            compiler: gcc
+            version: "15"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:25.04"
+            asan: true
+            ubsan: true
+            install: "gcc-15 g++-15 libssl-dev zlib1g-dev"
+
+          - name: "GCC 12: C++20"
+            compiler: gcc
+            version: "12"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:22.04"
+            install: "gcc-12 g++-12"
+
+          - name: "GCC 13: C++20 coverage"
+            compiler: gcc
+            version: "13"
+            cxxstd: "20"
+            runs-on: ubuntu-24.04
+            coverage: true
+            install: "gcc-13 g++-13 lcov"
+
+          - name: "Clang 20: C++20-23"
+            compiler: clang
+            version: "20"
+            cxxstd: "20,23"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            install: "clang-20"
+
+          - name: "Clang 20: C++20 asan+ubsan"
+            compiler: clang
+            version: "20"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            asan: true
+            ubsan: true
+            install: "clang-20"
+
+          - name: "Clang 17: C++20"
+            compiler: clang
+            version: "17"
+            cxxstd: "20"
+            runs-on: ubuntu-24.04
+            install: "clang-17"
+
+          - name: "Clang 20: C++20-23 x86"
+            compiler: clang
+            version: "20"
+            cxxstd: "20,23"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            x86: true
+            install: "clang-20 gcc-multilib g++-multilib"
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: echo "Setting up..."
+      - name: Build
+        run: echo "Building..."
+      - name: Test
+        run: echo "Testing..."
+
+  changelog:
+    name: Changelog
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate changelog
+        run: echo "Generating..."

@@ -1,0 +1,233 @@
+"""Configuration models for Local CI.
+
+Handles loading, validating, and merging configuration from .localci.yml files.
+Uses Pydantic v2 for type-safe validation.
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any, Optional
+
+import yaml
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Sub-models
+# ---------------------------------------------------------------------------
+
+
+class ResourceLimitConfig(BaseModel):
+    """Resource limits for parallel execution."""
+
+    cpu_percent: int = Field(default=80, ge=1, le=100)
+    memory_percent: int = Field(default=70, ge=1, le=100)
+
+
+class ParallelConfig(BaseModel):
+    """Parallelism settings."""
+
+    max_jobs: int = Field(default=8, ge=1, le=64)
+    resource_limit: ResourceLimitConfig = Field(
+        default_factory=ResourceLimitConfig,
+    )
+
+
+class PlatformConfig(BaseModel):
+    """Which platforms to run locally."""
+
+    linux: bool = True
+    windows: bool = False
+    macos: bool = False
+
+
+class JobsConfig(BaseModel):
+    """Job include/exclude filters."""
+
+    include: list[str] = Field(default_factory=list)
+    exclude: list[str] = Field(default_factory=list)
+
+
+class MatrixFilter(BaseModel):
+    """Single matrix filter entry."""
+
+    compiler: Optional[str] = None
+    version: Optional[str] = None
+    name: Optional[str] = None
+    asan: Optional[bool] = None
+    ubsan: Optional[bool] = None
+
+
+class MatrixConfig(BaseModel):
+    """Matrix include/exclude filters."""
+
+    include: list[MatrixFilter] = Field(default_factory=list)
+    exclude: list[MatrixFilter] = Field(default_factory=list)
+
+
+class ImageCleanupConfig(BaseModel):
+    """Image cleanup settings."""
+
+    enabled: bool = True
+    max_age_days: int = Field(default=30, ge=1)
+    max_size_gb: int = Field(default=20, ge=1)
+
+
+class ImagesConfig(BaseModel):
+    """Docker image management settings."""
+
+    registry: Path = Field(default_factory=lambda: Path.home() / ".localci" / "images")
+    auto_build: bool = True
+    cleanup: ImageCleanupConfig = Field(default_factory=ImageCleanupConfig)
+
+
+class CcacheConfig(BaseModel):
+    """ccache settings."""
+
+    enabled: bool = True
+    max_size: str = "5G"
+
+
+class BoostCacheConfig(BaseModel):
+    """Boost dependency cache settings."""
+
+    enabled: bool = True
+    branch: str = "develop"
+
+
+class CacheConfig(BaseModel):
+    """Build caching settings."""
+
+    enabled: bool = True
+    directory: Path = Field(default_factory=lambda: Path.home() / ".localci" / "cache")
+    ccache: CcacheConfig = Field(default_factory=CcacheConfig)
+    boost: BoostCacheConfig = Field(default_factory=BoostCacheConfig)
+
+
+class LoggingConfig(BaseModel):
+    """Logging settings."""
+
+    level: str = "info"
+    directory: Path = Field(default_factory=lambda: Path.home() / ".localci" / "logs")
+    max_files: int = Field(default=10, ge=1)
+    max_size_mb: int = Field(default=100, ge=1)
+
+
+class ExecutionConfig(BaseModel):
+    """Execution behaviour settings."""
+
+    timeout: int = Field(default=3600, ge=1)
+    keep_containers: bool = False
+    stop_on_first_failure: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Root configuration model
+# ---------------------------------------------------------------------------
+
+
+class LocalCIConfig(BaseModel):
+    """Root configuration model for .localci.yml."""
+
+    version: int = 1
+    workflow: Path = Field(default=Path(".github/workflows/ci.yml"))
+    event: str = "push"
+    parallel: ParallelConfig = Field(default_factory=ParallelConfig)
+    platforms: PlatformConfig = Field(default_factory=PlatformConfig)
+    jobs: JobsConfig = Field(default_factory=JobsConfig)
+    matrix: MatrixConfig = Field(default_factory=MatrixConfig)
+    priorities: dict[str, int] = Field(default_factory=dict)
+    images: ImagesConfig = Field(default_factory=ImagesConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+
+
+# ---------------------------------------------------------------------------
+# Loading helpers
+# ---------------------------------------------------------------------------
+
+CONFIG_FILENAMES = [".localci.yml", ".localci.yaml", "localci.yml"]
+
+
+def find_config_file(start_dir: Path | None = None) -> Path | None:
+    """Search for a config file starting from *start_dir* up to the filesystem root.
+
+    Returns the first matching path, or ``None`` if no config is found.
+    """
+    directory = (start_dir or Path.cwd()).resolve()
+
+    while True:
+        for name in CONFIG_FILENAMES:
+            candidate = directory / name
+            if candidate.is_file():
+                return candidate
+        parent = directory.parent
+        if parent == directory:
+            break
+        directory = parent
+
+    return None
+
+
+def load_config(path: Path | str | None = None) -> LocalCIConfig:
+    """Load and validate a Local CI configuration.
+
+    Parameters
+    ----------
+    path:
+        Explicit path to the config file.  When *None*, the config file is
+        discovered automatically via :func:`find_config_file`.
+
+    Returns
+    -------
+    LocalCIConfig
+        A validated configuration object.  If no config file is found,
+        returns a default configuration.
+    """
+    if path is not None:
+        config_path = Path(path)
+        if not config_path.is_file():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+    else:
+        config_path = find_config_file()
+
+    if config_path is None:
+        logger.debug("No config file found, using defaults")
+        return LocalCIConfig()
+
+    logger.debug("Loading config from %s", config_path)
+    with open(config_path, "r", encoding="utf-8") as fh:
+        raw: dict[str, Any] = yaml.safe_load(fh) or {}
+
+    return LocalCIConfig.model_validate(raw)
+
+
+def default_config_yaml() -> str:
+    """Return the default configuration as a YAML string.
+
+    Useful for ``localci config init``.
+    """
+    cfg = LocalCIConfig()
+    data = cfg.model_dump(mode="json")
+    # Convert Path objects to strings for YAML serialisation
+    _stringify_paths(data)
+    return yaml.dump(data, default_flow_style=False, sort_keys=False)
+
+
+def _stringify_paths(obj: Any) -> None:
+    """Recursively convert Path-like values to strings inside nested dicts."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(value, Path):
+                obj[key] = str(value)
+            elif isinstance(value, dict):
+                _stringify_paths(value)
+            elif isinstance(value, list):
+                _stringify_paths(value)
+    elif isinstance(obj, list):
+        for item in obj:
+            _stringify_paths(item)
