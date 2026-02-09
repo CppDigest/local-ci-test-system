@@ -1,0 +1,99 @@
+# Minimal workflow matching capy's structure for testing.
+# Used by test_workflow.py.
+
+name: CI Test
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  build:
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: "gcc"
+            version: "15"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:25.04"
+            b2-toolset: "gcc"
+            name: "GCC 15: C++20"
+            shared: true
+            build-type: "Release"
+            build-cmake: true
+            cxx: "g++-15"
+            cc: "gcc-15"
+            install: "gcc-15 g++-15 libssl-dev"
+
+          - compiler: "clang"
+            version: "20"
+            cxxstd: "20,23"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:24.04"
+            b2-toolset: "clang"
+            name: "Clang 20: C++20-23"
+            shared: true
+            build-type: "Release"
+            build-cmake: true
+
+          - compiler: "msvc"
+            version: "14.42"
+            cxxstd: "20"
+            runs-on: "windows-2022"
+            b2-toolset: "msvc-14.4"
+            generator: "Visual Studio 17 2022"
+            name: "MSVC 14.42: C++20"
+            shared: false
+            build-type: "Release"
+            build-cmake: true
+
+          - compiler: "apple-clang"
+            version: "16"
+            cxxstd: "20"
+            runs-on: "macos-26"
+            name: "Apple-Clang: asan+ubsan"
+            asan: true
+            ubsan: true
+
+          - compiler: "gcc"
+            version: "13"
+            cxxstd: "20"
+            runs-on: "ubuntu-24.04"
+            name: "GCC 13: C++20 coverage"
+            coverage: true
+            install: "gcc-13 g++-13 lcov"
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    container:
+      image: ${{ matrix.container }}
+      options: --privileged
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: B2 Build
+        uses: alandefreitas/cpp-actions/b2-workflow@v1.9.0
+        if: ${{ !matrix.coverage }}
+      - name: CMake Build
+        uses: alandefreitas/cpp-actions/cmake-workflow@v1.9.0
+        if: ${{ matrix.coverage || matrix.build-cmake }}
+
+  changelog:
+    name: Changelog Summary
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: alandefreitas/cpp-actions/create-changelog@v1.9.0

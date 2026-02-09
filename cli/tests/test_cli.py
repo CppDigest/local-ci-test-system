@@ -6,12 +6,17 @@ Business logic is stubbed, so these tests focus on the CLI *surface*.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from click.testing import CliRunner
 
 from localci.cli.main import cli
 
 
 runner = CliRunner()
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SAMPLE_CI = str(FIXTURES_DIR / "sample_ci.yml")
 
 
 # ---------------------------------------------------------------------------
@@ -76,12 +81,16 @@ class TestList:
         assert "--platform" in result.output
 
     def test_basic_invocation(self):
-        result = runner.invoke(cli, ["list"])
+        result = runner.invoke(cli, ["list", "--workflow", SAMPLE_CI])
         assert result.exit_code == 0
 
     def test_platform_filter(self):
-        result = runner.invoke(cli, ["list", "--platform", "linux"])
+        result = runner.invoke(cli, ["list", "--workflow", SAMPLE_CI, "--platform", "linux"])
         assert result.exit_code == 0
+
+    def test_no_workflow_errors(self):
+        result = runner.invoke(cli, ["list"])
+        assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------
