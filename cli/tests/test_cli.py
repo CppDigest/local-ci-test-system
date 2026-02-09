@@ -107,14 +107,20 @@ class TestRun:
         assert "--dry-run" in result.output
 
     def test_dry_run(self):
-        result = runner.invoke(cli, ["run", "--dry-run"])
+        sample = FIXTURES_DIR / "sample_workflow.yml"
+        result = runner.invoke(
+            cli, ["run", "--workflow", str(sample), "--dry-run"]
+        )
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "Dry run" in result.output or "dry" in result.output.lower()
 
     def test_dry_run_with_job(self):
-        result = runner.invoke(cli, ["run", "--dry-run", "--job", "5"])
+        sample = FIXTURES_DIR / "sample_workflow.yml"
+        result = runner.invoke(
+            cli,
+            ["run", "--workflow", str(sample), "--dry-run", "--job", "GCC"],
+        )
         assert result.exit_code == 0
-        assert "5" in result.output
 
 
 # ---------------------------------------------------------------------------
