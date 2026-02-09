@@ -185,3 +185,53 @@ class TestYqContainerQueries:
     def test_job_container_none(self, yq):
         container = yq.job_container(SAMPLE_CI, "changelog")
         assert container is None
+
+
+# =====================================================================
+# Platform-aware loading (yq-first on Linux)
+# =====================================================================
+
+
+class TestPlatformAwareLoading:
+    """Verify yq-first loading behavior on Linux."""
+
+    def test_is_linux_property(self, yq):
+        import sys
+        assert yq.is_linux == sys.platform.startswith("linux")
+
+    def test_load_produces_valid_dict(self, yq):
+        data = yq._load(SAMPLE_CI)
+        assert isinstance(data, dict)
+        assert "name" in data
+        assert "jobs" in data
+
+    def test_load_caches_result(self, yq):
+        data1 = yq._load(SAMPLE_CI)
+        data2 = yq._load(SAMPLE_CI)
+        assert data1 is data2  # same object from cache
+
+    def test_load_via_pyyaml_fallback(self, yq):
+        """PyYAML fallback always works."""
+        data = yq._load_via_pyyaml(SAMPLE_CI)
+        assert isinstance(data, dict)
+        assert data.get("name") == "CI Test"
+
+    def test_load_via_yq_when_available(self, yq):
+        """If yq binary is installed, _load_via_yq works."""
+        if not yq.has_yq:
+            pytest.skip("yq binary not installed")
+        data = yq._load_via_yq(SAMPLE_CI)
+        assert isinstance(data, dict)
+        assert data.get("name") == "CI Test"
+
+    def test_yq_and_pyyaml_produce_same_jobs(self, yq):
+        """Both backends should produce equivalent job structures."""
+        pyyaml_data = yq._load_via_pyyaml(SAMPLE_CI)
+        pyyaml_jobs = list(pyyaml_data.get("jobs", {}).keys())
+
+        if yq.has_yq:
+            yq_data = yq._load_via_yq(SAMPLE_CI)
+            yq_jobs = list(yq_data.get("jobs", {}).keys())
+            assert pyyaml_jobs == yq_jobs
+        else:
+            pytest.skip("yq binary not installed -- cannot compare backends")

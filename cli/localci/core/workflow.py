@@ -293,34 +293,15 @@ class Workflow:
 
 
 # =====================================================================
-# Errors
+# Errors (canonical definitions live in errors.py; re-exported here)
 # =====================================================================
 
-
-class WorkflowError(Exception):
-    """Base error for workflow analysis."""
-
-
-class WorkflowParseError(WorkflowError):
-    """Failed to parse workflow YAML."""
-
-    def __init__(self, file: Path, detail: str):
-        super().__init__(f"Failed to parse {file}: {detail}")
-
-
-class UnsupportedMatrixError(WorkflowError):
-    """Matrix configuration not supported."""
-
-    def __init__(self, entry: dict, detail: str):
-        name = entry.get("name", "unknown")
-        super().__init__(f"Unsupported matrix entry '{name}': {detail}")
-
-
-class MissingFieldError(WorkflowError):
-    """Required field missing from workflow."""
-
-    def __init__(self, field_name: str, context: str):
-        super().__init__(f"Missing required field '{field_name}' in {context}")
+from localci.core.errors import (  # noqa: E402
+    MissingFieldError,
+    UnsupportedMatrixError,
+    WorkflowError,
+    WorkflowParseError,
+)
 
 
 # =====================================================================

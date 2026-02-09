@@ -164,7 +164,7 @@ def list_cmd(
             }
             for e in entries
         ]
-        console.print(json.dumps(data, indent=2))
+        click.echo(json.dumps(data, indent=2))
         return
 
     # ── Simple output ────────────────────────────────────────────

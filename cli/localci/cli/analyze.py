@@ -163,7 +163,7 @@ def analyze(
             Path(output_file).write_text(result, encoding="utf-8")
             print_info(f"Saved to {output_file}")
         else:
-            console.print(result)
+            click.echo(result)
         return
 
     # ── YAML output ──────────────────────────────────────────────
@@ -174,7 +174,7 @@ def analyze(
             Path(output_file).write_text(result, encoding="utf-8")
             print_info(f"Saved to {output_file}")
         else:
-            console.print(result)
+            click.echo(result)
         return
 
     # ── Table output (default) ───────────────────────────────────

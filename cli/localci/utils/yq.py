@@ -1,9 +1,15 @@
 """Wrapper for yq (mikefarah/yq) YAML processor with PyYAML fallback.
 
-Provides structured queries against GitHub Actions YAML files.  When the
-``yq`` binary is available it is used for the low-level :meth:`query`
-method; all high-level helpers use PyYAML directly so the module works
-out-of-the-box without any external tool.
+Provides structured queries against GitHub Actions YAML files.
+
+**Linux**: ``yq`` is the primary YAML parser (as specified in the Design
+Guide).  PyYAML is used as a fallback when ``yq`` is not installed.
+
+**Other platforms** (Windows, macOS): ``yq`` is preferred when available,
+otherwise PyYAML is used.
+
+The low-level :meth:`query` method always requires the ``yq`` binary
+regardless of platform.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import json
 import logging
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -57,18 +64,32 @@ class YqNotFoundError(Exception):
 class YqWrapper:
     """YAML query wrapper.
 
-    Uses PyYAML for all high-level helpers (no external dependency).
-    The low-level :meth:`query` method delegates to ``yq`` when it is
-    available, falling back to :exc:`YqNotFoundError` otherwise.
+    On **Linux**, ``yq`` is the primary parser for all YAML loading (as
+    specified by the Design Guide).  PyYAML is used as a fallback when
+    ``yq`` is not installed or when a ``yq`` invocation fails.
+
+    On **other platforms**, ``yq`` is preferred when available, with
+    PyYAML as the automatic fallback.
+
+    The low-level :meth:`query` method always requires the ``yq`` binary
+    regardless of platform.
     """
 
     def __init__(self) -> None:
         self._yq_path: Optional[str] = shutil.which("yq")
+        self._is_linux: bool = sys.platform.startswith("linux")
+        self._file_cache: dict[Path, dict] = {}
+
         if self._yq_path:
             logger.debug("yq found at %s", self._yq_path)
+        elif self._is_linux:
+            logger.warning(
+                "yq not found on Linux -- falling back to PyYAML. "
+                "Install yq for best results: sudo apt-get install yq "
+                "or sudo snap install yq"
+            )
         else:
             logger.debug("yq not found -- using PyYAML fallback for all queries")
-        self._file_cache: dict[Path, dict] = {}
 
     # -----------------------------------------------------------------
     # Properties
@@ -79,20 +100,85 @@ class YqWrapper:
         """``True`` when the ``yq`` binary is available on ``PATH``."""
         return self._yq_path is not None
 
+    @property
+    def is_linux(self) -> bool:
+        """``True`` when running on a Linux system."""
+        return self._is_linux
+
     # -----------------------------------------------------------------
     # Low-level helpers
     # -----------------------------------------------------------------
 
     def _load(self, file: Path) -> dict:
-        """Load a YAML file via PyYAML (result is cached)."""
+        """Load and cache a YAML file.
+
+        On Linux, uses ``yq`` as the primary parser (per Design Guide),
+        falling back to PyYAML if ``yq`` is unavailable or fails.
+        On other platforms, uses ``yq`` when available, PyYAML otherwise.
+
+        The result is cached so that repeated queries against the same
+        file do not re-parse.
+        """
         resolved = file.resolve()
         if resolved not in self._file_cache:
             if not file.exists():
                 raise FileNotFoundError(f"Workflow file not found: {file}")
-            with open(file, "r", encoding="utf-8") as fh:
-                data = yaml.safe_load(fh)
-            self._file_cache[resolved] = data if isinstance(data, dict) else {}
+
+            data = None
+
+            # Prefer yq when available (required on Linux per Design Guide)
+            if self._yq_path:
+                try:
+                    data = self._load_via_yq(file)
+                    logger.debug("Loaded %s via yq", file)
+                except Exception as exc:
+                    if self._is_linux:
+                        logger.warning(
+                            "yq failed for %s (%s), falling back to PyYAML",
+                            file, exc,
+                        )
+                    else:
+                        logger.debug(
+                            "yq failed for %s (%s), falling back to PyYAML",
+                            file, exc,
+                        )
+                    data = None
+
+            # Fallback to PyYAML
+            if data is None:
+                data = self._load_via_pyyaml(file)
+                logger.debug("Loaded %s via PyYAML", file)
+
+            self._file_cache[resolved] = data
         return self._file_cache[resolved]
+
+    def _load_via_yq(self, file: Path) -> dict:
+        """Load a YAML file by running ``yq -o json '.' <file>``.
+
+        Returns the entire file content as a Python dict.
+        """
+        result = subprocess.run(
+            [self._yq_path, "-o", "json", ".", str(file)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            raise YqError(".", result.stderr.strip())
+
+        output = result.stdout.strip()
+        if not output or output == "null":
+            return {}
+
+        data = json.loads(output)
+        return data if isinstance(data, dict) else {}
+
+    def _load_via_pyyaml(self, file: Path) -> dict:
+        """Load a YAML file using PyYAML (fallback)."""
+        with open(file, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+        return data if isinstance(data, dict) else {}
 
     def clear_cache(self) -> None:
         """Clear the file cache (useful between test runs)."""
@@ -151,7 +237,7 @@ class YqWrapper:
         return result.stdout.strip()
 
     # =================================================================
-    # High-level helpers (all use PyYAML -- no yq required)
+    # High-level helpers (use yq on Linux, PyYAML fallback elsewhere)
     # =================================================================
 
     def workflow_name(self, file: Path) -> str:
