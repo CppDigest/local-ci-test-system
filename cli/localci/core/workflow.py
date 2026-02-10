@@ -64,12 +64,12 @@ class CompilerInfo:
     cc: Optional[str] = None
     cxx: Optional[str] = None
     cxxstd: list[str] = field(default_factory=lambda: ["20"])
+    latest_cxxstd: Optional[str] = None
     b2_toolset: Optional[str] = None
 
     @property
     def display_name(self) -> str:
         """e.g. 'GCC 15', 'Clang 20', 'MSVC 14.42'."""
-        family_label = self.family.value
         if self.family == CompilerFamily.APPLE_CLANG:
             family_label = "Apple-Clang"
         else:
@@ -137,6 +137,10 @@ class BuildVariant:
             parts.append("coverage")
         if self.x86:
             parts.append("x86")
+        if self.time_trace:
+            parts.append("time-trace")
+        if self.valgrind:
+            parts.append("valgrind")
         return ", ".join(parts) or "standard"
 
 
@@ -170,6 +174,8 @@ class MatrixEntry:
     build_system: BuildSystem
     architecture: str = "x86_64"
     generator: Optional[str] = None
+    is_latest: bool = False
+    is_earliest: bool = False
     timeout_minutes: int = 120
     raw: dict = field(default_factory=dict)
 
@@ -293,15 +299,35 @@ class Workflow:
 
 
 # =====================================================================
-# Errors (canonical definitions live in errors.py; re-exported here)
+# Errors
 # =====================================================================
 
-from localci.core.errors import (  # noqa: E402
-    MissingFieldError,
-    UnsupportedMatrixError,
-    WorkflowError,
-    WorkflowParseError,
-)
+
+class WorkflowError(Exception):
+    """Base error for workflow analysis."""
+
+
+class WorkflowParseError(WorkflowError):
+    """Failed to parse workflow YAML."""
+
+    def __init__(self, file: Path, detail: str):
+        self.file = file
+        super().__init__(f"Failed to parse {file}: {detail}")
+
+
+class UnsupportedMatrixError(WorkflowError):
+    """Matrix configuration not supported."""
+
+    def __init__(self, entry: dict, detail: str):
+        name = entry.get("name", "unknown")
+        super().__init__(f"Unsupported matrix entry '{name}': {detail}")
+
+
+class MissingFieldError(WorkflowError):
+    """Required field missing from workflow."""
+
+    def __init__(self, field_name: str, context: str):
+        super().__init__(f"Missing required field '{field_name}' in {context}")
 
 
 # =====================================================================
@@ -345,17 +371,43 @@ class WorkflowAnalyzer:
         workflow_path:
             Path to a ``.github/workflows/*.yml`` file.
         event:
-            Optional event filter (``push``, ``pull_request``).
+            Optional event filter.  When given, a warning is logged if
+            the workflow does not trigger on this event.
 
         Returns
         -------
         Workflow
             Fully parsed workflow with jobs and matrix entries.
+
+        Raises
+        ------
+        WorkflowParseError
+            If the file cannot be parsed.
+        FileNotFoundError
+            If *workflow_path* does not exist.
         """
         logger.info("Analyzing workflow: %s", workflow_path)
 
-        name = self.yq.workflow_name(workflow_path)
+        try:
+            name = self.yq.workflow_name(workflow_path)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            raise WorkflowParseError(workflow_path, str(exc)) from exc
+
         events = self.yq.events(workflow_path)
+
+        # Event filtering: warn if the requested event is not in the
+        # workflow's trigger list but still parse everything.
+        if event and events and event not in events:
+            logger.warning(
+                "Workflow %s does not trigger on event '%s' "
+                "(triggers: %s)",
+                workflow_path,
+                event,
+                ", ".join(events),
+            )
+
         env = self.yq.global_env(workflow_path)
         concurrency = self.yq.concurrency(workflow_path)
 
@@ -364,7 +416,14 @@ class WorkflowAnalyzer:
 
         for job_id in job_ids:
             logger.debug("Parsing job: %s", job_id)
-            jobs[job_id] = self._parse_job(workflow_path, job_id)
+            try:
+                jobs[job_id] = self._parse_job(workflow_path, job_id)
+            except WorkflowError:
+                raise
+            except Exception as exc:
+                raise WorkflowParseError(
+                    workflow_path, f"Error parsing job '{job_id}': {exc}"
+                ) from exc
 
         workflow = Workflow(
             name=name,
@@ -401,6 +460,9 @@ class WorkflowAnalyzer:
         """Parse a single job definition."""
         job_data = self.yq.job_data(file, job_id)
 
+        if not job_data:
+            raise MissingFieldError(job_id, "jobs")
+
         name = job_data.get("name", job_id)
         runs_on = job_data.get("runs-on", "ubuntu-latest")
         needs = self._normalize_list(job_data.get("needs"))
@@ -416,7 +478,12 @@ class WorkflowAnalyzer:
         if strategy and "matrix" in strategy:
             include = strategy["matrix"].get("include", [])
             for i, entry in enumerate(include):
-                matrix.append(self._parse_matrix_entry(i, entry, job_data))
+                try:
+                    matrix.append(self._parse_matrix_entry(i, entry, job_data))
+                except Exception as exc:
+                    raise UnsupportedMatrixError(
+                        entry, str(exc)
+                    ) from exc
 
         steps = [self._parse_step(s) for s in job_data.get("steps", [])]
 
@@ -477,6 +544,8 @@ class WorkflowAnalyzer:
             build_system=build_system,
             architecture=architecture,
             generator=entry.get("generator"),
+            is_latest=bool(entry.get("is-latest", False)),
+            is_earliest=bool(entry.get("is-earliest", False)),
             timeout_minutes=job_data.get("timeout-minutes", 120),
             raw=entry,
         )
@@ -494,6 +563,7 @@ class WorkflowAnalyzer:
             cc=entry.get("cc"),
             cxx=entry.get("cxx"),
             cxxstd=self._parse_cxxstd(entry.get("cxxstd", "20")),
+            latest_cxxstd=entry.get("latest-cxxstd"),
             b2_toolset=entry.get("b2-toolset"),
         )
 
@@ -608,7 +678,11 @@ class WorkflowAnalyzer:
                     kw in condition
                     for kw in ("coverage", "build-cmake", "is-earliest")
                 ):
-                    if entry.get("coverage") or entry.get("build-cmake") or entry.get("is-earliest"):
+                    if (
+                        entry.get("coverage")
+                        or entry.get("build-cmake")
+                        or entry.get("is-earliest")
+                    ):
                         has_cmake = True
 
         # Default: most entries run B2

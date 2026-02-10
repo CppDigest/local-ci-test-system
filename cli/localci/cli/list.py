@@ -149,6 +149,23 @@ def list_cmd(
     if comp_version:
         entries = [e for e in entries if e.compiler.version == comp_version]
 
+    # Apply enabled/disabled filters from .localci.yml config
+    if (enabled or disabled) and config:
+        include_names = {p.lower() for p in (config.jobs.include or [])}
+        exclude_names = {p.lower() for p in (config.jobs.exclude or [])}
+
+        if enabled and include_names:
+            entries = [e for e in entries if e.name.lower() in include_names]
+        elif enabled:
+            # No include list means everything is enabled; exclude applies
+            if exclude_names:
+                entries = [
+                    e for e in entries if e.name.lower() not in exclude_names
+                ]
+
+        if disabled and exclude_names:
+            entries = [e for e in entries if e.name.lower() in exclude_names]
+
     # ── JSON output ──────────────────────────────────────────────
     if output_format == "json":
         data = [

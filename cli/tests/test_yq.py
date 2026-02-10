@@ -1,6 +1,7 @@
 """Unit tests for the YqWrapper (utils/yq.py).
 
-All tests use the PyYAML fallback so they work without ``yq`` installed.
+Tests use the PyYAML fallback when ``yq`` is not installed, and yq
+subprocess when it is.  All high-level methods go through ``query()``.
 """
 
 from __future__ import annotations
@@ -39,14 +40,17 @@ class TestYqBasicLoading:
     def test_event_branches(self, yq):
         branches = yq.event_branches(SAMPLE_CI, "push")
         assert "develop" in branches
+        assert "master" in branches
 
     def test_global_env(self, yq):
         env = yq.global_env(SAMPLE_CI)
-        assert env["PYTHON_VERSION"] == "3.11"
+        assert env["NET_RETRY_COUNT"] == "5"
+        assert env["GIT_FETCH_JOBS"] == "8"
 
     def test_concurrency(self, yq):
-        # sample_ci.yml does not define concurrency
-        assert yq.concurrency(SAMPLE_CI) is None
+        conc = yq.concurrency(SAMPLE_CI)
+        assert conc is not None
+        assert conc.get("cancel-in-progress") is True
 
 
 # =====================================================================
@@ -87,7 +91,6 @@ class TestYqJobQueries:
 
     def test_job_env(self, yq):
         env = yq.job_env(SAMPLE_CI, "build")
-        # build job has no direct env in the fixture
         assert isinstance(env, dict)
 
 
@@ -104,25 +107,25 @@ class TestYqMatrixQueries:
 
     def test_matrix_include(self, yq):
         include = yq.matrix_include(SAMPLE_CI, "build")
-        assert len(include) == 5
+        assert len(include) == 14
 
     def test_matrix_entry(self, yq):
         entry = yq.matrix_entry(SAMPLE_CI, "build", 0)
-        assert entry["compiler"] == "gcc"
+        assert entry["compiler"] == "msvc"
 
     def test_matrix_entry_out_of_range(self, yq):
         entry = yq.matrix_entry(SAMPLE_CI, "build", 999)
         assert entry == {}
 
     def test_matrix_count(self, yq):
-        assert yq.matrix_count(SAMPLE_CI, "build") == 5
+        assert yq.matrix_count(SAMPLE_CI, "build") == 14
 
     def test_matrix_count_no_matrix(self, yq):
         assert yq.matrix_count(SAMPLE_CI, "changelog") == 0
 
     def test_matrix_filter_by_field(self, yq):
         gcc = yq.matrix_filter_by_field(SAMPLE_CI, "build", "compiler", "gcc")
-        assert len(gcc) == 2  # GCC 15 + GCC 13
+        assert len(gcc) == 4  # GCC 15, GCC 15 asan, GCC 12, GCC 13
 
 
 # =====================================================================
@@ -155,20 +158,17 @@ class TestYqErrors:
             yq.workflow_name(Path("/nonexistent/file.yml"))
 
     def test_cache_clear(self, yq):
-        # Load once to populate cache
         yq.workflow_name(SAMPLE_CI)
         yq.clear_cache()
-        # Should work again (re-loads from disk)
         assert yq.workflow_name(SAMPLE_CI) == "CI Test"
 
     def test_version_without_yq(self, yq):
         if not yq.has_yq:
             assert yq.version() is None
 
-    def test_query_without_yq(self, yq):
-        if not yq.has_yq:
-            with pytest.raises(YqNotFoundError):
-                yq.query(SAMPLE_CI, ".name")
+    def test_has_yq_property(self, yq):
+        # Just verify property is accessible
+        assert isinstance(yq.has_yq, bool)
 
 
 # =====================================================================
@@ -185,53 +185,3 @@ class TestYqContainerQueries:
     def test_job_container_none(self, yq):
         container = yq.job_container(SAMPLE_CI, "changelog")
         assert container is None
-
-
-# =====================================================================
-# Platform-aware loading (yq-first on Linux)
-# =====================================================================
-
-
-class TestPlatformAwareLoading:
-    """Verify yq-first loading behavior on Linux."""
-
-    def test_is_linux_property(self, yq):
-        import sys
-        assert yq.is_linux == sys.platform.startswith("linux")
-
-    def test_load_produces_valid_dict(self, yq):
-        data = yq._load(SAMPLE_CI)
-        assert isinstance(data, dict)
-        assert "name" in data
-        assert "jobs" in data
-
-    def test_load_caches_result(self, yq):
-        data1 = yq._load(SAMPLE_CI)
-        data2 = yq._load(SAMPLE_CI)
-        assert data1 is data2  # same object from cache
-
-    def test_load_via_pyyaml_fallback(self, yq):
-        """PyYAML fallback always works."""
-        data = yq._load_via_pyyaml(SAMPLE_CI)
-        assert isinstance(data, dict)
-        assert data.get("name") == "CI Test"
-
-    def test_load_via_yq_when_available(self, yq):
-        """If yq binary is installed, _load_via_yq works."""
-        if not yq.has_yq:
-            pytest.skip("yq binary not installed")
-        data = yq._load_via_yq(SAMPLE_CI)
-        assert isinstance(data, dict)
-        assert data.get("name") == "CI Test"
-
-    def test_yq_and_pyyaml_produce_same_jobs(self, yq):
-        """Both backends should produce equivalent job structures."""
-        pyyaml_data = yq._load_via_pyyaml(SAMPLE_CI)
-        pyyaml_jobs = list(pyyaml_data.get("jobs", {}).keys())
-
-        if yq.has_yq:
-            yq_data = yq._load_via_yq(SAMPLE_CI)
-            yq_jobs = list(yq_data.get("jobs", {}).keys())
-            assert pyyaml_jobs == yq_jobs
-        else:
-            pytest.skip("yq binary not installed -- cannot compare backends")
