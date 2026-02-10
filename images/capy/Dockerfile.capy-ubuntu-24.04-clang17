@@ -1,0 +1,19 @@
+FROM capy-ubuntu-24.04-base:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang-17 \
+    lld-17 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-17 170 \
+    && update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-17 170
+
+ENV CC=clang-17
+ENV CXX=clang++-17
+
+LABEL org.localci.image.kind="project"
+LABEL org.localci.os="ubuntu:24.04"
+LABEL org.localci.compiler="clang-17"

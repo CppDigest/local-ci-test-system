@@ -1,0 +1,19 @@
+FROM capy-ubuntu-25.04-base:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc-15 \
+    g++-15 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-15 150 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-15 150
+
+ENV CC=gcc-15
+ENV CXX=g++-15
+
+LABEL org.localci.image.kind="project"
+LABEL org.localci.os="ubuntu:25.04"
+LABEL org.localci.compiler="gcc-15"

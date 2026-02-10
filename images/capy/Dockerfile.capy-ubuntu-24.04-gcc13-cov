@@ -1,0 +1,21 @@
+FROM capy-ubuntu-24.04-base:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc-13 \
+    g++-13 \
+    lcov \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 130 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 130
+
+ENV CC=gcc-13
+ENV CXX=g++-13
+
+LABEL org.localci.image.kind="project"
+LABEL org.localci.os="ubuntu:24.04"
+LABEL org.localci.compiler="gcc-13"
+LABEL org.localci.variant="coverage"
