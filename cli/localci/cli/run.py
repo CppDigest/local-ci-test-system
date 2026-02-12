@@ -283,16 +283,21 @@ def run(
         # Build image tag based on entry data
         image_tag = _derive_image_tag(entry)
         # When the workflow sets container:, act uses it and ignores -P. Patch the
-        # workflow so this matrix entry's container is our capy image.
+        # workflow so this matrix entry's container is our capy image. Also patch
+        # for coverage jobs so the Codecov step skips upload under act (codecov.io 403).
         workflow_file_override: Path | None = None
-        if (
+        need_container_patch = (
             entry.container.image
             and image_tag
             and str(image_tag).startswith("capy-")
-        ):
+        )
+        need_coverage_patch = entry.variant.coverage
+        if need_container_patch or need_coverage_patch:
             try:
                 workflow_file_override = _write_patched_workflow(
-                    workflow_path, entry, image_tag
+                    workflow_path,
+                    entry,
+                    image_tag=image_tag if need_container_patch else None,
                 )
             except Exception as exc:
                 print_warning(
@@ -376,40 +381,59 @@ def run(
 
 
 def _write_patched_workflow(
-    workflow_path: Path, entry: MatrixEntry, image_tag: str
+    workflow_path: Path, entry: MatrixEntry, image_tag: str | None = None
 ) -> Path:
-    """Write a copy of the workflow with this matrix entry's container set to image_tag.
+    """Write a copy of the workflow with optional container and Codecov patches.
 
     When the workflow has container: ${{ matrix.container }}, act uses that image
-    and ignores our -P mapping. Patching via text replace avoids YAML round-trip
-    issues (e.g. 'on' becoming boolean true and breaking act schema).
+    and ignores our -P mapping. If image_tag is set, replace this entry's container
+    with image_tag. Always patch the Codecov step to skip upload when ACT is set
+    (codecov.io often returns 403 when run under act). Patching is text-only to
+    avoid YAML round-trip issues.
     """
     with open(workflow_path, encoding="utf-8") as f:
         lines = f.readlines()
-    name_escaped = re.escape(entry.name)
-    name_pattern = re.compile(r'name:\s*["\']?' + name_escaped + r'["\']?\s*$')
-    # Find the line index that has name: "<entry.name>"
-    name_idx = None
+
+    if image_tag:
+        name_escaped = re.escape(entry.name)
+        name_pattern = re.compile(r'name:\s*["\']?' + name_escaped + r'["\']?\s*$')
+        name_idx = None
+        for i, line in enumerate(lines):
+            if name_pattern.search(line.strip()):
+                name_idx = i
+                break
+        if name_idx is None:
+            raise ValueError(f"Matrix entry name '{entry.name}' not found in workflow")
+        block_start = name_idx
+        while block_start > 0 and not re.match(r"^\s{10}-\s", lines[block_start]):
+            block_start -= 1
+        block_end = name_idx + 1
+        while block_end < len(lines) and not (
+            re.match(r"^\s{10}-\s", lines[block_end])
+            or re.match(r"^\s{4}\w", lines[block_end])
+        ):
+            block_end += 1
+        container_pattern = re.compile(
+            r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$"
+        )
+        for i in range(block_start, block_end):
+            mo = container_pattern.match(lines[i])
+            if mo:
+                lines[i] = f'{mo.group(1)}container: "{image_tag}"\n'
+                break
+
+    # Patch Codecov step: skip upload when running under act (codecov.io often returns 403)
     for i, line in enumerate(lines):
-        if name_pattern.search(line.strip()):
-            name_idx = i
+        if "https://codecov.io/bash" in line and "curl" in line:
+            stripped = line.lstrip()
+            if stripped.strip().startswith("bash <(curl") or "bash <(curl" in stripped:
+                indent = line[: len(line) - len(line.lstrip())]
+                rest = stripped.strip().rstrip()
+                # Emit bash conditional so codecov upload runs only when not under act
+                act_check = 'if [ -z "${ACT:-}" ] || [ "$ACT" != "true" ]; then '
+                lines[i] = f"{indent}{act_check}{rest}; else echo \"Skipping Codecov upload (running under act).\"; fi\n"
             break
-    if name_idx is None:
-        raise ValueError(f"Matrix entry name '{entry.name}' not found in workflow")
-    # Matrix include items start with "          - "; find this entry's block
-    block_start = name_idx
-    while block_start > 0 and not re.match(r"^\s{10}-\s", lines[block_start]):
-        block_start -= 1
-    block_end = name_idx + 1
-    while block_end < len(lines) and not (re.match(r"^\s{10}-\s", lines[block_end]) or re.match(r"^\s{4}\w", lines[block_end])):
-        block_end += 1
-    # Replace container: "..." with container: "<image_tag>" in this block
-    container_pattern = re.compile(r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$")
-    for i in range(block_start, block_end):
-        mo = container_pattern.match(lines[i])
-        if mo:
-            lines[i] = f'{mo.group(1)}container: "{image_tag}"\n'
-            break
+
     fd, path = tempfile.mkstemp(suffix=".yml", prefix="localci-workflow-")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.writelines(lines)
