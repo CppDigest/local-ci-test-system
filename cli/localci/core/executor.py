@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -148,10 +149,13 @@ class ActCommand:
 
     # Working directory
     workdir: Optional[Path] = None
+    
+    # Binary name (set by executor)
+    act_binary: str = "act"
 
     def build(self) -> list[str]:
         """Build complete act command as argument list."""
-        cmd: list[str] = ["act"]
+        cmd: list[str] = [self.act_binary]
 
         # Workflow file
         cmd.extend(["-W", str(self.workflow_file)])
@@ -289,7 +293,30 @@ class JobExecutor:
     ) -> None:
         self.logs_dir = Path(logs_dir).expanduser()
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        self._act_path: Optional[str] = shutil.which("act")
+        
+        # On Windows, choco installs the binary as `act-cli.exe`
+        # On Linux/macOS, it's `act`
+        self._act_path: Optional[str] = self._find_act_binary()
+
+    @staticmethod
+    def _find_act_binary() -> Optional[str]:
+        """Find the act binary, checking both 'act' and 'act-cli' (Windows).
+        
+        On Windows, Chocolatey installs act as `act-cli.exe`.
+        On Linux/macOS, it's `act`.
+        """
+        # Try 'act' first (Linux/macOS, or manual Windows install)
+        act_path = shutil.which("act")
+        if act_path:
+            return act_path
+        
+        # Try 'act-cli' (Windows Chocolatey package)
+        if sys.platform == "win32":
+            act_cli_path = shutil.which("act-cli")
+            if act_cli_path:
+                return act_cli_path
+        
+        return None
 
     # -----------------------------------------------------------------
     # Properties
@@ -383,6 +410,10 @@ class JobExecutor:
         )
 
         act_cmd: Optional[ActCommand] = cmd
+        
+        # Set the correct binary name for this platform
+        if self._act_path:
+            cmd.act_binary = self._act_path
 
         try:
             # Preflight

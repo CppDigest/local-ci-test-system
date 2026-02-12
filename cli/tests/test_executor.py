@@ -146,6 +146,18 @@ class TestActCommand:
         assert "-j" in args
         assert "build" in args
 
+    def test_act_cli_binary_name(self):
+        """Test that act_binary field controls the command name."""
+        cmd = ActCommand(
+            workflow_file=Path(".github/workflows/ci.yml"),
+            job_id="build",
+            act_binary="act-cli",
+        )
+        args = cmd.build()
+        assert args[0] == "act-cli"
+        assert "-W" in args
+        assert "-j" in args
+
     def test_matrix_filters(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
@@ -443,6 +455,22 @@ class TestJobExecutor:
         mock_which.return_value = None
         executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
         assert executor.has_act is False
+
+    @patch("sys.platform", "win32")
+    @patch("shutil.which")
+    def test_has_act_cli_windows(self, mock_which):
+        """On Windows, should find act-cli.exe when act.exe is not available."""
+        def which_side_effect(name):
+            if name == "act":
+                return None
+            if name == "act-cli":
+                return "C:\\ProgramData\\chocolatey\\bin\\act-cli.exe"
+            return None
+        
+        mock_which.side_effect = which_side_effect
+        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        assert executor.has_act is True
+        assert executor._act_path == "C:\\ProgramData\\chocolatey\\bin\\act-cli.exe"
 
     @patch("subprocess.run")
     @patch("shutil.which")
