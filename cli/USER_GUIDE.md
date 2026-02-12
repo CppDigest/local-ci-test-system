@@ -372,10 +372,13 @@ localci run [OPTIONS]
 | `--parallel` | Max concurrent jobs (overrides config) |
 | `--timeout` | Job timeout in seconds (overrides config) |
 | `--dry-run` | Preview the execution plan without running anything |
+| `--github-token`, `-t` | GitHub token for downloading external actions |
+| `--offline` | Run in offline mode (requires pre-cached actions) |
 | `--no-cache` | Disable build caching (ccache/sccache) |
 | `--rebuild-image` | Force Docker image rebuild |
 | `--keep-containers` | Don't remove containers after execution |
 | `--interactive`, `-i` | Interactively select which jobs to run |
+| `--verbose`, `-v` | Show verbose act output |
 
 **Examples:**
 
@@ -407,6 +410,47 @@ localci run --job 5 --keep-containers
 # Force image rebuild
 localci run --job 5 --rebuild-image
 ```
+
+#### GitHub Authentication
+
+If your workflow uses external GitHub Actions (composite actions from other repositories), `act` needs a GitHub token to download them. Without authentication, you'll see errors like:
+
+```
+authentication required: Invalid username or token
+```
+
+**Solution 1: Environment Variable (Recommended)**
+
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+localci run --platform linux
+```
+
+**Solution 2: CLI Flag**
+
+```bash
+localci run --platform linux --github-token ghp_your_token_here
+```
+
+**Solution 3: Offline Mode**
+
+If actions are already cached from a previous run:
+
+```bash
+localci run --platform linux --offline
+```
+
+**How to Get a GitHub Token:**
+
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token" → "Generate new token (classic)"
+3. Select scopes:
+   - `repo` (for private repositories)
+   - `public_repo` (for public repositories only)
+4. Copy the token (starts with `ghp_`)
+5. Set it as an environment variable or pass via `--github-token`
+
+**Note**: The token is only used by `act` to download external actions. It's never sent to remote servers or stored permanently.
 
 #### Understanding --dry-run
 

@@ -32,6 +32,7 @@ run_check "ninja present" "command -v ninja"
 run_check "ccache present" "command -v ccache"
 run_check "b2 present" "command -v b2"
 run_check "boost source pre-cloned" "test -d /opt/boost-source"
+run_check "node present (for act)" "command -v node"
 run_check "openssl dev headers present" "test -f /usr/include/openssl/ssl.h"
 run_check "zlib dev headers present" "test -f /usr/include/zlib.h"
 

@@ -5,11 +5,14 @@ Execute selected jobs locally via ``act`` with Docker containers.
 
 from __future__ import annotations
 
+import os
+import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 import click
+import re
 
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import (
@@ -90,6 +93,19 @@ from localci.utils.output import (
 @click.option(
     "--verbose", "-v", is_flag=True, help="Show verbose act output."
 )
+@click.option(
+    "--github-token",
+    "-t",
+    "github_token",
+    type=str,
+    default=None,
+    help="GitHub token for API access (or set GITHUB_TOKEN env var).",
+)
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="Run in offline mode (no action downloads, requires pre-cached actions).",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -106,12 +122,17 @@ def run(
     keep_containers: bool,
     interactive: bool,
     verbose: bool,
+    github_token: str | None,
+    offline: bool,
 ) -> None:
     """Execute selected jobs locally."""
     cfg = ctx.obj["config"]
 
     effective_timeout = timeout or cfg.execution.timeout
     workflow_path = Path(workflow) if workflow else cfg.workflow
+    
+    # Resolve GitHub token: CLI flag > env var > default
+    gh_token = github_token or os.environ.get("GITHUB_TOKEN") or "local-ci-token"
 
     # ── 1. Parse the workflow ──────────────────────────────────────
     try:
@@ -208,6 +229,8 @@ def run(
         builder = ActCommandBuilder(
             workflow_file=workflow_path,
             project_dir=Path("."),
+            default_secrets={"GITHUB_TOKEN": gh_token},
+            offline=offline,
         )
         for entry in selected:
             cmd = builder.build(entry, dryrun=True, verbose=verbose)
@@ -248,6 +271,8 @@ def run(
     builder = ActCommandBuilder(
         workflow_file=workflow_path,
         project_dir=Path("."),
+        default_secrets={"GITHUB_TOKEN": gh_token},
+        offline=offline,
     )
 
     console.print()
@@ -257,11 +282,29 @@ def run(
     for entry in selected:
         # Build image tag based on entry data
         image_tag = _derive_image_tag(entry)
+        # When the workflow sets container:, act uses it and ignores -P. Patch the
+        # workflow so this matrix entry's container is our capy image.
+        workflow_file_override: Path | None = None
+        if (
+            entry.container.image
+            and image_tag
+            and str(image_tag).startswith("capy-")
+        ):
+            try:
+                workflow_file_override = _write_patched_workflow(
+                    workflow_path, entry, image_tag
+                )
+            except Exception as exc:
+                print_warning(
+                    f"Could not patch workflow for {entry.name}: {exc}; "
+                    "act may use workflow container image."
+                )
 
         cmd = builder.build(
             entry,
             image_tag=image_tag,
             verbose=verbose,
+            workflow_file=workflow_file_override,
         )
 
         console.print(f"[bold]▶ {entry.name}[/bold]")
@@ -275,6 +318,12 @@ def run(
             timeout=effective_timeout,
             stream_output=True,
         )
+
+        if workflow_file_override is not None and workflow_file_override.exists():
+            try:
+                workflow_file_override.unlink()
+            except OSError:
+                pass
 
         summary.results.append(result)
 
@@ -326,16 +375,72 @@ def run(
 # ─── Helpers ───────────────────────────────────────────────────────
 
 
+def _write_patched_workflow(
+    workflow_path: Path, entry: MatrixEntry, image_tag: str
+) -> Path:
+    """Write a copy of the workflow with this matrix entry's container set to image_tag.
+
+    When the workflow has container: ${{ matrix.container }}, act uses that image
+    and ignores our -P mapping. Patching via text replace avoids YAML round-trip
+    issues (e.g. 'on' becoming boolean true and breaking act schema).
+    """
+    with open(workflow_path, encoding="utf-8") as f:
+        lines = f.readlines()
+    name_escaped = re.escape(entry.name)
+    name_pattern = re.compile(r'name:\s*["\']?' + name_escaped + r'["\']?\s*$')
+    # Find the line index that has name: "<entry.name>"
+    name_idx = None
+    for i, line in enumerate(lines):
+        if name_pattern.search(line.strip()):
+            name_idx = i
+            break
+    if name_idx is None:
+        raise ValueError(f"Matrix entry name '{entry.name}' not found in workflow")
+    # Matrix include items start with "          - "; find this entry's block
+    block_start = name_idx
+    while block_start > 0 and not re.match(r"^\s{10}-\s", lines[block_start]):
+        block_start -= 1
+    block_end = name_idx + 1
+    while block_end < len(lines) and not (re.match(r"^\s{10}-\s", lines[block_end]) or re.match(r"^\s{4}\w", lines[block_end])):
+        block_end += 1
+    # Replace container: "..." with container: "<image_tag>" in this block
+    container_pattern = re.compile(r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$")
+    for i in range(block_start, block_end):
+        mo = container_pattern.match(lines[i])
+        if mo:
+            lines[i] = f'{mo.group(1)}container: "{image_tag}"\n'
+            break
+    fd, path = tempfile.mkstemp(suffix=".yml", prefix="localci-workflow-")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    return Path(path)
+
+
 def _derive_image_tag(entry: MatrixEntry) -> str:
     """Derive a Docker image tag from a matrix entry.
 
-    Uses the container image directly if specified, otherwise
-    constructs a tag from the runner and compiler info.
+    Always uses our built capy image names so act runs local images
+    (e.g. capy-ubuntu-24.04-clang20-x86) instead of pulling ubuntu:24.04
+    with linux/386, which does not exist. Uses container image or runs_on
+    to get the OS label (e.g. ubuntu:24.04 -> ubuntu-24.04).
     """
     if entry.container.image:
-        return entry.container.image
-    os_label = entry.runs_on
+        # e.g. "ubuntu:24.04" or "ubuntu:25.04" -> "ubuntu-24.04"
+        img = entry.container.image.strip().lower()
+        if ":" in img:
+            os_label = img.replace(":", "-", 1)
+        else:
+            os_label = img
+    else:
+        os_label = entry.runs_on
     compiler_label = (
         f"{entry.compiler.family.value}{entry.compiler.version}"
     )
-    return f"capy-{os_label}-{compiler_label}:latest"
+    base = f"capy-{os_label}-{compiler_label}"
+    if entry.variant.coverage:
+        base += "-cov"
+    elif entry.variant.asan:
+        base += "-asan"
+    elif entry.variant.x86:
+        base += "-x86"
+    return f"{base}:latest"

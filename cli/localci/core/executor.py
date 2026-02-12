@@ -8,6 +8,7 @@ for the full lifecycle of running a single CI job locally.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -128,7 +129,7 @@ class ActCommand:
 
     # Execution options
     pull: bool = False
-    offline: bool = True
+    offline: bool = False  # Online by default (requires GitHub token)
     privileged: bool = True
     rm: bool = True
     dryrun: bool = False
@@ -490,6 +491,18 @@ class JobExecutor:
             log_f.write(f"# Started: {datetime.now().isoformat()}\n")
             log_f.write(f"# {'=' * 60}\n\n")
 
+            # Build environment for act subprocess
+            # Include parent environment and add GITHUB_TOKEN from secrets if present
+            env = dict(os.environ)
+            # Extract GITHUB_TOKEN from cmd secrets if present
+            for i, arg in enumerate(cmd):
+                if arg == "--secret" and i + 1 < len(cmd):
+                    secret_pair = cmd[i + 1]
+                    if secret_pair.startswith("GITHUB_TOKEN="):
+                        token = secret_pair.split("=", 1)[1]
+                        env["GITHUB_TOKEN"] = token
+                        break
+            
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -497,6 +510,7 @@ class JobExecutor:
                 text=True,
                 cwd=str(workdir),
                 bufsize=1,  # Line-buffered
+                env=env,
             )
 
             def read_stream(

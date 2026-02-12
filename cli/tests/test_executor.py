@@ -141,7 +141,8 @@ class TestActCommand:
         args = cmd.build()
         assert args[0] == "act"
         assert "-W" in args
-        assert ".github/workflows/ci.yml" in args
+        # Path conversion is platform-specific (forward slash on Unix, backslash on Windows)
+        assert any(".github" in arg and "ci.yml" in arg for arg in args)
         assert "-j" in args
         assert "build" in args
 
@@ -609,7 +610,7 @@ class TestActCommandBuilder:
         assert cmd.workflow_file == wf
         assert cmd.job_id == "build"
         assert cmd.pull is False
-        assert cmd.offline is True
+        assert cmd.offline is False  # Default is online mode now
         assert cmd.privileged is True
 
     def test_env_vars_from_compiler(self, tmp_path):
