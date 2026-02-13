@@ -30,3 +30,9 @@ from localci.core.queue import (  # noqa: F401
     PriorityRule,
 )
 from localci.core.queue_builder import QueueBuilder  # noqa: F401
+from localci.core.orchestrator import (  # noqa: F401
+    ExecutionRun,
+    OrchestratorConfig,
+    OrchestratorState,
+    ParallelExecutionManager,
+)

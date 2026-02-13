@@ -38,13 +38,17 @@ class QueuedJobStatus(Enum):
 
 
 class JobEventType(Enum):
-    """Event types emitted by the queue for progress tracking."""
+    """Event types emitted by the queue and orchestrator for progress tracking."""
 
     JOB_QUEUED = "job_queued"
     JOB_READY = "job_ready"
     JOB_PREPARING = "job_preparing"
     JOB_STARTED = "job_started"
     JOB_CANCELLED = "job_cancelled"
+    JOB_COMPLETED = "job_completed"
+    JOB_FAILED = "job_failed"
+    JOB_OUTPUT = "job_output"
+    RESOURCE_WARNING = "resource_warning"
     PRIORITY_LEVEL_COMPLETE = "priority_level_complete"
     ALL_COMPLETE = "all_complete"
 
