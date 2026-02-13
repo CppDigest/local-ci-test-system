@@ -48,6 +48,7 @@ class JobProgress:
     exit_code: Optional[int] = None
     error_message: Optional[str] = None
     log_file: Optional[str] = None
+    current_step: Optional[str] = None  # From act output (e.g. "Run Main Clone Boost.Capy")
 
     @property
     def elapsed(self) -> float:
@@ -249,7 +250,15 @@ class ProgressTracker:
                 if self._started_at is None:
                     self._started_at = ts
 
+            elif event.event_type == JobEventType.JOB_OUTPUT:
+                line = event.data.get("line")
+                if isinstance(line, str) and " Run " in line:
+                    step = line.split(" Run ", 1)[-1].strip()
+                    if step:
+                        progress.current_step = step[:50] if len(step) > 50 else step
+
             elif event.event_type == JobEventType.JOB_COMPLETED:
+                progress.current_step = None
                 progress.status = QueuedJobStatus.PASSED
                 progress.finished_at = ts
                 result = event.data.get("result")
@@ -262,6 +271,7 @@ class ProgressTracker:
                 self._completed_durations.append(progress.duration_seconds)
 
             elif event.event_type == JobEventType.JOB_FAILED:
+                progress.current_step = None
                 progress.status = QueuedJobStatus.FAILED
                 progress.finished_at = ts
                 result = event.data.get("result")
@@ -275,6 +285,7 @@ class ProgressTracker:
                 self._completed_durations.append(progress.duration_seconds)
 
             elif event.event_type == JobEventType.JOB_TIMEOUT:
+                progress.current_step = None
                 progress.status = QueuedJobStatus.TIMEOUT
                 progress.finished_at = ts
                 progress.error_message = "Timed out"
@@ -288,6 +299,7 @@ class ProgressTracker:
                 self._completed_durations.append(progress.duration_seconds)
 
             elif event.event_type == JobEventType.JOB_CANCELLED:
+                progress.current_step = None
                 progress.status = QueuedJobStatus.CANCELLED
                 progress.finished_at = ts
 
@@ -428,13 +440,14 @@ class ProgressTracker:
         return Text("\n".join(lines) + "\n")
 
     def _render_job_table(self):
-        """Render per-job status table."""
+        """Render per-job status table with current step when running."""
         from rich.table import Table
 
         table = Table(expand=True)
         table.add_column("#", justify="right", style="dim", width=4)
-        table.add_column("Job", style="bold", ratio=3)
+        table.add_column("Job", style="bold", ratio=2)
         table.add_column("Status", width=14)
+        table.add_column("Step", style="dim", ratio=2)
         table.add_column("Duration", justify="right", width=10)
 
         with self._lock:
@@ -445,10 +458,12 @@ class ProgressTracker:
 
         for job in jobs:
             status_text = f"{job.status_icon} {job.status.value}"
+            step_text = job.current_step or "-"
             table.add_row(
                 str(job.index),
                 job.name,
                 f"[{job.status_style}]{status_text}[/{job.status_style}]",
+                step_text,
                 job.elapsed_display,
             )
         return table
@@ -643,6 +658,7 @@ class ProgressTracker:
                     "priority": j.priority,
                     "elapsed_seconds": j.elapsed,
                     "status": j.status.value,
+                    "current_step": j.current_step,
                 }
                 for j in running
             ],

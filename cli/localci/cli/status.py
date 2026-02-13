@@ -159,7 +159,11 @@ def _print_status_table(data: dict) -> None:
         console.print("[bold cyan]Running:[/bold cyan]")
         for job in running:
             elapsed = job.get("elapsed_seconds", 0)
-            console.print(f"  ● {job['name']} ({elapsed:.0f}s)")
+            step = job.get("current_step")
+            if step:
+                console.print(f"  ● {job['name']} — {step} ({elapsed:.0f}s)")
+            else:
+                console.print(f"  ● {job['name']} ({elapsed:.0f}s)")
         console.print()
 
     completed = data.get("completed_jobs", [])
