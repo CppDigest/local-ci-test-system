@@ -82,6 +82,14 @@ class TestConfigLoading:
         assert cfg.execution.timeout == 7200
         assert cfg.execution.keep_containers is True
 
+    def test_logging_directory_expands_tilde(self, tmp_path):
+        """logging.directory with ~ is expanded so run/status/logs use same path."""
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("logging:\n  directory: ~/.localci/logs\n")
+        cfg = load_config(cfg_file)
+        assert "~" not in str(cfg.logging.directory)
+        assert cfg.logging.directory.is_absolute()
+
     def test_load_empty_file(self, tmp_path):
         cfg_file = tmp_path / ".localci.yml"
         cfg_file.write_text("")

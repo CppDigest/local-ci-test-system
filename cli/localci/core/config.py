@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,12 @@ class LoggingConfig(BaseModel):
     directory: Path = Field(default_factory=lambda: Path.home() / ".localci" / "logs")
     max_files: int = Field(default=10, ge=1)
     max_size_mb: int = Field(default=100, ge=1)
+
+    @field_validator("directory", mode="after")
+    @classmethod
+    def expand_directory(cls, v: Path) -> Path:
+        """Expand ~ so all consumers get an absolute path."""
+        return Path(v).expanduser().resolve()
 
 
 class ExecutionConfig(BaseModel):
