@@ -15,6 +15,7 @@ from threading import Event as ThreadEvent
 from typing import TYPE_CHECKING, Callable, Optional
 
 from localci.core.command_builder import ActCommandBuilder
+from localci.core.workflow import MatrixEntry
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
 from localci.core.queue import PriorityJobQueue
@@ -130,6 +131,9 @@ class ParallelExecutionManager:
         project_dir: Path = Path("."),
         config: Optional[OrchestratorConfig] = None,
         logs_dir: Optional[Path] = None,
+        workflow_patcher: Optional[
+            Callable[[Path, MatrixEntry, Optional[str]], Path]
+        ] = None,
     ):
         self.queue = queue
         self.workflow_file = Path(workflow_file)
@@ -137,6 +141,7 @@ class ParallelExecutionManager:
         self.config = config or OrchestratorConfig()
         self.logs_dir = Path(logs_dir or Path.home() / ".localci" / "logs").expanduser()
         self.logs_dir.mkdir(parents=True, exist_ok=True)
+        self._workflow_patcher = workflow_patcher
 
         self._executor = JobExecutor(logs_dir=self.logs_dir)
         self._docker = DockerManager()
@@ -275,6 +280,11 @@ class ParallelExecutionManager:
             self.queue.mark_preparing(job)
             image_tag = self._prepare_image(job)
             self.queue.mark_running(job)
+            workflow_file = self.workflow_file
+            if self._workflow_patcher is not None:
+                workflow_file = self._workflow_patcher(
+                    self.workflow_file, job.matrix_entry, image_tag
+                )
             builder = ActCommandBuilder(
                 workflow_file=self.workflow_file,
                 project_dir=self.project_dir,
@@ -282,7 +292,9 @@ class ParallelExecutionManager:
                 default_secrets=self.config.default_secrets or {},
                 default_env=self.config.default_env or {},
             )
-            cmd = builder.build(job.matrix_entry, image_tag=image_tag)
+            cmd = builder.build(
+                job.matrix_entry, image_tag=image_tag, workflow_file=workflow_file
+            )
             result = self._executor.run(
                 cmd,
                 matrix_index=job.matrix_entry.index,

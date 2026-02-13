@@ -1,26 +1,29 @@
 """``localci run`` command.
 
-Execute selected jobs locally via ``act`` with Docker containers.
+Execute selected jobs locally via the parallel execution manager
+(queue + orchestrator) with Docker containers.
 """
 
 from __future__ import annotations
 
 import os
 import tempfile
-import uuid
-from datetime import datetime
 from pathlib import Path
 
 import click
 import re
 
-from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import (
     ActNotFoundError,
     DockerNotAvailableError,
     JobExecutor,
-    JobStatus,
 )
+from localci.core.orchestrator import (
+    OrchestratorConfig,
+    ParallelExecutionManager,
+)
+from localci.core.queue import PriorityConfig
+from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform, WorkflowAnalyzer
 from localci.utils.output import (
@@ -125,13 +128,14 @@ def run(
     github_token: str | None,
     offline: bool,
 ) -> None:
-    """Execute selected jobs locally."""
+    """Execute selected jobs locally with parallel execution."""
     cfg = ctx.obj["config"]
 
     effective_timeout = timeout or cfg.execution.timeout
+    effective_parallel = parallel or cfg.parallel.max_jobs
     workflow_path = Path(workflow) if workflow else cfg.workflow
-    
-    # Resolve GitHub token: CLI flag > env var > default
+    project_dir = Path(".").resolve()
+
     gh_token = github_token or os.environ.get("GITHUB_TOKEN") or "local-ci-token"
 
     # ── 1. Parse the workflow ──────────────────────────────────────
@@ -143,12 +147,13 @@ def run(
         ctx.exit(1)
         return
 
-    # Collect all matrix entries across jobs
-    all_entries = []
-    for job in wf.jobs.values():
-        all_entries.extend(job.matrix)
+    # Collect (job_id, entry) pairs
+    all_pairs: list[tuple[str, MatrixEntry]] = []
+    for job_id, job in wf.jobs.items():
+        for entry in job.matrix:
+            all_pairs.append((job_id, entry))
 
-    if not all_entries:
+    if not all_pairs:
         print_warning("No matrix entries found in workflow.")
         return
 
@@ -157,96 +162,88 @@ def run(
         print_warning("--no-cache is not yet implemented; ignoring.")
     if rebuild_image:
         print_warning("--rebuild-image is not yet implemented; ignoring.")
-    if keep_containers:
-        print_warning(
-            "--keep-containers is not yet implemented; ignoring."
-        )
     if interactive:
         print_warning("--interactive is not yet implemented; ignoring.")
     if matrix_filters:
-        print_warning(
-            "--matrix filters are not yet implemented; ignoring."
-        )
+        print_warning("--matrix filters are not yet implemented; ignoring.")
 
     # ── 3. Filter entries ──────────────────────────────────────────
-    selected = list(all_entries)
-
-    # Platform filter
+    plat_map = {
+        "linux": Platform.LINUX,
+        "windows": Platform.WINDOWS,
+        "macos": Platform.MACOS,
+    }
+    selected: list[tuple[str, MatrixEntry]] = list(all_pairs)
     if platform:
-        plat_map = {
-            "linux": Platform.LINUX,
-            "windows": Platform.WINDOWS,
-            "macos": Platform.MACOS,
-        }
         target_plat = plat_map.get(platform)
-        selected = [e for e in selected if e.platform == target_plat]
+        selected = [(jid, e) for jid, e in selected if e.platform == target_plat]
 
-    # Compiler filter
     if compiler:
         comp_lower = compiler.lower()
         selected = [
-            e
-            for e in selected
+            (jid, e)
+            for jid, e in selected
             if comp_lower in e.compiler.family.value.lower()
             or comp_lower in e.compiler.display_name.lower()
         ]
 
-    # Job name/index filter
     if jobs:
-        seen_indices: set[int] = set()
-        filtered: list = []
+        seen: set[tuple[str, int]] = set()
+        filtered_list: list[tuple[str, MatrixEntry]] = []
         for j in jobs:
-            # Try as index
             try:
                 idx = int(j)
-                for e in selected:
-                    if e.index == idx and e.index not in seen_indices:
-                        filtered.append(e)
-                        seen_indices.add(e.index)
+                for jid, e in selected:
+                    if e.index == idx and (jid, e.index) not in seen:
+                        filtered_list.append((jid, e))
+                        seen.add((jid, e.index))
                 continue
             except ValueError:
                 pass
-            # Try as name substring
             j_lower = j.lower()
-            for e in selected:
-                if j_lower in e.name.lower() and e.index not in seen_indices:
-                    filtered.append(e)
-                    seen_indices.add(e.index)
-        selected = filtered
+            for jid, e in selected:
+                if j_lower in e.name.lower() and (jid, e.index) not in seen:
+                    filtered_list.append((jid, e))
+                    seen.add((jid, e.index))
+        selected = filtered_list
 
     if not selected:
         print_warning("No jobs match the given filters.")
         return
 
+    # Build queue via QueueBuilder
+    selected_set = {(jid, e.index) for jid, e in selected}
+    job_filter_list = list({jid for jid, _ in selected})
+    plat_filter = plat_map.get(platform) if platform else None
+    compiler_filter = compiler.lower() if compiler else None
+    matrix_include = (
+        [f.model_dump(exclude_none=True) for f in cfg.matrix.include]
+        if cfg.matrix.include
+        else None
+    )
+    matrix_exclude = (
+        [f.model_dump(exclude_none=True) for f in cfg.matrix.exclude]
+        if cfg.matrix.exclude
+        else None
+    )
+    priority_config = PriorityConfig.from_config(cfg)
+    builder = QueueBuilder(wf, priority_config=priority_config)
+    queue = builder.build(
+        platform_filter=plat_filter,
+        job_filter=job_filter_list,
+        compiler_filter=compiler_filter,
+        matrix_include=matrix_include,
+        matrix_exclude=matrix_exclude,
+        entries_include=selected_set,
+    )
+
     # ── 4. Dry-run mode ───────────────────────────────────────────
     if dry_run:
-        print_info("Dry run - execution plan:")
-        print_key_value("Workflow", str(workflow_path))
-        print_key_value("Jobs", str(len(selected)))
-        print_key_value("Timeout", f"{effective_timeout}s")
-        console.print()
-
-        builder = ActCommandBuilder(
-            workflow_file=workflow_path,
-            project_dir=Path("."),
-            default_secrets={"GITHUB_TOKEN": gh_token},
-            offline=offline,
-        )
-        for entry in selected:
-            cmd = builder.build(entry, dryrun=True, verbose=verbose)
-            console.print(f"  [bold]{entry.name}[/bold]")
-            console.print(f"    {cmd.display()}")
-            console.print()
-            # Clean up the temp event file created by build()
-            if cmd.event_file and cmd.event_file.exists():
-                cmd.event_file.unlink(missing_ok=True)
+        _print_execution_plan(queue, workflow_path, effective_timeout)
         return
 
     # ── 5. Preflight checks ───────────────────────────────────────
-    executor = JobExecutor(
-        logs_dir=cfg.logging.directory,
-    )
-
+    executor = JobExecutor(logs_dir=cfg.logging.directory)
     try:
         act_version = executor.check_act()
         print_info(f"Using {act_version}")
@@ -254,7 +251,6 @@ def run(
         print_error(str(exc))
         ctx.exit(1)
         return
-
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
@@ -262,109 +258,39 @@ def run(
         ctx.exit(1)
         return
 
-    # ── 6. Execute jobs ───────────────────────────────────────────
-    summary = ExecutionSummary(
-        execution_id=str(uuid.uuid4())[:8],
-        started_at=datetime.now(),
-    )
-
-    builder = ActCommandBuilder(
-        workflow_file=workflow_path,
-        project_dir=Path("."),
+    # ── 6. Execute via orchestrator ────────────────────────────────
+    orch_config = OrchestratorConfig(
+        max_parallel=effective_parallel,
+        job_timeout=effective_timeout,
+        stop_on_first_failure=cfg.execution.stop_on_first_failure,
+        keep_containers=keep_containers,
         default_secrets={"GITHUB_TOKEN": gh_token},
-        offline=offline,
+        default_env={},
+    )
+    orchestrator = ParallelExecutionManager(
+        queue=queue,
+        workflow_file=workflow_path,
+        project_dir=project_dir,
+        config=orch_config,
+        logs_dir=cfg.logging.directory,
+        workflow_patcher=_write_patched_workflow,
     )
 
     console.print()
-    print_info(f"Running {len(selected)} job(s)...")
+    print_info(f"Running {queue.total_jobs} job(s) (max {effective_parallel} parallel)...")
     console.print()
 
-    for entry in selected:
-        # Build image tag based on entry data
-        image_tag = _derive_image_tag(entry)
-        # When the workflow sets container:, act uses it and ignores -P. Patch the
-        # workflow so this matrix entry's container is our capy image. Also patch
-        # for coverage jobs so the Codecov step skips upload under act (codecov.io 403).
-        workflow_file_override: Path | None = None
-        need_container_patch = (
-            entry.container.image
-            and image_tag
-            and str(image_tag).startswith("capy-")
-        )
-        need_coverage_patch = entry.variant.coverage
-        if need_container_patch or need_coverage_patch:
-            try:
-                workflow_file_override = _write_patched_workflow(
-                    workflow_path,
-                    entry,
-                    image_tag=image_tag if need_container_patch else None,
-                )
-            except Exception as exc:
-                print_warning(
-                    f"Could not patch workflow for {entry.name}: {exc}; "
-                    "act may use workflow container image."
-                )
-
-        cmd = builder.build(
-            entry,
-            image_tag=image_tag,
-            verbose=verbose,
-            workflow_file=workflow_file_override,
-        )
-
-        console.print(f"[bold]▶ {entry.name}[/bold]")
-        console.print(f"  Command: [muted]{cmd.display()}[/muted]")
-        console.print()
-
-        result = executor.run(
-            cmd=cmd,
-            matrix_index=entry.index,
-            matrix_name=entry.name,
-            timeout=effective_timeout,
-            stream_output=True,
-        )
-
-        if workflow_file_override is not None and workflow_file_override.exists():
-            try:
-                workflow_file_override.unlink()
-            except OSError:
-                pass
-
-        summary.results.append(result)
-
-        # Print result
-        if result.success:
-            print_success(
-                f"{entry.name}: PASSED ({result.duration_display})"
-            )
-        elif result.status == JobStatus.TIMEOUT:
-            print_warning(
-                f"{entry.name}: TIMEOUT ({result.duration_display})"
-            )
-        elif result.status == JobStatus.ERROR:
-            print_error(f"{entry.name}: ERROR - {result.error_message}")
-        else:
-            print_error(
-                f"{entry.name}: FAILED ({result.duration_display})"
-            )
-            if result.error_message:
-                console.print(f"  [muted]{result.error_message}[/muted]")
-        console.print()
-
-        # Stop-on-first-failure
-        if (
-            cfg.execution.stop_on_first_failure
-            and result.status == JobStatus.FAILED
-        ):
-            print_warning("Stopping on first failure.")
-            break
+    run = orchestrator.execute()
 
     # ── 7. Summary ────────────────────────────────────────────────
-    summary.finished_at = datetime.now()
-
+    summary = ExecutionSummary(
+        execution_id=run.execution_id,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        results=list(run.results.values()),
+    )
     console.print(summary.summary_report())
 
-    # Save results
     results_file = cfg.logging.directory / "last-run.json"
     try:
         summary.save(results_file)
@@ -372,12 +298,46 @@ def run(
     except Exception as exc:
         print_warning(f"Could not save results: {exc}")
 
-    # Exit code
     if not summary.all_passed:
         ctx.exit(1)
 
 
 # ─── Helpers ───────────────────────────────────────────────────────
+
+
+def _print_execution_plan(queue, workflow_path: Path, timeout: int) -> None:
+    """Print dry-run execution plan from the queue."""
+    from rich.table import Table
+
+    print_info("Dry run - execution plan:")
+    print_key_value("Workflow", str(workflow_path))
+    print_key_value("Jobs", str(queue.total_jobs))
+    print_key_value("Timeout", f"{timeout}s")
+    console.print()
+
+    table = Table(title=f"Execution plan: {queue.total_jobs} jobs")
+    table.add_column("Priority", justify="center", style="dim")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Name", style="bold")
+    table.add_column("Compiler", style="cyan")
+    table.add_column("Image")
+    for job in sorted(
+        queue.get_all_jobs(),
+        key=lambda j: (j.priority, j.matrix_entry.index),
+    ):
+        table.add_row(
+            str(job.priority),
+            str(job.matrix_entry.index),
+            job.matrix_entry.name,
+            f"{job.matrix_entry.compiler.family.value}-{job.matrix_entry.compiler.version}",
+            job.image_tag or "none",
+        )
+    console.print(table)
+    summary = queue.get_priority_summary()
+    console.print("[bold]Priority levels:[/bold]")
+    for pri, counts in sorted(summary.items()):
+        console.print(f"  Priority {pri}: {counts['total']} jobs")
+    console.print()
 
 
 def _write_patched_workflow(

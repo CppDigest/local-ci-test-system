@@ -92,7 +92,9 @@ class QueueBuilder:
         compiler_filter: Optional[str] = None,
         matrix_include: Optional[list[dict]] = None,
         matrix_exclude: Optional[list[dict]] = None,
+        entries_include: Optional[set[tuple[str, int]]] = None,
     ) -> PriorityJobQueue:
+        """Build queue. entries_include: when set, only (job_id, entry.index) in this set."""
         queue = PriorityJobQueue()
 
         # First pass: collect (job, entry) that pass filters and build job_id -> [keys]
@@ -104,6 +106,8 @@ class QueueBuilder:
                 logger.debug("Skipping job %s (not in filter)", job_id)
                 continue
             for entry in job.matrix:
+                if entries_include is not None and (job_id, entry.index) not in entries_include:
+                    continue
                 if platform_filter and entry.platform != platform_filter:
                     continue
                 if compiler_filter and entry.compiler.family.value != compiler_filter:
