@@ -20,8 +20,61 @@ from localci.core.progress import (
     ProgressTracker,
 )
 from localci.core.queue import PriorityJobQueue
+from localci.core.workflow import (
+    BuildSystem,
+    BuildVariant,
+    CompilerFamily,
+    CompilerInfo,
+    ContainerInfo,
+    MatrixEntry,
+    PackageRequirements,
+    Platform,
+)
 
-from tests.test_queue import make_job
+
+# ---------------------------------------------------------------------------
+# Helpers (self-contained to avoid cross-module import / reference issues)
+# ---------------------------------------------------------------------------
+
+
+def _make_entry(
+    name: str,
+    compiler: str = "gcc",
+    version: str = "15",
+    platform: Platform = Platform.LINUX,
+    index: int = 0,
+) -> MatrixEntry:
+    family = {
+        "gcc": CompilerFamily.GCC,
+        "clang": CompilerFamily.CLANG,
+        "msvc": CompilerFamily.MSVC,
+    }.get(compiler, CompilerFamily.UNKNOWN)
+    return MatrixEntry(
+        index=index,
+        name=name,
+        platform=platform,
+        compiler=CompilerInfo(family=family, version=version),
+        container=ContainerInfo(),
+        variant=BuildVariant(),
+        packages=PackageRequirements(),
+        runs_on="ubuntu-latest",
+        build_system=BuildSystem.B2,
+    )
+
+
+def make_job(
+    name: str,
+    priority: int = 5,
+    deps: list[str] | None = None,
+    compiler: str = "gcc",
+    index: int = 0,
+) -> QueuedJob:
+    return QueuedJob(
+        job_id="build",
+        matrix_entry=_make_entry(name, compiler=compiler, index=index),
+        priority=priority,
+        dependencies=deps or [],
+    )
 
 
 # ---------------------------------------------------------------------------

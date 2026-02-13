@@ -370,8 +370,11 @@ class ParallelExecutionManager:
             job.matrix_entry.name,
             getattr(result, "duration_seconds", 0.0),
         )
-        if not self.config.keep_containers:
-            self._cleanup_job_containers(job)
+        # Do not clean up act containers here when running in parallel:
+        # cleanup_act_containers() removes ALL act-* containers, which would
+        # kill containers still in use by other running jobs (causing
+        # "No such container" when act tries to docker cp). Cleanup runs
+        # once at the end of the run in execute() finally block.
 
     def _check_resources(self) -> None:
         ok, warnings = self._resource_monitor.check_thresholds(
@@ -392,12 +395,6 @@ class ParallelExecutionManager:
         elif ok and self._state == OrchestratorState.PAUSED:
             logger.info("Resources recovered, resuming dispatch")
             self._state = OrchestratorState.RUNNING
-
-    def _cleanup_job_containers(self, job: QueuedJob) -> None:
-        try:
-            self._docker.cleanup_act_containers()
-        except Exception as e:
-            logger.warning("Container cleanup error: %s", e)
 
     def _cleanup_all_containers(self) -> None:
         try:
