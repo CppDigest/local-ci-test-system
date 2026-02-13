@@ -17,6 +17,7 @@
   - [localci status](#localci-status)
   - [localci logs](#localci-logs)
   - [localci images](#localci-images)
+  - [Building Docker images (images/ scripts)](#building-docker-images-images-scripts)
   - [localci config](#localci-config)
 - [Workflows](#workflows)
   - [First-Time Setup](#first-time-setup)
@@ -52,7 +53,7 @@ Key features:
 | Python 3.11+ | Runtime | [python.org](https://www.python.org/downloads/) |
 | Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
-| act | Local GitHub Actions | `choco install act-cli` / `brew install act` |
+| act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash` |
 
 ### Install for usage
 
@@ -609,6 +610,45 @@ localci images import ./my-image.tar
 ```bash
 # Export an image to a tar file
 localci images export capy-ubuntu-25.04-gcc15 -o image.tar
+```
+
+#### Building Docker images (images/ scripts)
+
+You can build the project’s Docker images directly with the scripts under
+`images/capy/`. Use this when you are changing Dockerfiles, building without
+localci, or exporting images to `.tar` files for transfer.
+
+From the **repository root**:
+
+**Build all images** (in dependency order):
+
+```bash
+./images/capy/build-all.sh
+```
+
+Optional: export each image to `images/capy/dist/<image-name>.tar`:
+
+```bash
+./images/capy/build-all.sh --save
+```
+
+**Build a single image** by name:
+
+```bash
+./images/capy/build-one.sh capy-ubuntu-24.04-clang20
+./images/capy/build-one.sh capy-ubuntu-22.04-gcc12 --save   # also save to .tar
+```
+
+Supported image names: `capy-ubuntu-24.04-base`, `capy-ubuntu-25.04-base`,
+`capy-ubuntu-22.04-gcc12`, `capy-ubuntu-24.04-gcc13-cov`, `capy-ubuntu-24.04-clang17`,
+`capy-ubuntu-24.04-clang20`, `capy-ubuntu-24.04-clang20-asan`, `capy-ubuntu-24.04-clang20-x86`,
+`capy-ubuntu-25.04-gcc15`, `capy-ubuntu-25.04-gcc15-asan`. Run
+`./images/capy/build-one.sh` with no arguments to print the list.
+
+**Validate an image** (tools, b2, node, compiler):
+
+```bash
+./images/capy/test-image.sh capy-ubuntu-24.04-clang20:latest
 ```
 
 ---
