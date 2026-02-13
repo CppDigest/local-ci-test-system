@@ -160,7 +160,10 @@ class ParallelExecutionManager:
         self._listeners.append(callback)
 
     def _emit(self, event_type: JobEventType, job: QueuedJob, **data: object) -> None:
-        event = JobEvent(event_type=event_type, job=job, data=dict(data))
+        payload = dict(data)
+        if self._run:
+            payload["execution_id"] = self._run.execution_id
+        event = JobEvent(event_type=event_type, job=job, data=payload)
         for listener in self._listeners:
             try:
                 listener(event)
@@ -168,9 +171,18 @@ class ParallelExecutionManager:
                 logger.warning("Listener error: %s", e)
 
     def _on_queue_event(self, event: JobEvent) -> None:
+        payload = dict(event.data)
+        if self._run:
+            payload["execution_id"] = self._run.execution_id
+        forwarded = JobEvent(
+            event_type=event.event_type,
+            job=event.job,
+            data=payload,
+            timestamp=event.timestamp,
+        )
         for listener in self._listeners:
             try:
-                listener(event)
+                listener(forwarded)
             except Exception as e:
                 logger.warning("Listener error: %s", e)
 
@@ -345,9 +357,12 @@ class ParallelExecutionManager:
             self._run.results[job.queue_key] = result
         success = result.status == JobStatus.PASSED
         self.queue.mark_completed(job, success=success)
-        event_type = (
-            JobEventType.JOB_COMPLETED if success else JobEventType.JOB_FAILED
-        )
+        if result.status == JobStatus.TIMEOUT:
+            event_type = JobEventType.JOB_TIMEOUT
+        elif success:
+            event_type = JobEventType.JOB_COMPLETED
+        else:
+            event_type = JobEventType.JOB_FAILED
         self._emit(event_type, job, result=result)
         logger.info(
             "%s: %s (%.1fs)",

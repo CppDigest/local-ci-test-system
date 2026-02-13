@@ -18,10 +18,12 @@ from localci.core.executor import (
     DockerNotAvailableError,
     JobExecutor,
 )
+from localci.core.models import JobEvent, JobEventType
 from localci.core.orchestrator import (
     OrchestratorConfig,
     ParallelExecutionManager,
 )
+from localci.core.progress import ProgressTracker
 from localci.core.queue import PriorityConfig
 from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
@@ -243,7 +245,8 @@ def run(
         return
 
     # ── 5. Preflight checks ───────────────────────────────────────
-    executor = JobExecutor(logs_dir=cfg.logging.directory)
+    logs_dir = Path(cfg.logging.directory)
+    executor = JobExecutor(logs_dir=logs_dir)
     try:
         act_version = executor.check_act()
         print_info(f"Using {act_version}")
@@ -272,15 +275,33 @@ def run(
         workflow_file=workflow_path,
         project_dir=project_dir,
         config=orch_config,
-        logs_dir=cfg.logging.directory,
+        logs_dir=logs_dir,
         workflow_patcher=_write_patched_workflow,
     )
 
-    console.print()
-    print_info(f"Running {queue.total_jobs} job(s) (max {effective_parallel} parallel)...")
-    console.print()
+    status_file = logs_dir / "last-status.json"
+    tracker = ProgressTracker(
+        queue=queue,
+        workflow_file=str(workflow_path),
+        platform=platform or "linux",
+        max_parallel=effective_parallel,
+        status_file=status_file,
+    )
+    for job in queue.get_all_jobs():
+        tracker.on_event(
+            JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
+        )
 
-    run = orchestrator.execute()
+    orchestrator.add_listener(tracker.on_event)
+
+    tracker.start_live()
+    try:
+        run = orchestrator.execute()
+    finally:
+        tracker.stop_live()
+
+    tracker.set_execution_id(run.execution_id)
+    tracker.write_status_file()
 
     # ── 7. Summary ────────────────────────────────────────────────
     summary = ExecutionSummary(
@@ -289,9 +310,9 @@ def run(
         finished_at=run.finished_at,
         results=list(run.results.values()),
     )
-    console.print(summary.summary_report())
+    tracker.print_summary(run)
 
-    results_file = cfg.logging.directory / "last-run.json"
+    results_file = logs_dir / "last-run.json"
     try:
         summary.save(results_file)
         print_info(f"Results saved to {results_file}")

@@ -8,6 +8,7 @@ live in workflow.py.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -47,6 +48,7 @@ class JobEventType(Enum):
     JOB_CANCELLED = "job_cancelled"
     JOB_COMPLETED = "job_completed"
     JOB_FAILED = "job_failed"
+    JOB_TIMEOUT = "job_timeout"
     JOB_OUTPUT = "job_output"
     RESOURCE_WARNING = "resource_warning"
     PRIORITY_LEVEL_COMPLETE = "priority_level_complete"
@@ -83,3 +85,4 @@ class JobEvent:
     event_type: JobEventType
     job: QueuedJob
     data: dict[str, Any] = field(default_factory=dict)
+    timestamp: Optional[datetime] = field(default_factory=datetime.now)

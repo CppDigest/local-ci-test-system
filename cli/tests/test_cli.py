@@ -6,6 +6,7 @@ Business logic is stubbed, so these tests focus on the CLI *surface*.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -135,10 +136,34 @@ class TestStatus:
         result = runner.invoke(cli, ["status", "--help"])
         assert result.exit_code == 0
         assert "--follow" in result.output
+        assert "--format" in result.output
 
     def test_basic_invocation(self):
         result = runner.invoke(cli, ["status"])
         assert result.exit_code == 0
+
+    def test_status_uses_last_status_json_and_json_format(self, tmp_path):
+        """When last-status.json exists, status uses MCP schema; --format json outputs it."""
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "last-status.json").write_text(
+            '{"progress": "2/3 jobs completed", "execution_id": "abc", "total": 3}',
+            encoding="utf-8",
+        )
+        config_yml = tmp_path / ".localci.yml"
+        config_yml.write_text(
+            f"version: 1\nlogging:\n  directory: {logs_dir!s}\n",
+            encoding="utf-8",
+        )
+        result = runner.invoke(
+            cli,
+            ["--config", str(config_yml), "status", "--format", "json"],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data.get("progress") == "2/3 jobs completed"
+        assert data.get("execution_id") == "abc"
+        assert data.get("total") == 3
 
 
 # ---------------------------------------------------------------------------
