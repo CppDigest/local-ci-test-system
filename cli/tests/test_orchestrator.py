@@ -96,7 +96,7 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_execute_single_job(self, MockExecutor, MockDocker, MockMonitor):
+    def test_execute_single_job(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
         mock_executor = MockExecutor.return_value
         mock_executor.run.return_value = JobResult(
             job_id="build",
@@ -119,6 +119,7 @@ class TestParallelExecutionManager:
             queue=queue,
             workflow_file=Path("ci.yml"),
             config=OrchestratorConfig(max_parallel=4),
+            logs_dir=tmp_path / "logs",
         )
         run = orchestrator.execute()
 
@@ -129,7 +130,7 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_parallel_execution(self, MockExecutor, MockDocker, MockMonitor):
+    def test_parallel_execution(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
         def mock_run(*args, **kwargs):
             time.sleep(0.1)
             return JobResult(
@@ -157,6 +158,7 @@ class TestParallelExecutionManager:
             queue=queue,
             workflow_file=Path("ci.yml"),
             config=OrchestratorConfig(max_parallel=4),
+            logs_dir=tmp_path / "logs",
         )
         run = orchestrator.execute()
 
@@ -167,7 +169,7 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_stop_on_first_failure(self, MockExecutor, MockDocker, MockMonitor):
+    def test_stop_on_first_failure(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
         mock_executor = MockExecutor.return_value
         mock_executor.run.return_value = JobResult(
             job_id="build",
@@ -194,6 +196,7 @@ class TestParallelExecutionManager:
                 max_parallel=1,
                 stop_on_first_failure=True,
             ),
+            logs_dir=tmp_path / "logs",
         )
         run = orchestrator.execute()
 
@@ -203,7 +206,7 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_priority_enforcement(self, MockExecutor, MockDocker, MockMonitor):
+    def test_priority_enforcement(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
         execution_order = []
 
         def mock_run(cmd, matrix_index=0, matrix_name="", **kwargs):
@@ -234,6 +237,7 @@ class TestParallelExecutionManager:
             queue=queue,
             workflow_file=Path("ci.yml"),
             config=OrchestratorConfig(max_parallel=4),
+            logs_dir=tmp_path / "logs",
         )
         run = orchestrator.execute()
 
@@ -252,7 +256,7 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_get_status(self, MockExecutor, MockDocker, MockMonitor):
+    def test_get_status(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
         mock_executor = MockExecutor.return_value
         mock_executor.run.return_value = JobResult(
             job_id="build",
@@ -274,6 +278,7 @@ class TestParallelExecutionManager:
             queue=queue,
             workflow_file=Path("ci.yml"),
             config=OrchestratorConfig(max_parallel=4),
+            logs_dir=tmp_path / "logs",
         )
         assert orchestrator.get_status()["state"] == "idle"
         orchestrator.execute()

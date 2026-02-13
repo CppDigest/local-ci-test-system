@@ -297,6 +297,11 @@ class ParallelExecutionManager:
                 workflow_file = self._workflow_patcher(
                     self.workflow_file, job.matrix_entry, image_tag
                 )
+            # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
+            # (causes "remove ... no such file or directory" when one job cleans cache)
+            act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
+            act_cache_dir.mkdir(parents=True, exist_ok=True)
+
             builder = ActCommandBuilder(
                 workflow_file=self.workflow_file,
                 project_dir=self.project_dir,
@@ -305,7 +310,10 @@ class ParallelExecutionManager:
                 default_env=self.config.default_env or {},
             )
             cmd = builder.build(
-                job.matrix_entry, image_tag=image_tag, workflow_file=workflow_file
+                job.matrix_entry,
+                image_tag=image_tag,
+                workflow_file=workflow_file,
+                action_cache_path=act_cache_dir,
             )
             result = self._executor.run(
                 cmd,
