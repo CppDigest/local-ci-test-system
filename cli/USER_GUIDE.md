@@ -211,8 +211,24 @@ logging:
 execution:
   timeout: 3600            # Default job timeout in seconds
   keep_containers: false   # Remove containers after run
-  stop_on_first_failure: false
+  stop_on_first_failure: false  # Stop dispatching new jobs after first failure
 ```
+
+#### Parallel and orchestration parameters (summary)
+
+| Where | Parameter | Purpose |
+|-------|-----------|---------|
+| **Config** `parallel` | `max_jobs` | Max concurrent jobs (1–64). |
+| **Config** `parallel.resource_limit` | `cpu_percent` | Pause dispatching new jobs when CPU usage exceeds this (default 80). |
+| **Config** `parallel.resource_limit` | `memory_percent` | Pause dispatching when memory usage exceeds this (default 70). |
+| **Config** `execution` | `timeout` | Per-job timeout in seconds (default 3600). |
+| **Config** `execution` | `keep_containers` | If true, do not remove act containers after each run. |
+| **Config** `execution` | `stop_on_first_failure` | If true, stop dispatching new jobs after the first job fails. |
+| **CLI** `localci run` | `--parallel` | Override `parallel.max_jobs` for this run. |
+| **CLI** `localci run` | `--timeout` | Override `execution.timeout` (seconds) for this run. |
+| **CLI** `localci run` | `--keep-containers` | Override to keep containers after run (for debugging). |
+
+There is no CLI flag for `stop_on_first_failure`; set it in `.localci.yml` or with `localci config set execution.stop_on_first_failure true`.
 
 #### Key sections
 
