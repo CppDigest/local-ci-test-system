@@ -1,9 +1,9 @@
 WORK ITEM
 Owner: Brad
-Date: 2026-02-10
-Status: in-progress
-Time Spent (today): 0.5h
-Time Spent (total): 0.5h
+Date: 2026-02-14
+Status: done
+Time Spent (today): 0h
+Time Spent (total): TBD
 
 Repo/Area: CppDigest/local-ci-test-system, cppalliance/capy
 GitHub Issues: TBD
@@ -272,16 +272,22 @@ class ResourceSnapshot:
 
 ## Phase 3 Deliverables Summary
 
+Phase 3 is implemented: the priority queue (Issue 6), parallel execution manager (Issue 7), and real-time progress tracking (Issue 8) are wired into the CLI. `localci run` builds a queue from the workflow and config, runs jobs in parallel via the orchestrator (with per-job act cache and end-of-run container cleanup), and shows a Rich Live display plus post-run summary; `localci status` reads MCP-style status from `last-status.json` with `--format json` and `--follow`. Config and CLI support `--parallel`, `--timeout`, `keep_containers`, and `stop_on_first_failure`; resource limits (CPU/memory) pause dispatch when exceeded.
+
 | Component | Status | Files |
 |-----------|--------|-------|
-| Priority Queue | TODO | `localci/core/queue.py` |
-| Dependency Resolver | TODO | `localci/core/deps.py` |
-| Parallel Execution Manager | TODO | `localci/core/orchestrator.py` |
-| Resource Monitor | TODO | `localci/utils/resources.py` |
-| Progress Tracker | TODO | `localci/core/progress.py` |
-| Live Terminal UI | TODO | `localci/ui/live.py` |
-| Summary Reporter | TODO | `localci/ui/summary.py` |
-| CLI Integration (run/status) | TODO | `localci/cli/run.py`, `localci/cli/status.py` |
+| Priority Queue | **Done** | `cli/localci/core/queue.py` — PriorityJobQueue, PriorityConfig, PriorityRule, event emission, priority gating |
+| Dependency Resolver | **Done** | `cli/localci/core/queue.py` — DependencyResolver (topological sort), integrated with queue |
+| Queue Builder | **Done** | `cli/localci/core/queue_builder.py` — builds queue from WorkflowAnalyzer + config (platform/job/compiler/matrix filters, entries_include) |
+| Parallel Execution Manager | **Done** | `cli/localci/core/orchestrator.py` — ParallelExecutionManager, OrchestratorConfig, ExecutionRun; ThreadPoolExecutor; per-job act cache; container cleanup at end only (no per-job cleanup to avoid killing parallel jobs) |
+| Resource Monitor | **Done** | `cli/localci/utils/resources.py` — ResourceSnapshot, ResourceMonitor (optional psutil; CPU/memory/disk/container thresholds) |
+| Progress Tracker | **Done** | `cli/localci/core/progress.py` — JobProgress, PriorityLevelProgress, ProgressTracker; event-driven state; current_step from act output |
+| Live Terminal UI | **Done** | `cli/localci/core/progress.py` — Rich Live display (header, progress bar, priority levels, job table with Step column), 4 fps refresh |
+| Summary Reporter | **Done** | `cli/localci/core/progress.py` — `print_summary()`; `cli/localci/core/results.py` — ExecutionSummary, summary_report() |
+| MCP-style status (JSON) | **Done** | `cli/localci/core/progress.py` — `get_status_dict()`; `last-status.json` written during/after run |
+| CLI Integration (run) | **Done** | `cli/localci/cli/run.py` — queue + orchestrator + tracker; live display; `last-status.json`; `tracker.print_summary()` |
+| CLI Integration (status) | **Done** | `cli/localci/cli/status.py` — prefers `last-status.json`; `--format json`, `--follow`; _print_status_table with current_step |
+| Data models (Phase 3) | **Done** | `cli/localci/core/models.py` — JobEvent (timestamp), JobEventType (JOB_TIMEOUT, etc.), QueuedJob (queue_key `job_id:index`) |
 
 ## Dependencies to Install (additions to Phase 1)
 
@@ -337,8 +343,9 @@ Phase 3 wires into Phase 1 components:
 
 ## Next Steps
 
-1. Implement Issue 6 (Priority Queue) on `feature/priority-queue` branch
-2. Implement Issue 7 (Parallel Manager) on `feature/parallel-execution` branch
-3. Implement Issue 8 (Progress Tracking) on `feature/progress-tracking` branch
-4. Integration test: run all 10 Linux capy jobs in parallel
+1. ~~Implement Issue 6 (Priority Queue)~~ — Done
+2. ~~Implement Issue 7 (Parallel Manager)~~ — Done
+3. ~~Implement Issue 8 (Progress Tracking)~~ — Done
+4. Integration test: run all Linux capy jobs in parallel (manual/CI)
 5. Performance benchmark against GitHub CI times
+6. Issue 15: MCP Server endpoints (consume get_status / progress data) when ready
