@@ -57,6 +57,7 @@ cache:
   ccache:
     enabled: true
     max_size: 5G
+    compress: true
   boost:
     enabled: true
     branch: develop

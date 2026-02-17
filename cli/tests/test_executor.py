@@ -800,6 +800,33 @@ class TestActCommandBuilder:
         # Cleanup
         cmd.event_file.unlink()
 
+    def test_ccache_env_and_compress(self, tmp_path):
+        """Issue 9: CCACHE_DIR, CCACHE_MAXSIZE, CCACHE_COMPRESS when cache enabled."""
+        from localci.core.config import CcacheConfig, CacheConfig, ResolvedCachePaths
+
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+        ccache_dir = tmp_path / "ccache"
+        ccache_dir.mkdir()
+        paths = ResolvedCachePaths(ccache_host=ccache_dir, boost_host=None, cmake_host=None)
+        cfg = CacheConfig(
+            ccache=CcacheConfig(enabled=True, max_size="2G", compress=True),
+        )
+
+        builder = ActCommandBuilder(workflow_file=wf)
+        entry = _make_entry()
+        cmd = builder.build(
+            entry,
+            resolved_cache_paths=paths,
+            cache_config=cfg,
+        )
+
+        assert cmd.env["CCACHE_DIR"] == paths.ccache_container
+        assert cmd.env["CCACHE_MAXSIZE"] == "2G"
+        assert cmd.env["CCACHE_COMPRESS"] == "1"
+        assert cmd.container_options is not None
+        assert str(ccache_dir) in cmd.container_options
+
 
 # =====================================================================
 # DockerManager tests (mocked)

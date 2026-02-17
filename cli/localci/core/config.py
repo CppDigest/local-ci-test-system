@@ -90,6 +90,7 @@ class CcacheConfig(BaseModel):
 
     enabled: bool = True
     max_size: str = "5G"
+    compress: bool = True  # CCACHE_COMPRESS
     dir: Optional[Path] = None  # default: cache.directory / "ccache"
 
 

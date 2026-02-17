@@ -146,6 +146,7 @@ class ActCommandBuilder:
                 env["CCACHE_DIR"] = resolved_cache_paths.ccache_container
                 if cache_config and cache_config.ccache.enabled:
                     env["CCACHE_MAXSIZE"] = cache_config.ccache.max_size
+                    env["CCACHE_COMPRESS"] = "1" if cache_config.ccache.compress else "0"
             if resolved_cache_paths.boost_host is not None:
                 env["BOOST_ROOT"] = resolved_cache_paths.boost_container
             if resolved_cache_paths.cmake_host is not None:

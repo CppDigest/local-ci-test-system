@@ -224,3 +224,8 @@ class TestResolveCachePaths:
         r = resolve_cache_paths(cfg.cache, False, tmp_path, "build", "build:gcc-15")
         assert r is not None
         assert str(r.ccache_host).startswith(str(tmp_path))
+
+    def test_ccache_compress_default(self):
+        """Issue 9: CcacheConfig.compress defaults to True."""
+        cfg = LocalCIConfig()
+        assert cfg.cache.ccache.compress is True

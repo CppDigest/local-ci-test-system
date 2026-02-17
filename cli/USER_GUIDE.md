@@ -17,6 +17,7 @@
   - [localci status](#localci-status)
   - [localci logs](#localci-logs)
   - [localci images](#localci-images)
+  - [localci cache](#localci-cache)
   - [Building Docker images (images/ scripts)](#building-docker-images-images-scripts)
   - [localci config](#localci-config)
 - [Workflows](#workflows)
@@ -196,6 +197,7 @@ cache:
   ccache:
     enabled: true
     max_size: 5G
+    compress: true       # CCACHE_COMPRESS (recommended)
     # dir: ~/.localci/cache/ccache   # optional; default: directory/ccache
   boost:
     enabled: true
@@ -257,7 +259,7 @@ CMake configuration.
 
 | Cache | Purpose | Env / path in container |
 |-------|---------|--------------------------|
-| **ccache** | Compilation cache (B2, CMake builds) | `CCACHE_DIR`, `CCACHE_MAXSIZE` |
+| **ccache** | Compilation cache (B2, CMake builds) | `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` |
 | **boost** | Pre-cloned Boost superproject | `BOOST_ROOT`; workflow can skip clone |
 | **cmake** | Per-job CMake cache (e.g. `CMakeCache.txt`) | `LOCALCI_CMAKE_CACHE_DIR` |
 
@@ -270,9 +272,15 @@ CMake configuration.
   /path` overrides the cache root.
 
 **Cache invalidation:** Caches are not automatically cleared. To force a clean
-build, use `--no-cache` for one run, or delete the relevant subdir under
-`cache.directory` (e.g. `rm -rf ~/.localci/cache/ccache`). Changing compiler or
-toolchain may require clearing ccache or cmake cache.
+build: use `localci run --no-cache` for one run; or run `localci cache clear`
+(optionally `--target ccache`, `boost`, `cmake`, or `all`) to remove cache
+dirs; or delete the relevant subdir under `cache.directory` manually. Changing
+compiler or toolchain may require clearing ccache or cmake cache.
+
+**ccache stats:** After each run with ccache enabled, `localci run` prints
+ccache statistics (hit/miss, size) when the host has `ccache` installed. You can
+also run `localci cache stats` anytime to see current stats for the configured
+ccache directory.
 
 ### Viewing and Editing Config
 
@@ -697,6 +705,42 @@ Supported image names: `capy-ubuntu-24.04-base`, `capy-ubuntu-25.04-base`,
 
 ```bash
 ./images/capy/test-image.sh capy-ubuntu-24.04-clang20:latest
+```
+
+---
+
+### localci cache
+
+Manage build caches (ccache, boost, cmake). Use after changing compiler/toolchain
+or to free disk space.
+
+#### localci cache clear
+
+Remove cache directories to force fresh builds:
+
+```bash
+# Clear ccache only (default)
+localci cache clear
+
+# Clear a specific cache
+localci cache clear --target ccache
+localci cache clear --target boost
+localci cache clear --target cmake
+
+# Clear all caches
+localci cache clear --target all
+
+# Skip confirmation
+localci cache clear --target ccache --yes
+```
+
+#### localci cache stats
+
+Show ccache statistics (hit/miss, size) for the configured ccache directory.
+Requires `ccache` to be installed on the host:
+
+```bash
+localci cache stats
 ```
 
 ---

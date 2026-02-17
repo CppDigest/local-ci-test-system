@@ -29,6 +29,8 @@ from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform, WorkflowAnalyzer
 from localci.core.boost_cache import ensure_boost_cache
+from localci.core.ccache_stats import get_ccache_stats
+from localci.core.config import resolve_cache_paths
 from localci.utils.output import (
     console,
     print_error,
@@ -324,6 +326,18 @@ def run(
         results=list(run.results.values()),
     )
     tracker.print_summary(run)
+
+    # Issue 9: ccache stats after run (when cache enabled)
+    if not no_cache and cfg.cache.enabled and cfg.cache.ccache.enabled:
+        resolved = resolve_cache_paths(
+            cfg.cache, False, cache_dir, None, None
+        )
+        if resolved and resolved.ccache_host is not None:
+            stats = get_ccache_stats(resolved.ccache_host)
+            if stats:
+                print_info("ccache stats:")
+                for line in stats.splitlines():
+                    console.print(f"  {line}")
 
     results_file = logs_dir / "last-run.json"
     try:
