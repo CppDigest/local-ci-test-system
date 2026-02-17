@@ -28,6 +28,7 @@ from localci.core.queue import PriorityConfig
 from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform, WorkflowAnalyzer
+from localci.core.boost_cache import ensure_boost_cache
 from localci.utils.output import (
     console,
     print_error,
@@ -83,7 +84,13 @@ from localci.utils.output import (
 @click.option(
     "--dry-run", is_flag=True, help="Preview execution plan without running."
 )
-@click.option("--no-cache", is_flag=True, help="Disable build caching.")
+@click.option("--no-cache", is_flag=True, help="Disable build caching (ccache, boost, cmake).")
+@click.option(
+    "--cache-dir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=None,
+    help="Override cache root directory (default: config cache.directory).",
+)
 @click.option(
     "--rebuild-image", is_flag=True, help="Force rebuild Docker image."
 )
@@ -123,6 +130,7 @@ def run(
     timeout: int | None,
     dry_run: bool,
     no_cache: bool,
+    cache_dir: Path | None,
     rebuild_image: bool,
     keep_containers: bool,
     interactive: bool,
@@ -160,8 +168,6 @@ def run(
         return
 
     # ── 2. Warn about not-yet-implemented flags ─────────────────────
-    if no_cache:
-        print_warning("--no-cache is not yet implemented; ignoring.")
     if rebuild_image:
         print_warning("--rebuild-image is not yet implemented; ignoring.")
     if interactive:
@@ -261,6 +267,10 @@ def run(
         ctx.exit(1)
         return
 
+    # ── 5b. Phase 2: ensure Boost cache (clone/fetch when enabled) ───
+    if not no_cache and cfg.cache.enabled and cfg.cache.boost.enabled:
+        ensure_boost_cache(cfg.cache, no_cache, cache_dir)
+
     # ── 6. Execute via orchestrator ────────────────────────────────
     orch_config = OrchestratorConfig(
         max_parallel=effective_parallel,
@@ -277,6 +287,9 @@ def run(
         config=orch_config,
         logs_dir=logs_dir,
         workflow_patcher=_write_patched_workflow,
+        cache_config=cfg.cache,
+        no_cache=no_cache,
+        cache_dir_override=cache_dir,
     )
 
     status_file = logs_dir / "last-status.json"

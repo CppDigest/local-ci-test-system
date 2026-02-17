@@ -15,6 +15,7 @@ from threading import Event as ThreadEvent
 from typing import TYPE_CHECKING, Callable, Optional
 
 from localci.core.command_builder import ActCommandBuilder
+from localci.core.config import resolve_cache_paths
 from localci.core.workflow import MatrixEntry
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
@@ -23,7 +24,7 @@ from localci.utils.docker import DockerManager
 from localci.utils.resources import ResourceMonitor
 
 if TYPE_CHECKING:
-    from localci.core.config import LocalCIConfig
+    from localci.core.config import CacheConfig, LocalCIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,9 @@ class ParallelExecutionManager:
         workflow_patcher: Optional[
             Callable[[Path, MatrixEntry, Optional[str]], Path]
         ] = None,
+        cache_config: Optional["CacheConfig"] = None,
+        no_cache: bool = False,
+        cache_dir_override: Optional[Path] = None,
     ):
         self.queue = queue
         self.workflow_file = Path(workflow_file)
@@ -142,6 +146,13 @@ class ParallelExecutionManager:
         self.logs_dir = Path(logs_dir or Path.home() / ".localci" / "logs").expanduser()
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self._workflow_patcher = workflow_patcher
+        self._cache_config = cache_config
+        self._no_cache = no_cache
+        self._cache_dir_override = (
+            Path(cache_dir_override).expanduser().resolve()
+            if cache_dir_override is not None
+            else None
+        )
 
         self._executor = JobExecutor(logs_dir=self.logs_dir)
         self._docker = DockerManager()
@@ -302,6 +313,20 @@ class ParallelExecutionManager:
             act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
             act_cache_dir.mkdir(parents=True, exist_ok=True)
 
+            # Phase 2: resolve cache paths and ensure host cache dirs exist
+            resolved_cache_paths = None
+            if self._cache_config is not None:
+                resolved_cache_paths = resolve_cache_paths(
+                    self._cache_config,
+                    self._no_cache,
+                    self._cache_dir_override,
+                    job.job_id,
+                    job.queue_key,
+                )
+            if resolved_cache_paths is not None:
+                for d in resolved_cache_paths.host_dirs_to_ensure():
+                    d.mkdir(parents=True, exist_ok=True)
+
             builder = ActCommandBuilder(
                 workflow_file=self.workflow_file,
                 project_dir=self.project_dir,
@@ -314,6 +339,8 @@ class ParallelExecutionManager:
                 image_tag=image_tag,
                 workflow_file=workflow_file,
                 action_cache_path=act_cache_dir,
+                resolved_cache_paths=resolved_cache_paths,
+                cache_config=self._cache_config,
             )
             result = self._executor.run(
                 cmd,

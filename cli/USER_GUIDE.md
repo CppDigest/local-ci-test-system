@@ -189,16 +189,22 @@ images:
     max_age_days: 30
     max_size_gb: 20
 
-# Build caching
+# Build caching (Phase 2)
 cache:
   enabled: true
   directory: ~/.localci/cache
   ccache:
     enabled: true
     max_size: 5G
+    # dir: ~/.localci/cache/ccache   # optional; default: directory/ccache
   boost:
     enabled: true
     branch: develop
+    shallow: true
+    # dir: ~/.localci/cache/boost   # optional; default: directory/boost
+  cmake:
+    enabled: true
+    # dir: ~/.localci/cache/cmake   # base dir; per-job: dir/<job_key>
 
 # Logging
 logging:
@@ -240,8 +246,33 @@ There is no CLI flag for `stop_on_first_failure`; set it in `.localci.yml` or wi
 | `matrix` | Filter matrix entries by compiler, version, asan, etc. |
 | `priorities` | Override execution order (lower number runs first) |
 | `images` | Where Docker images are stored, auto-build, cleanup |
-| `cache` | ccache and Boost dependency caching |
+| `cache` | ccache, Boost dependency, and CMake config caching |
 | `execution` | Timeouts, container cleanup, failure behaviour |
+
+#### Build caching (Phase 2)
+
+When `cache.enabled` is true, Local CI bind-mounts host cache directories into
+containers so that repeated runs reuse build artifacts, the Boost tree, and
+CMake configuration.
+
+| Cache | Purpose | Env / path in container |
+|-------|---------|--------------------------|
+| **ccache** | Compilation cache (B2, CMake builds) | `CCACHE_DIR`, `CCACHE_MAXSIZE` |
+| **boost** | Pre-cloned Boost superproject | `BOOST_ROOT`; workflow can skip clone |
+| **cmake** | Per-job CMake cache (e.g. `CMakeCache.txt`) | `LOCALCI_CMAKE_CACHE_DIR` |
+
+- **Host cache root:** `cache.directory` (default `~/.localci/cache`). Subdirs
+  `ccache/`, `boost/`, `cmake/<job_key>/` are created as needed.
+- **Boost bootstrap:** On first run with `cache.boost.enabled`, Local CI runs
+  `git clone` (or `git fetch` if the dir already exists) so jobs can use
+  `BOOST_ROOT` instead of cloning.
+- **CLI:** `--no-cache` disables all build caches for that run. `--cache-dir
+  /path` overrides the cache root.
+
+**Cache invalidation:** Caches are not automatically cleared. To force a clean
+build, use `--no-cache` for one run, or delete the relevant subdir under
+`cache.directory` (e.g. `rm -rf ~/.localci/cache/ccache`). Changing compiler or
+toolchain may require clearing ccache or cmake cache.
 
 ### Viewing and Editing Config
 
@@ -391,7 +422,8 @@ localci run [OPTIONS]
 | `--dry-run` | Preview the execution plan without running anything |
 | `--github-token`, `-t` | GitHub token for downloading external actions |
 | `--offline` | Run in offline mode (requires pre-cached actions) |
-| `--no-cache` | Disable build caching (ccache/sccache) |
+| `--no-cache` | Disable build caching (ccache, boost, cmake) |
+| `--cache-dir` | Override cache root directory |
 | `--rebuild-image` | Force Docker image rebuild |
 | `--keep-containers` | Don't remove containers after execution |
 | `--interactive`, `-i` | Interactively select which jobs to run |

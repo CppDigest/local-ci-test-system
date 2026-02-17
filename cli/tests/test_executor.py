@@ -307,6 +307,17 @@ class TestActCommand:
         assert "--env-file" in args
         assert str(env_f) in args
 
+    def test_container_options(self):
+        """Phase 2: --container-options for cache bind mounts."""
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            container_options='-v /host/ccache:/tmp/localci-cache/ccache',
+        )
+        args = cmd.build()
+        assert "--container-options" in args
+        assert "-v /host/ccache:/tmp/localci-cache/ccache" in args
+
     def test_str_returns_display(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),

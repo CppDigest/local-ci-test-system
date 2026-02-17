@@ -50,7 +50,7 @@ images:
     max_age_days: 30
     max_size_gb: 20
 
-# Cache settings
+# Cache settings (Phase 2)
 cache:
   enabled: true
   directory: ~/.localci/cache
@@ -60,6 +60,9 @@ cache:
   boost:
     enabled: true
     branch: develop
+    shallow: true
+  cmake:
+    enabled: true
 
 # Logging
 logging:

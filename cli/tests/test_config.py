@@ -11,10 +11,12 @@ from pathlib import Path
 import yaml
 
 from localci.core.config import (
+    CacheConfig,
     LocalCIConfig,
     default_config_yaml,
     find_config_file,
     load_config,
+    resolve_cache_paths,
 )
 
 
@@ -186,3 +188,39 @@ class TestValidation:
             assert False, "Expected validation error"
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 cache path resolution
+# ---------------------------------------------------------------------------
+
+
+class TestResolveCachePaths:
+    """resolve_cache_paths returns correct host paths when cache enabled."""
+
+    def test_resolve_cache_paths_default(self):
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(cfg.cache, False, None, "build", "build:gcc-15")
+        assert r is not None
+        assert r.ccache_host is not None
+        assert r.boost_host is not None
+        assert r.cmake_host is not None
+        assert "ccache" in str(r.ccache_host)
+        assert "boost" in str(r.boost_host)
+        assert "cmake" in str(r.cmake_host)
+        assert "build" in str(r.cmake_host)
+        assert len(r.host_dirs_to_ensure()) == 3
+
+    def test_resolve_cache_paths_no_cache(self):
+        cfg = LocalCIConfig()
+        assert resolve_cache_paths(cfg.cache, True, None, "build", "build:gcc-15") is None
+
+    def test_resolve_cache_paths_cache_disabled(self):
+        cache = CacheConfig(enabled=False)
+        assert resolve_cache_paths(cache, False, None, "build", "build:gcc-15") is None
+
+    def test_resolve_cache_paths_override_dir(self, tmp_path):
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(cfg.cache, False, tmp_path, "build", "build:gcc-15")
+        assert r is not None
+        assert str(r.ccache_host).startswith(str(tmp_path))
