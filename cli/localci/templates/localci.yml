@@ -65,6 +65,7 @@ cache:
     # remote: https://github.com/boostorg/boost.git   # optional
   cmake:
     enabled: true
+    # inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; files for change detection
 
 # Logging
 logging:

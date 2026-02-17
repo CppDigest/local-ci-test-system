@@ -225,6 +225,22 @@ class TestResolveCachePaths:
         assert r is not None
         assert str(r.ccache_host).startswith(str(tmp_path))
 
+    def test_resolve_cache_paths_cmake_input_digest(self):
+        """Issue 11: CMake path includes input digest when provided."""
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(
+            cfg.cache,
+            False,
+            None,
+            "build",
+            "build:gcc-15",
+            cmake_input_digest="a1b2c3d4e5f6",
+        )
+        assert r is not None
+        assert r.cmake_host is not None
+        assert "a1b2c3d4e5f6" in str(r.cmake_host)
+        assert r.cmake_host.name == "build-gcc-15_a1b2c3d4e5f6"
+
     def test_ccache_compress_default(self):
         """Issue 9: CcacheConfig.compress defaults to True."""
         cfg = LocalCIConfig()

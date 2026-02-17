@@ -82,14 +82,14 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 
 **Deliverables:**
 
-- ccache (or sccache) integration for the capy/B2 and CMake build steps.
-- Cache directory management: configurable path (e.g. `~/.localci/cache/ccache`), size limits, cleanup policy.
-- Cache hit/miss reporting: expose stats (hit rate, size) in CLI output or logs.
-- Cache invalidation strategy: document when cache is invalidated (clean commands, compiler/toolchain change, manual clear).
+- ccache (or sccache) integration for the capy/B2 and CMake build steps. ✅
+- Cache directory management: configurable path (e.g. `~/.localci/cache/ccache`), size limits (`max_size`), optional `compress`. ✅
+- Cache hit/miss reporting: after each run, `localci run` prints `ccache -s` output when host has ccache; `localci cache stats` shows stats on demand. ✅
+- Cache invalidation: `localci run --no-cache` disables caches; `localci cache clear [--target ccache]` removes cache dirs; documented in USER_GUIDE. ✅
 
 **Dependencies:** Issue 5 (Job Executor). Containers must have ccache/sccache installed and configured (Phase 1 images may already include ccache).
 
-**Integration:** Executor or run command passes cache directory into the container (bind mount); environment variables (e.g. `CCACHE_DIR`, `CCACHE_MAXSIZE`) set for the job.
+**Integration:** Executor bind-mounts host ccache dir; sets `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` for the job.
 
 **Design reference:** Preparation doc — Bottleneck “B2 Build: Full build from scratch each time”.
 
@@ -101,15 +101,17 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 
 **Deliverables:**
 
-- One-time or on-demand Boost clone/update into a shared cache directory (e.g. `~/.localci/cache/boost` or per-branch).
-- Shallow clone support where appropriate to reduce size and time.
-- Branch-specific caching (e.g. `develop`, `master`) so different workflows use the correct tree.
-- Incremental updates only: `git fetch` / `git pull` when cache exists; full clone only when missing.
-- Optional: integrate with pre-built images (Phase 1 Issue 12) so images can ship with Boost already cloned; local run then uses that or overlays cache.
+- One-time or on-demand Boost clone/update into a shared cache directory (e.g. `~/.localci/cache/boost`). ✅
+- Shallow clone support (`cache.boost.shallow`). ✅
+- Branch-specific: `cache.boost.branch` (e.g. `develop`, `master`); single cache dir updated to that branch. ✅
+- Configurable remote: `cache.boost.remote` (default https://github.com/boostorg/boost.git). ✅
+- Incremental updates: when cache exists, `git fetch` + `git reset --hard origin/<branch>`; full clone only when missing. ✅
+- `localci cache update` refreshes Boost cache without running CI. ✅
+- Optional: integrate with pre-built images (Issue 12); not yet implemented.
 
 **Dependencies:** Issue 9 is listed in the preparation doc as dependency; in practice Issue 10 can proceed in parallel with Issue 9, both depending on Issue 5.
 
-**Integration:** Cache path mounted into the container; workflow steps use the cached Boost path instead of cloning. May require workflow or action changes (e.g. “use existing Boost” step) or executor-level injection.
+**Integration:** Cache path bind-mounted; `BOOST_ROOT` set in job env. Workflow should skip clone when `BOOST_ROOT` is set (documented in USER_GUIDE).
 
 **Design reference:** Preparation doc — Bottleneck “Boost Clone: Clones entire Boost superproject every run”.
 
@@ -121,13 +123,14 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 
 **Deliverables:**
 
-- CMake cache persistence: store `CMakeCache.txt` and CMake generated files in a cache directory (e.g. per job or per matrix entry).
-- Change detection: compare inputs (CMakeLists.txt, toolchain file, key env vars) and only reconfigure when changed.
-- Incremental reconfiguration: when inputs change, run CMake again; when unchanged, reuse existing configuration.
+- CMake cache persistence: per-job/matrix directory bind-mounted; path keyed by job/matrix and **input digest** so unchanged inputs reuse the same dir. ✅
+- Change detection: digest of `CMakeLists.txt`, `cmake/*.cmake` (or `cache.cmake.inputs`), compiler (CC/CXX), and BOOST_ROOT when Boost cache enabled; path = `cmake/<job_matrix_key>_<digest>`. ✅
+- When inputs change, new digest → new directory → workflow runs configure; when unchanged, same dir → workflow can skip configure. ✅
+- `localci cache clear --target cmake` clears CMake cache dirs. ✅
 
 **Dependencies:** Issue 10 (per preparation doc). Logically depends on a stable workspace/cache layout so that CMake cache paths remain valid across runs.
 
-**Integration:** Cache directory for CMake build tree (or at least `CMakeCache.txt` and generated files) mounted or restored per job; executor or run step sets `CMAKE_BUILD_DIR` or similar so the job uses the cached config.
+**Integration:** Cache dir mounted; `LOCALCI_CMAKE_CACHE_DIR` set in job env. Workflow should use it as build dir and skip configure when cache is valid (documented in USER_GUIDE).
 
 **Design reference:** Preparation doc — Bottleneck “CMake Configure: Reconfigures even when unchanged”.
 
@@ -136,11 +139,11 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 ## Data Flow and Cache Layout
 
 - **Host cache root:** e.g. `~/.localci/cache/` (or value from `.localci.yml`).
-- **Subdirectories (suggested):**
+- **Subdirectories:**
   - `ccache/` — build artifact cache (Issue 9).
-  - `boost/` or `boost/<branch>/` — Boost superproject clone (Issue 10).
-  - `cmake/<job_id>/<matrix_key>/` — CMake cache and generated files per job/matrix (Issue 11).
-- **Visibility:** Cache dirs must be bind-mounted into the container at known paths so that B2, CMake, and Boost steps use them. Environment variables (e.g. `CCACHE_DIR`, `BOOST_ROOT`, `CMAKE_BINARY_DIR`) must be set accordingly.
+  - `boost/` — Boost superproject clone (Issue 10); one branch at a time, updated via fetch+reset.
+  - `cmake/<job_matrix_key>_<input_digest>/` — CMake cache per job/matrix and input digest (Issue 11); digest changes when CMakeLists.txt, toolchain, compiler, or BOOST_ROOT change.
+- **Visibility:** Cache dirs are bind-mounted into the container at `/tmp/localci-cache/{ccache,boost,cmake}`. Environment variables: `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS`, `BOOST_ROOT`, `LOCALCI_CMAKE_CACHE_DIR`.
 
 ---
 
@@ -158,7 +161,8 @@ cache:
   # Build artifact cache (Issue 9)
   ccache:
     enabled: true
-    max_size: "2G"
+    max_size: "5G"              # or "2G"
+    compress: true              # CCACHE_COMPRESS
     dir: ~/.localci/cache/ccache
 
   # Boost dependency cache (Issue 10)
@@ -167,14 +171,16 @@ cache:
     dir: ~/.localci/cache/boost
     branch: develop             # or master
     shallow: true
+    remote: https://github.com/boostorg/boost.git   # optional
 
-  # CMake config cache (Issue 11)
+  # CMake config cache (Issue 11); path keyed by input digest
   cmake:
     enabled: true
     dir: ~/.localci/cache/cmake
+    inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; default for change detection
 ```
 
-CLI flags (e.g. `--no-cache`, `--cache-dir`) can override or disable caches for debugging.
+**CLI:** `--no-cache` disables all caches; `--cache-dir <path>` overrides cache root. **Cache commands:** `localci cache clear [--target ccache|boost|cmake|all]`, `localci cache stats` (ccache), `localci cache update` (Boost).
 
 ---
 
@@ -193,11 +199,11 @@ CLI flags (e.g. `--no-cache`, `--cache-dir`) can override or disable caches for 
 
 | Component | Status | Scope |
 |-----------|--------|-------|
-| Build Artifact Cache (Issue 9) | Done | ccache bind mount, CCACHE_DIR/CCACHE_MAXSIZE, config dir/max_size |
-| Boost Dependency Cache (Issue 10) | Done | Pre-clone/fetch in `boost_cache.py`, branch/shallow, BOOST_ROOT mount |
-| CMake Config Cache (Issue 11) | Done | Per-job dir mount, LOCALCI_CMAKE_CACHE_DIR |
-| Cache config in .localci.yml | Done | cache.ccache, cache.boost, cache.cmake; --no-cache, --cache-dir |
-| Documentation | Done | USER_GUIDE.md cache section, invalidation notes |
+| Build Artifact Cache (Issue 9) | Done | ccache bind mount; CCACHE_DIR, CCACHE_MAXSIZE, CCACHE_COMPRESS; config dir/max_size/compress; ccache stats after run + `localci cache stats`; `localci cache clear` |
+| Boost Dependency Cache (Issue 10) | Done | Pre-clone/fetch+reset in `boost_cache.py`; branch/shallow/remote; BOOST_ROOT mount; `localci cache update` |
+| CMake Config Cache (Issue 11) | Done | Per-job dir keyed by input digest (`cmake_cache.compute_cmake_input_digest`); optional `cache.cmake.inputs`; LOCALCI_CMAKE_CACHE_DIR; `localci cache clear --target cmake` |
+| Cache config in .localci.yml | Done | cache.ccache (dir, max_size, compress), cache.boost (dir, branch, shallow, remote), cache.cmake (dir, inputs); --no-cache, --cache-dir |
+| Documentation | Done | USER_GUIDE.md cache section (ccache, boost, cmake; change detection; invalidation; `localci cache` clear/stats/update) |
 
 ---
 
@@ -215,8 +221,8 @@ Issues 9 and 10 can be parallelized; Issue 11 can follow or overlap with Issue 1
 
 1. ~~Create GitHub issues 9, 10, 11~~ (optional; implementation complete).
 2. Measure full Linux CI and incremental build times before/after; tune cache sizes and invalidation.
-3. Optional: ccache hit/miss reporting (stats in CLI or logs).
-4. Optional: workflow steps that honour `BOOST_ROOT` / `LOCALCI_CMAKE_CACHE_DIR` to skip clone or reconfigure.
+3. ~~ccache hit/miss reporting~~ — Done: stats after run and `localci cache stats`.
+4. Optional: workflow steps that honour `BOOST_ROOT` / `LOCALCI_CMAKE_CACHE_DIR` to skip clone or reconfigure (documented; workflow authors implement).
 
 ---
 

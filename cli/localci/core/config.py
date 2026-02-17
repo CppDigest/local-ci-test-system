@@ -108,7 +108,9 @@ class CmakeCacheConfig(BaseModel):
     """CMake configuration cache settings (per job/matrix)."""
 
     enabled: bool = True
-    dir: Optional[Path] = None  # base dir; per-job path is dir / job_id / matrix_key
+    dir: Optional[Path] = None  # base dir; per-job path is dir / <job_matrix_key>[_<input_digest>]
+    # Optional: paths/globs relative to project root included in change detection (default: CMakeLists.txt, cmake/*.cmake)
+    inputs: Optional[list[str]] = None
 
 
 class CacheConfig(BaseModel):
@@ -206,12 +208,18 @@ def resolve_cache_paths(
     cache_dir_override: Optional[Path] = None,
     job_id: Optional[str] = None,
     queue_key: Optional[str] = None,
+    cmake_input_digest: Optional[str] = None,
 ) -> Optional[ResolvedCachePaths]:
     """Resolve host cache paths for use with act bind mounts.
 
     Returns None if caching is disabled (no_cache, or cache.enabled or
     per-cache enabled flags false). Otherwise returns resolved paths;
     paths are expanded (expanduser) and resolved to absolute.
+
+    When *cmake_input_digest* is provided and CMake cache is enabled, the
+    CMake cache path is keyed by job/matrix and digest so that different
+    inputs (CMakeLists.txt, toolchain, compiler, BOOST_ROOT) get different
+    directories (Issue 11 change detection).
     """
     if no_cache or not cache_config.enabled:
         return None
@@ -228,9 +236,12 @@ def resolve_cache_paths(
     if cache_config.cmake.enabled and job_id and queue_key:
         base = cache_config.cmake.dir or root / "cmake"
         base = Path(base).expanduser().resolve()
-        # Safe subdir: replace ':' with '-' to match act-cache style
         safe_key = queue_key.replace(":", "-")
-        r.cmake_host = base / safe_key
+        if cmake_input_digest:
+            subdir = f"{safe_key}_{cmake_input_digest}"
+        else:
+            subdir = safe_key
+        r.cmake_host = base / subdir
 
     if r.ccache_host is None and r.boost_host is None and r.cmake_host is None:
         return None

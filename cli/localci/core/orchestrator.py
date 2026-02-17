@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.config import resolve_cache_paths
+from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.workflow import MatrixEntry
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
@@ -316,12 +317,27 @@ class ParallelExecutionManager:
             # Phase 2: resolve cache paths and ensure host cache dirs exist
             resolved_cache_paths = None
             if self._cache_config is not None:
+                cmake_digest = None
+                if (
+                    not self._no_cache
+                    and self._cache_config.enabled
+                    and self._cache_config.cmake.enabled
+                ):
+                    cmake_digest = compute_cmake_input_digest(
+                        self.project_dir,
+                        job.matrix_entry,
+                        self._cache_config.cmake,
+                        boost_enabled=(
+                            self._cache_config.boost.enabled
+                        ),
+                    )
                 resolved_cache_paths = resolve_cache_paths(
                     self._cache_config,
                     self._no_cache,
                     self._cache_dir_override,
                     job.job_id,
                     job.queue_key,
+                    cmake_input_digest=cmake_digest,
                 )
             if resolved_cache_paths is not None:
                 for d in resolved_cache_paths.host_dirs_to_ensure():

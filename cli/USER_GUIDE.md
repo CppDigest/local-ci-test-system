@@ -207,7 +207,8 @@ cache:
     # remote: https://github.com/boostorg/boost.git   # optional; default Boost superproject URL
   cmake:
     enabled: true
-    # dir: ~/.localci/cache/cmake   # base dir; per-job: dir/<job_key>
+    # dir: ~/.localci/cache/cmake   # base dir; per-job path: dir/<job_matrix_key>_<input_digest>
+    # inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; files/globs for change detection (default shown)
 
 # Logging
 logging:
@@ -262,10 +263,10 @@ CMake configuration.
 |-------|---------|--------------------------|
 | **ccache** | Compilation cache (B2, CMake builds) | `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` |
 | **boost** | Pre-cloned Boost superproject | `BOOST_ROOT`; workflow can skip clone |
-| **cmake** | Per-job CMake cache (e.g. `CMakeCache.txt`) | `LOCALCI_CMAKE_CACHE_DIR` |
+| **cmake** | Per-job CMake config cache; path keyed by input digest (Issue 11) | `LOCALCI_CMAKE_CACHE_DIR` |
 
 - **Host cache root:** `cache.directory` (default `~/.localci/cache`). Subdirs
-  `ccache/`, `boost/`, `cmake/<job_key>/` are created as needed.
+  `ccache/`, `boost/`, `cmake/<job_matrix_key>_<input_digest>/` are created as needed.
 - **Boost cache:** On first run with `cache.boost.enabled`, Local CI runs
   `git clone` (shallow by default; branch from `cache.boost.branch`, remote from
   `cache.boost.remote`). On later runs it runs `git fetch` and `git reset
@@ -278,6 +279,13 @@ CMake configuration.
   dir is updated to that branch on each refresh).
 - **Disk:** Shallow clone (`cache.boost.shallow: true`) keeps the Boost cache
   smaller; a full clone is larger but allows arbitrary branch/checkout later.
+- **CMake cache (Issue 11):** The CMake cache directory is keyed by job/matrix
+  and an **input digest** so that unchanged inputs reuse the same dir (workflow
+  can skip configure); when CMakeLists.txt, toolchain, compiler, or BOOST_ROOT
+  change, a new directory is used and CMake reconfigures. Change detection
+  includes by default: `CMakeLists.txt`, `cmake/*.cmake`, compiler (CC/CXX),
+  and BOOST_ROOT when Boost cache is enabled. Optional `cache.cmake.inputs`
+  overrides the file list. Clear with `localci cache clear --target cmake`.
 - **CLI:** `--no-cache` disables all build caches for that run. `--cache-dir
   /path` overrides the cache root.
 
