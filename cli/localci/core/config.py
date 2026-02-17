@@ -101,6 +101,7 @@ class BoostCacheConfig(BaseModel):
     branch: str = "develop"
     dir: Optional[Path] = None  # default: cache.directory / "boost"
     shallow: bool = True
+    remote: Optional[str] = None  # default: https://github.com/boostorg/boost.git
 
 
 class CmakeCacheConfig(BaseModel):

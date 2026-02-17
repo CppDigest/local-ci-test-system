@@ -62,6 +62,7 @@ cache:
     enabled: true
     branch: develop
     shallow: true
+    # remote: https://github.com/boostorg/boost.git   # optional
   cmake:
     enabled: true
 

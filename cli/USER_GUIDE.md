@@ -204,6 +204,7 @@ cache:
     branch: develop
     shallow: true
     # dir: ~/.localci/cache/boost   # optional; default: directory/boost
+    # remote: https://github.com/boostorg/boost.git   # optional; default Boost superproject URL
   cmake:
     enabled: true
     # dir: ~/.localci/cache/cmake   # base dir; per-job: dir/<job_key>
@@ -265,9 +266,18 @@ CMake configuration.
 
 - **Host cache root:** `cache.directory` (default `~/.localci/cache`). Subdirs
   `ccache/`, `boost/`, `cmake/<job_key>/` are created as needed.
-- **Boost bootstrap:** On first run with `cache.boost.enabled`, Local CI runs
-  `git clone` (or `git fetch` if the dir already exists) so jobs can use
-  `BOOST_ROOT` instead of cloning.
+- **Boost cache:** On first run with `cache.boost.enabled`, Local CI runs
+  `git clone` (shallow by default; branch from `cache.boost.branch`, remote from
+  `cache.boost.remote`). On later runs it runs `git fetch` and `git reset
+  --hard origin/<branch>` so the tree is up to date. Jobs see the cache at
+  `BOOST_ROOT`; workflows should skip their Boost-clone step when `BOOST_ROOT`
+  is set. Use `localci cache update` to refresh the Boost cache without
+  running CI.
+- **Branch:** Set `cache.boost.branch` (e.g. `develop` or `master`) so the
+  cached tree matches your workflow; only one branch is cached at a time (the
+  dir is updated to that branch on each refresh).
+- **Disk:** Shallow clone (`cache.boost.shallow: true`) keeps the Boost cache
+  smaller; a full clone is larger but allows arbitrary branch/checkout later.
 - **CLI:** `--no-cache` disables all build caches for that run. `--cache-dir
   /path` overrides the cache root.
 
@@ -742,6 +752,21 @@ Requires `ccache` to be installed on the host:
 ```bash
 localci cache stats
 ```
+
+#### localci cache update (Issue 10)
+
+Refresh the Boost superproject cache without running a full CI run (clone if
+missing, or `git fetch` + `git reset --hard origin/<branch>` if it already
+exists):
+
+```bash
+localci cache update
+# or explicitly:
+localci cache update --target boost
+```
+
+Useful to pull the latest Boost branch before a run, or to populate the cache
+before going offline.
 
 ---
 

@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Standard Boost superproject URL (used when bootstrap cloning)
-BOOST_REPO_URL = "https://github.com/boostorg/boost.git"
+# Default Boost superproject URL (used when cache.boost.remote is not set)
+DEFAULT_BOOST_REPO_URL = "https://github.com/boostorg/boost.git"
 
 
 def ensure_boost_cache(
@@ -41,9 +41,11 @@ def ensure_boost_cache(
     branch = cache_config.boost.branch
     shallow = getattr(cache_config.boost, "shallow", True)
 
+    remote_url = cache_config.boost.remote or DEFAULT_BOOST_REPO_URL
+
     if not boost_dir.exists():
-        boost_dir.mkdir(parents=True, exist_ok=True)
-        _git_clone(boost_dir, branch, shallow)
+        boost_dir.parent.mkdir(parents=True, exist_ok=True)
+        _git_clone(boost_dir, branch, shallow, remote_url)
         return
 
     if not (boost_dir / ".git").is_dir():
@@ -53,14 +55,14 @@ def ensure_boost_cache(
         )
         return
 
-    _git_fetch(boost_dir, branch)
+    _git_fetch_and_update(boost_dir, branch)
 
 
-def _git_clone(dest: Path, branch: str, shallow: bool) -> None:
+def _git_clone(dest: Path, branch: str, shallow: bool, remote_url: str) -> None:
     args = ["git", "clone", "--branch", branch]
     if shallow:
         args.extend(["--depth", "1"])
-    args.extend([BOOST_REPO_URL, str(dest)])
+    args.extend([remote_url, str(dest)])
     try:
         subprocess.run(args, check=True, capture_output=True, text=True)
         logger.info("Boost cache cloned at %s (branch=%s)", dest, branch)
@@ -72,7 +74,8 @@ def _git_clone(dest: Path, branch: str, shallow: bool) -> None:
         )
 
 
-def _git_fetch(dest: Path, branch: str) -> None:
+def _git_fetch_and_update(dest: Path, branch: str) -> None:
+    """Fetch origin and update working tree to origin/<branch>."""
     try:
         subprocess.run(
             ["git", "-C", str(dest), "fetch", "origin", branch],
@@ -80,9 +83,15 @@ def _git_fetch(dest: Path, branch: str) -> None:
             capture_output=True,
             text=True,
         )
-        logger.debug("Boost cache fetch completed at %s", dest)
+        subprocess.run(
+            ["git", "-C", str(dest), "reset", "--hard", f"origin/{branch}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        logger.debug("Boost cache updated at %s (branch=%s)", dest, branch)
     except subprocess.CalledProcessError as e:
         logger.debug(
-            "Boost cache fetch failed (non-fatal): %s",
+            "Boost cache fetch/update failed (non-fatal): %s",
             (e.stderr or "").strip() or str(e),
         )

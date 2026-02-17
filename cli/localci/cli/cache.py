@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from localci.core.boost_cache import ensure_boost_cache
 from localci.core.ccache_stats import get_ccache_stats
 from localci.core.config import resolve_cache_paths
 from localci.utils.output import (
@@ -133,3 +134,36 @@ def cache_stats(ctx: click.Context) -> None:
     print_info(f"ccache stats ({resolved.ccache_host}):")
     for line in stats.splitlines():
         console.print(f"  {line}")
+
+
+# ---------------------------------------------------------------------------
+# localci cache update (Issue 10: refresh Boost cache outside a run)
+# ---------------------------------------------------------------------------
+
+
+@cache_cmd.command("update")
+@click.option(
+    "--target",
+    "-t",
+    type=click.Choice(["boost"]),
+    default="boost",
+    help="Which cache to update (default: boost).",
+)
+@click.pass_context
+def cache_update(ctx: click.Context, target: str) -> None:
+    """Refresh cache from remote (e.g. git fetch + checkout for Boost).
+
+    Use to update the Boost superproject cache without running a full CI run.
+    """
+    cfg = ctx.obj["config"]
+    if not cfg.cache.enabled:
+        print_warning("Cache is disabled in config.")
+        return
+
+    if target == "boost":
+        if not cfg.cache.boost.enabled:
+            print_warning("Boost cache is disabled in config.")
+            return
+        print_info("Updating Boost cache (clone or fetch + reset)...")
+        ensure_boost_cache(cfg.cache, no_cache=False, cache_dir_override=None)
+        print_success("Boost cache update complete.")
