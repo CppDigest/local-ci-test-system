@@ -472,6 +472,7 @@ class ProgressTracker:
 
         table = Table(expand=True)
         table.add_column("#", justify="right", style="dim", width=4)
+        table.add_column("Idx", justify="right", style="dim", width=4)
         table.add_column("Job", style="bold", ratio=2)
         table.add_column("Status", width=14)
         table.add_column("Step", style="dim", ratio=2)
@@ -483,10 +484,11 @@ class ProgressTracker:
                 key=lambda j: (j.priority, j.index),
             )
 
-        for job in jobs:
+        for row_num, job in enumerate(jobs, start=1):
             status_text = f"{job.status_icon} {job.status.value}"
             step_text = job.current_step or "-"
             table.add_row(
+                str(row_num),
                 str(job.index),
                 job.name,
                 f"[{job.status_style}]{status_text}[/{job.status_style}]",
@@ -554,6 +556,7 @@ class ProgressTracker:
 
         table = Table(expand=True)
         table.add_column("#", justify="right", style="dim", width=4)
+        table.add_column("Idx", justify="right", style="dim", width=4)
         table.add_column("Job", style="bold", ratio=3)
         table.add_column("Result", width=14)
         table.add_column("Duration", justify="right", width=10)
@@ -564,9 +567,10 @@ class ProgressTracker:
                 key=lambda j: (j.priority, j.index),
             )
 
-        for job in jobs:
+        for row_num, job in enumerate(jobs, start=1):
             result_str = f"{job.status_icon} {job.status.value}"
             table.add_row(
+                str(row_num),
                 str(job.index),
                 job.name,
                 f"[{job.status_style}]{result_str}[/{job.status_style}]",

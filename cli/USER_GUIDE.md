@@ -450,7 +450,7 @@ localci run [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--workflow`, `-w` | Workflow file (defaults to config value) |
-| `--job`, `-j` | Job index or name — repeatable for multiple jobs |
+| `--job`, `-j` | Job index (Idx) or name — repeatable for multiple jobs |
 | `--platform`, `-p` | Run all jobs for a platform: `linux`, `windows`, `macos` |
 | `--compiler` | Filter by compiler |
 | `--matrix`, `-m` | Matrix filter as `key=value` — repeatable |
@@ -496,6 +496,8 @@ localci run --job 5 --keep-containers
 # Force image rebuild
 localci run --job 5 --rebuild-image
 ```
+
+**Summary table columns:** After a run, the job table shows **#** (row number, 1-based) and **Idx** (workflow matrix entry index). Use the Idx value with `localci run --job <Idx>` to re-run that job. When you filter jobs (e.g. by platform), only a subset runs but each keeps its matrix index, so the first row may show #1 with Idx 4 if the first job in your filtered set is the fifth matrix entry.
 
 #### GitHub Authentication
 
