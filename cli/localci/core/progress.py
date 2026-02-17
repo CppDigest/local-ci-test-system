@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -49,6 +49,7 @@ class JobProgress:
     error_message: Optional[str] = None
     log_file: Optional[str] = None
     current_step: Optional[str] = None  # From act output (e.g. "Run Main Clone Boost.Capy")
+    step_timings: list[tuple[str, float]] = field(default_factory=list)  # (step_name, duration_seconds)
 
     @property
     def elapsed(self) -> float:
@@ -206,6 +207,8 @@ class ProgressTracker:
         self._completed_durations: list[float] = []
         self._last_status_write: float = 0.0
         self._status_write_interval: float = 1.0
+        # Per-step runtime: key -> (current_step_name, start_time); closed on next step or job end
+        self._step_start: dict[str, tuple[str, datetime]] = {}
 
     # -----------------------------------------------------------------------
     # Event handler (called by orchestrator)
@@ -255,9 +258,21 @@ class ProgressTracker:
                 if isinstance(line, str) and " Run " in line:
                     step = line.split(" Run ", 1)[-1].strip()
                     if step:
-                        progress.current_step = step[:50] if len(step) > 50 else step
+                        step_short = step[:50] if len(step) > 50 else step
+                        # Close previous step and record duration
+                        if key in self._step_start:
+                            prev_name, prev_start = self._step_start.pop(key)
+                            dur = (ts - prev_start).total_seconds()
+                            progress.step_timings.append((prev_name, dur))
+                        self._step_start[key] = (step, ts)
+                        progress.current_step = step_short
 
             elif event.event_type == JobEventType.JOB_COMPLETED:
+                if key in self._step_start:
+                    prev_name, prev_start = self._step_start.pop(key)
+                    progress.step_timings.append(
+                        (prev_name, (ts - prev_start).total_seconds())
+                    )
                 progress.current_step = None
                 progress.status = QueuedJobStatus.PASSED
                 progress.finished_at = ts
@@ -271,6 +286,11 @@ class ProgressTracker:
                 self._completed_durations.append(progress.duration_seconds)
 
             elif event.event_type == JobEventType.JOB_FAILED:
+                if key in self._step_start:
+                    prev_name, prev_start = self._step_start.pop(key)
+                    progress.step_timings.append(
+                        (prev_name, (ts - prev_start).total_seconds())
+                    )
                 progress.current_step = None
                 progress.status = QueuedJobStatus.FAILED
                 progress.finished_at = ts
@@ -285,6 +305,11 @@ class ProgressTracker:
                 self._completed_durations.append(progress.duration_seconds)
 
             elif event.event_type == JobEventType.JOB_TIMEOUT:
+                if key in self._step_start:
+                    prev_name, prev_start = self._step_start.pop(key)
+                    progress.step_timings.append(
+                        (prev_name, (ts - prev_start).total_seconds())
+                    )
                 progress.current_step = None
                 progress.status = QueuedJobStatus.TIMEOUT
                 progress.finished_at = ts
@@ -299,6 +324,8 @@ class ProgressTracker:
                 self._completed_durations.append(progress.duration_seconds)
 
             elif event.event_type == JobEventType.JOB_CANCELLED:
+                if key in self._step_start:
+                    self._step_start.pop(key)
                 progress.current_step = None
                 progress.status = QueuedJobStatus.CANCELLED
                 progress.finished_at = ts
@@ -547,6 +574,29 @@ class ProgressTracker:
             )
         console.print(table)
 
+        # Per-step runtime (longest job) — helps prioritize optimization
+        jobs_with_steps = [j for j in jobs if j.step_timings]
+        if jobs_with_steps:
+            longest_job = max(jobs_with_steps, key=lambda j: j.duration_seconds)
+            steps = longest_job.step_timings
+            if steps:
+                console.print(
+                    "\n[bold]Per-step runtime[/bold] (longest job: "
+                    f"[{longest_job.index}] {longest_job.name})"
+                )
+                step_table = Table(expand=False)
+                step_table.add_column("Step", style="dim")
+                step_table.add_column("Duration", justify="right")
+                longest_step = max(steps, key=lambda x: x[1])
+                for name, dur in steps:
+                    dur_str = f"{dur:.1f}s"
+                    if (name, dur) == longest_step:
+                        step_table.add_row(f"[bold]{name}[/bold]", f"[bold]{dur_str}[/bold] ← longest")
+                    else:
+                        step_table.add_row(name, dur_str)
+                console.print(step_table)
+                console.print()
+
         failures = [
             j
             for j in jobs
@@ -635,6 +685,7 @@ class ProgressTracker:
                     "priority": j.priority,
                     "duration_seconds": j.duration_seconds,
                     "status": j.status.value,
+                    **({"step_timings": j.step_timings} if j.step_timings else {}),
                 }
                 for j in completed
             ],
@@ -648,6 +699,7 @@ class ProgressTracker:
                     "error_message": j.error_message,
                     "log_file": j.log_file,
                     "status": j.status.value,
+                    **({"step_timings": j.step_timings} if j.step_timings else {}),
                 }
                 for j in failed
             ],

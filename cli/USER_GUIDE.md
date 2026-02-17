@@ -300,6 +300,17 @@ ccache statistics (hit/miss, size) when the host has `ccache` installed. You can
 also run `localci cache stats` anytime to see current stats for the configured
 ccache directory.
 
+**Speeding up runtime:** Use the **per-step runtime** table in the run summary to
+see how long each workflow step took (clone, configure, build, etc.). Optimize
+the longest step first, then re-run and compare. With caches enabled, changing
+one `.cpp` file only rebuilds that translation unit and the link step (ccache
+reuses object files for unchanged sources). Unlike GitHub-hosted runners, local
+cache size is not limited to 10GB per repo — you can keep a large ccache and
+build-artifact tree so incremental runs feel like local development. Ensure
+your workflow does not run a full clean (e.g. `rm -rf build`) at the start when
+using caches, or use `LOCALCI_CMAKE_CACHE_DIR` / `BOOST_ROOT` so steps skip
+redundant configure or clone.
+
 ### Viewing and Editing Config
 
 ```bash
