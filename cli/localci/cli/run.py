@@ -86,7 +86,7 @@ from localci.utils.output import (
 @click.option(
     "--dry-run", is_flag=True, help="Preview execution plan without running."
 )
-@click.option("--no-cache", is_flag=True, help="Disable build caching (ccache, boost, cmake).")
+@click.option("--no-cache", is_flag=True, help="Disable build caching (ccache, boost, b2-build, cmake).")
 @click.option(
     "--cache-dir",
     type=click.Path(path_type=Path, file_okay=False),
@@ -396,11 +396,45 @@ def _write_patched_workflow(
     When the workflow has container: ${{ matrix.container }}, act uses that image
     and ignores our -P mapping. If image_tag is set, replace this entry's container
     with image_tag. Always patch the Codecov step to skip upload when ACT is set
-    (codecov.io often returns 403 when run under act). Patching is text-only to
+    (codecov.io often returns 403 when run under act). When BOOST_ROOT is set (by
+    localci cache), the Clone Boost step is skipped. Patching is text-only to
     avoid YAML round-trip issues.
     """
     with open(workflow_path, encoding="utf-8") as f:
         lines = f.readlines()
+
+    # Patch Boost clone step: skip when BOOST_ROOT is set (localci provides cached Boost)
+    for i, line in enumerate(lines):
+        if "boost-clone" in line and ("uses:" in line or "cpp-actions/boost-clone" in line):
+            # Find the start of this step (the "- name:" line)
+            step_start = i
+            while step_start > 0:
+                prev = lines[step_start - 1]
+                if re.match(r"^\s+-\s+name:\s*", prev):
+                    step_start = step_start - 1
+                    break
+                step_start -= 1
+            # Avoid adding if twice
+            step_end = i + 1
+            while step_end < len(lines) and re.match(r"^\s{6,}\S", lines[step_end]):
+                step_end += 1
+            has_boost_root_if = any(
+                "BOOST_ROOT" in lines[j] for j in range(step_start, min(step_end, len(lines)))
+            )
+            if not has_boost_root_if:
+                indent = line[: len(line) - len(line.lstrip())]
+                if_line = f"{indent}if: ${{{{ env.BOOST_ROOT == '' }}}}\n"
+                lines.insert(step_start + 1, if_line)
+                step_end += 1  # one line inserted
+                # When BOOST_ROOT is set, workflow needs boost-source for Patch step
+                new_step = [
+                    "      - name: Use cached Boost (BOOST_ROOT)\n",
+                    "        if: ${{ env.BOOST_ROOT != '' }}\n",
+                    '        run: rm -rf boost-source 2>/dev/null; ln -s "$BOOST_ROOT" boost-source\n',
+                ]
+                for j, new_line in enumerate(new_step):
+                    lines.insert(step_end + 1 + j, new_line)
+            break
 
     if image_tag:
         name_escaped = re.escape(entry.name)

@@ -102,6 +102,8 @@ class BoostCacheConfig(BaseModel):
     dir: Optional[Path] = None  # default: cache.directory / "boost"
     shallow: bool = True
     remote: Optional[str] = None  # default: https://github.com/boostorg/boost.git
+    # When True, cache b2 build artifacts (bin.v2) per job so b2 does incremental builds
+    build_dir: bool = True
 
 
 class CmakeCacheConfig(BaseModel):
@@ -177,6 +179,7 @@ class ResolvedCachePaths:
     ccache_host: Optional[Path] = None
     boost_host: Optional[Path] = None
     cmake_host: Optional[Path] = None  # per-job: cache_base / job_id / matrix_key
+    b2_build_host: Optional[Path] = None  # per-job: b2 build artifacts (bin.v2)
 
     @property
     def ccache_container(self) -> str:
@@ -190,6 +193,10 @@ class ResolvedCachePaths:
     def cmake_container(self) -> str:
         return f"{LOCALCI_CACHE_CONTAINER_ROOT}/cmake"
 
+    @property
+    def b2_build_container(self) -> str:
+        return f"{LOCALCI_CACHE_CONTAINER_ROOT}/b2-build"
+
     def host_dirs_to_ensure(self) -> list[Path]:
         """Host directories that must exist before bind-mounting."""
         out: list[Path] = []
@@ -199,6 +206,8 @@ class ResolvedCachePaths:
             out.append(self.boost_host)
         if self.cmake_host is not None:
             out.append(self.cmake_host)
+        if self.b2_build_host is not None:
+            out.append(self.b2_build_host)
         return out
 
 
@@ -233,6 +242,10 @@ def resolve_cache_paths(
     if cache_config.boost.enabled:
         d = cache_config.boost.dir or root / "boost"
         r.boost_host = Path(d).expanduser().resolve()
+        if getattr(cache_config.boost, "build_dir", True) and job_id and queue_key:
+            b2_base = root / "b2-build"
+            safe_key = queue_key.replace(":", "-")
+            r.b2_build_host = Path(b2_base).expanduser().resolve() / safe_key
     if cache_config.cmake.enabled and job_id and queue_key:
         base = cache_config.cmake.dir or root / "cmake"
         base = Path(base).expanduser().resolve()
@@ -243,7 +256,12 @@ def resolve_cache_paths(
             subdir = safe_key
         r.cmake_host = base / subdir
 
-    if r.ccache_host is None and r.boost_host is None and r.cmake_host is None:
+    if (
+        r.ccache_host is None
+        and r.boost_host is None
+        and r.cmake_host is None
+        and r.b2_build_host is None
+    ):
         return None
     return r
 

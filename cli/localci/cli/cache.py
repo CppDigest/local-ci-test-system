@@ -34,7 +34,7 @@ def cache_cmd(ctx: click.Context) -> None:
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["ccache", "boost", "cmake", "all"]),
+    type=click.Choice(["ccache", "boost", "cmake", "b2-build", "all"]),
     default="ccache",
     help="Which cache to clear (default: ccache).",
 )
@@ -72,6 +72,11 @@ def cache_clear(
         dirs_to_remove.append(Path(d).expanduser().resolve())
     if target in ("cmake", "all") and cfg.cache.cmake.enabled:
         d = cfg.cache.cmake.dir or root / "cmake"
+        dirs_to_remove.append(Path(d).expanduser().resolve())
+    if target in ("b2-build", "all") and cfg.cache.boost.enabled and getattr(
+        cfg.cache.boost, "build_dir", True
+    ):
+        d = root / "b2-build"
         dirs_to_remove.append(Path(d).expanduser().resolve())
 
     if not dirs_to_remove:

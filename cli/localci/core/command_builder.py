@@ -140,6 +140,10 @@ class ActCommandBuilder:
                 mount_parts.append(
                     f"-v {resolved_cache_paths.cmake_host}:{resolved_cache_paths.cmake_container}"
                 )
+            if resolved_cache_paths.b2_build_host is not None:
+                mount_parts.append(
+                    f"-v {resolved_cache_paths.b2_build_host}:{resolved_cache_paths.b2_build_container}"
+                )
             if mount_parts:
                 container_options = " ".join(mount_parts)
             if resolved_cache_paths.ccache_host is not None:
@@ -151,6 +155,8 @@ class ActCommandBuilder:
                 env["BOOST_ROOT"] = resolved_cache_paths.boost_container
             if resolved_cache_paths.cmake_host is not None:
                 env["LOCALCI_CMAKE_CACHE_DIR"] = resolved_cache_paths.cmake_container
+            if resolved_cache_paths.b2_build_host is not None:
+                env["LOCALCI_B2_BUILD_DIR"] = resolved_cache_paths.b2_build_container
 
         # Secrets
         secrets = {**self.default_secrets}

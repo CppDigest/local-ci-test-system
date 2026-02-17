@@ -62,6 +62,7 @@ cache:
     enabled: true
     branch: develop
     shallow: true
+    build_dir: true              # cache b2 build artifacts per job (LOCALCI_B2_BUILD_DIR)
     # remote: https://github.com/boostorg/boost.git   # optional
   cmake:
     enabled: true
