@@ -438,20 +438,22 @@ def _write_patched_workflow(
     # can do incremental builds (bin.v2 artifacts are preserved in the cache).
     # boost-clone still runs normally and creates boost-source; we sync from boost-source
     # (not from BOOST_ROOT) so the cached tree always contains the right lib submodules.
+    # cp -a is used instead of rsync because rsync is not guaranteed to be installed
+    # in the container. cp -a preserves timestamps (critical for b2 incremental builds).
     for i, line in enumerate(lines):
         if "cp -rL boost-source boost-root" in line and "LOCALCI_B2_SOURCE_DIR" not in line:
             ind = line[: len(line) - len(line.lstrip())]
             lines[i] = (
                 f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/Jamroot" ]; then\n'
-                f'{ind}  # Persistent boost-root cache: sync updates from boost-source, preserve bin.v2 and libs/capy\n'
-                f'{ind}  rsync -a --delete --exclude="bin.v2/" --exclude="libs/capy/" boost-source/. "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
+                f'{ind}  # Persistent boost-root cache: update headers from boost-source, preserve bin.v2 and libs/capy\n'
+                f'{ind}  cp -a boost-source/. "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
                 f'{ind}  rm -rf "${{LOCALCI_B2_SOURCE_DIR}}/libs/capy" 2>/dev/null || true\n'
                 f'{ind}  ln -sfn "${{LOCALCI_B2_SOURCE_DIR}}" boost-root\n'
                 f'{ind}else\n'
                 f'{ind}  cp -rL boost-source boost-root\n'
                 f'{ind}  if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ]; then\n'
                 f'{ind}    mkdir -p "${{LOCALCI_B2_SOURCE_DIR}}"\n'
-                f'{ind}    rsync -a boost-root/ "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
+                f'{ind}    cp -a boost-root/. "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
                 f'{ind}  fi\n'
                 f'{ind}fi\n'
             )

@@ -93,12 +93,12 @@ def test_patched_workflow_uses_persistent_boost_root_cache(
     try:
         content = patched.read_text()
         assert "LOCALCI_B2_SOURCE_DIR" in content
-        assert "rsync -a --delete" in content
-        assert "bin.v2/" in content
+        # cp -a is used (rsync not guaranteed installed in container)
+        assert "cp -a boost-source/." in content
+        assert "bin.v2" in content
         assert "Jamroot" in content
         # Sync from boost-source (boost-clone output), not from $BOOST_ROOT
-        assert "boost-source/." in content
-        assert "$BOOST_ROOT/" not in content or "boost-source/." in content
+        assert "$BOOST_ROOT/" not in content
         # Original cp -rL fallback still present
         assert "cp -rL boost-source boost-root" in content
     finally:
