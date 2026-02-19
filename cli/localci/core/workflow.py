@@ -9,6 +9,7 @@ orchestrator modules downstream.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -375,6 +376,11 @@ class WorkflowAnalyzer:
             jobs=jobs,
         )
 
+        # When event filter is provided, keep only jobs that run on that event
+        if event is not None:
+            workflow = self._filter_workflow_by_event(workflow, event)
+            logger.debug("Filtered to %d jobs for event '%s'", workflow.total_jobs, event)
+
         logger.info(
             "Analysis complete: %d jobs, %d matrix entries",
             workflow.total_jobs,
@@ -392,6 +398,59 @@ class WorkflowAnalyzer:
             except Exception as exc:
                 logger.warning("Failed to parse %s: %s", yml, exc)
         return workflows
+
+    def _filter_workflow_by_event(self, workflow: Workflow, event: str) -> Workflow:
+        """Return a workflow with only jobs that run on *event*."""
+        event_lower = event.strip().lower()
+        filtered: dict[str, Job] = {
+            jid: job
+            for jid, job in workflow.jobs.items()
+            if self._job_runs_on_event(job, event_lower)
+        }
+        return Workflow(
+            name=workflow.name,
+            file_path=workflow.file_path,
+            events=workflow.events,
+            env=workflow.env,
+            concurrency=workflow.concurrency,
+            jobs=filtered,
+        )
+
+    @staticmethod
+    def _job_runs_on_event(job: Job, event: str) -> bool:
+        """True if *job* runs when workflow is triggered by *event*.
+
+        Interprets job.condition (GitHub Actions ``if``) for common
+        event_name patterns; when unsure, includes the job.
+        """
+        condition = (job.condition or "").strip()
+        if not condition:
+            return True
+
+        # No event_name in condition → condition is about something else
+        if "event_name" not in condition and "event." not in condition:
+            return True
+
+        # event_name == 'X' or event_name == "X" → only run for X
+        eq_match = re.search(
+            r"event_name\s*==\s*['\"]([^'\"]+)['\"]",
+            condition,
+            re.IGNORECASE,
+        )
+        if eq_match:
+            return eq_match.group(1).strip().lower() == event
+
+        # event_name != 'X' → run for any event except X
+        ne_match = re.search(
+            r"event_name\s*!=\s*['\"]([^'\"]+)['\"]",
+            condition,
+            re.IGNORECASE,
+        )
+        if ne_match:
+            return ne_match.group(1).strip().lower() != event
+
+        # Complex condition (e.g. contains, &&, ||) → include when unsure
+        return True
 
     # -----------------------------------------------------------------
     # Job parsing

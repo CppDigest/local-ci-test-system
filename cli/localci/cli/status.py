@@ -82,7 +82,10 @@ def status(
 
     if not results_file.exists():
         if execution_id:
-            print_warning(f"No results found for execution: {execution_id}")
+            print_warning(
+                f"No results found for execution: {execution_id}. "
+                f"Expected file: {results_file}"
+            )
         else:
             print_warning(
                 "No previous execution found. Run `localci run` first."

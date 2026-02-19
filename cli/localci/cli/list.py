@@ -51,6 +51,22 @@ _PLATFORM_COLOR = {
 }
 
 
+def _entry_matches_list(entry_name: str, names: list[str]) -> bool:
+    """True if *entry_name* matches any string in *names* (case-insensitive).
+
+    Match: exact equality or the list item is a substring of entry name,
+    so config "GCC 15" matches entry "GCC 15: C++20".
+    """
+    entry_lower = entry_name.lower()
+    for s in names:
+        part = s.strip().lower()
+        if not part:
+            continue
+        if entry_lower == part or part in entry_lower:
+            return True
+    return False
+
+
 # =====================================================================
 # Command
 # =====================================================================
@@ -161,6 +177,28 @@ def list_cmd(
     if comp_version:
         entries = [e for e in entries if e.compiler.version == comp_version]
 
+    # Filter by config.jobs.include / config.jobs.exclude (--enabled / --disabled)
+    if enabled or disabled:
+        if config:
+            include_names = config.jobs.include or []
+            exclude_names = config.jobs.exclude or []
+
+            if enabled:
+                if include_names:
+                    entries = [e for e in entries if _entry_matches_list(e.name, include_names)]
+                elif exclude_names:
+                    entries = [e for e in entries if not _entry_matches_list(e.name, exclude_names)]
+
+            if disabled:
+                if exclude_names:
+                    entries = [e for e in entries if _entry_matches_list(e.name, exclude_names)]
+                else:
+                    entries = []
+        else:
+            # No config: --enabled/--disabled have no include/exclude list
+            if disabled:
+                entries = []
+
     # ── JSON output ──────────────────────────────────────────────
     if output_format == "json":
         data = [
@@ -200,6 +238,10 @@ def list_cmd(
         filter_desc.append(f"compiler={compiler}")
     if comp_version:
         filter_desc.append(f"version={comp_version}")
+    if enabled:
+        filter_desc.append("enabled")
+    if disabled:
+        filter_desc.append("disabled")
 
     title = f"Matrix Entries ({len(entries)})"
     if filter_desc:

@@ -67,17 +67,17 @@ def images(ctx: click.Context) -> None:
 def images_list(ctx: click.Context, output_format: str) -> None:
     """List available images."""
     try:
-        images = _load_registry()
+        registry_images = _load_registry()
     except Exception as exc:  # noqa: BLE001
         print_error(str(exc))
         ctx.exit(1)
 
     if output_format == "json":
-        click.echo(json.dumps(images, indent=2))
+        click.echo(json.dumps(registry_images, indent=2))
         return
 
     table = make_table("Name", "Tag", "OS", "Arch", "Variants", title="Image Registry")
-    for img in images:
+    for img in registry_images:
         variants = ", ".join(img.get("variants", [])) or "-"
         table.add_row(
             img.get("name", "-"),
@@ -100,12 +100,12 @@ def images_list(ctx: click.Context, output_format: str) -> None:
 def images_info(ctx: click.Context, image: str) -> None:
     """Show detailed information about an image."""
     try:
-        images = _load_registry()
+        registry_images = _load_registry()
     except Exception as exc:  # noqa: BLE001
         print_error(str(exc))
         ctx.exit(1)
 
-    match = next((i for i in images if i.get("name") == image), None)
+    match = next((i for i in registry_images if i.get("name") == image), None)
     if not match:
         print_warning(f"Image not found in registry: {image}")
         ctx.exit(1)
