@@ -361,11 +361,16 @@ def run(
 
     console.print(summary.summary_report())
 
-    # Save results
-    results_file = cfg.logging.directory / "last-run.json"
+    # Save results: both last-run.json and {execution_id}.json so
+    # status --execution-id X and logs -e X can find this run
+    logs_dir = cfg.logging.directory
+    last_run_file = logs_dir / "last-run.json"
+    execution_file = logs_dir / f"{summary.execution_id}.json"
     try:
-        summary.save(results_file)
-        print_info(f"Results saved to {results_file}")
+        summary.save(last_run_file)
+        summary.save(execution_file)
+        print_info(f"Results saved to {last_run_file}")
+        print_info(f"Execution ID: {summary.execution_id} (use with status -e or logs -e)")
     except Exception as exc:
         print_warning(f"Could not save results: {exc}")
 
