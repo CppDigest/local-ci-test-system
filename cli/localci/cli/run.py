@@ -397,16 +397,24 @@ def _write_patched_workflow(
 ) -> Path:
     """Write a copy of the workflow with optional container and Codecov patches.
 
-    When the workflow has container: ${{ matrix.container }}, act uses that image
-    and ignores our -P mapping. If image_tag is set, replace this entry's container
-    with image_tag. Always patch the Codecov step to skip upload when ACT is set
-    (codecov.io often returns 403 when run under act). When LOCALCI_B2_SOURCE_DIR
-    is set (by the b2-source cache), the ``cp -rL boost-source boost-root`` line in
-    the Patch Boost step is replaced with rsync+symlink logic so b2 reuses its bin.v2
-    artifacts and builds incrementally. When container_mount_options is set, inject
-    those -v options into the job's container.options so the job container gets the
-    cache mounts (act does not apply --container-options to the job container when
-    the workflow has container:). Patching is text-only to avoid YAML round-trip issues.
+    Patches applied (all text-only, no YAML round-trip):
+
+    * **container image** – replaces ``container: ${{ matrix.container }}`` with
+      *image_tag* so act uses the locally-built image instead of the raw base image.
+    * **Patch Boost step** – when LOCALCI_B2_SOURCE_DIR is set, replaces
+      ``cp -rL boost-source boost-root`` with cache-hit/miss logic:
+      cache-hit: boost-root is a symlink to the stable cached tree so b2's
+      bin.v2 artifacts survive across runs (incremental builds);
+      cache-miss: standard cp -rL, then seed the cache from the dereferenced copy.
+    * **b2 bootstrap skip** – injects a step before ``b2-workflow`` that stubs
+      out ``bootstrap.sh`` when the b2 binary is already in the cache
+      (mirrors https://github.com/iTinkerBell/cpp-actions/commit/671009a).
+    * **container options** – injects bind-mount ``-v`` flags into the job's
+      ``container.options`` so the job container gets the cache mounts (act does
+      not forward ``--container-options`` to the job container when the workflow
+      declares ``container:``).
+    * **Codecov** – skips the codecov upload when running under act (codecov.io
+      often returns 403 in local runs).
     """
     with open(workflow_path, encoding="utf-8") as f:
         lines = f.readlines()
@@ -433,20 +441,24 @@ def _write_patched_workflow(
                     break
             break
 
-    # Patch Boost patch step: when LOCALCI_B2_SOURCE_DIR is set, use a persistent per-job
-    # boost-root instead of a fresh cp -rL each run, so b2 sees stable timestamps and
-    # can do incremental builds (bin.v2 artifacts are preserved in the cache).
-    # boost-clone still runs normally and creates boost-source; we sync from boost-source
-    # (not from BOOST_ROOT) so the cached tree always contains the right lib submodules.
-    # cp -a is used instead of rsync because rsync is not guaranteed to be installed
-    # in the container. cp -a preserves timestamps (critical for b2 incremental builds).
+    # Patch Boost patch step: when LOCALCI_B2_SOURCE_DIR is set, reuse the cached boost-root
+    # on subsequent runs so b2 sees stable header timestamps and rebuilds only what changed.
+    #
+    # Cache-hit path: headers are left untouched (timestamps unchanged) so b2 does an
+    # incremental build.  Only the libs/capy slot is cleared so the current capy source
+    # gets linked in by the workflow.  boost-root is a symlink to the cache directory.
+    #
+    # Cache-miss path (first run): standard cp -rL creates boost-root (resolves all
+    # symlinks so the tree is self-contained), then we seed the cache from that clean
+    # copy.  Seeding from boost-root (no symlinks) ensures future cp -a calls never
+    # hit the "cannot overwrite directory with non-directory" conflict caused by
+    # git-tracked symlinks inside boost-source.
     for i, line in enumerate(lines):
         if "cp -rL boost-source boost-root" in line and "LOCALCI_B2_SOURCE_DIR" not in line:
             ind = line[: len(line) - len(line.lstrip())]
             lines[i] = (
                 f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/Jamroot" ]; then\n'
-                f'{ind}  # Persistent boost-root cache: update headers from boost-source, preserve bin.v2 and libs/capy\n'
-                f'{ind}  cp -a boost-source/. "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
+                f'{ind}  # Cache hit: leave headers untouched (stable timestamps) so b2 builds incrementally\n'
                 f'{ind}  rm -rf "${{LOCALCI_B2_SOURCE_DIR}}/libs/capy" 2>/dev/null || true\n'
                 f'{ind}  ln -sfn "${{LOCALCI_B2_SOURCE_DIR}}" boost-root\n'
                 f'{ind}else\n'
@@ -457,6 +469,89 @@ def _write_patched_workflow(
                 f'{ind}  fi\n'
                 f'{ind}fi\n'
             )
+            break
+
+    # Patch: inject a "Restore capy timestamps" step before the Patch Boost step.
+    #
+    # git checkout sets every file's mtime to "now", so without this patch b2 would see
+    # all capy source files as newer than their bin.v2 objects and recompile everything.
+    # Instead, we save a content-hash snapshot (mtime + sha256) of capy C++ source files
+    # in b2-source/.capy-file-stats after each build.  On the next run we restore the
+    # saved mtime for any file whose sha256 hasn't changed.  Only files with a different
+    # hash (actually modified) keep the fresh checkout mtime, so b2 rebuilds exactly those.
+    for i, line in enumerate(lines):
+        if re.match(r"^\s+-\s+name:\s+Patch Boost", line):
+            already_patched = any(
+                "capy-file-stats" in lines[j]
+                for j in range(max(0, i - 15), i)
+            )
+            if not already_patched:
+                new_step = [
+                    "      - name: Restore capy source file timestamps\n",
+                    "        run: |\n",
+                    '          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/.capy-file-stats" ]; then\n',
+                    "            while IFS=' ' read -r saved_mtime fhash relpath; do\n",
+                    '              [ -f "capy-root/$relpath" ] || continue\n',
+                    '              curr=$(sha256sum "capy-root/$relpath" 2>/dev/null | cut -d\' \' -f1)\n',
+                    '              [ "$curr" = "$fhash" ] && touch -d "@$saved_mtime" "capy-root/$relpath" 2>/dev/null || true\n',
+                    '            done < "${LOCALCI_B2_SOURCE_DIR}/.capy-file-stats"\n',
+                    '          fi\n',
+                ]
+                for j, new_line in enumerate(new_step):
+                    lines.insert(i + j, new_line)
+            break
+
+    # Patch: use cp -rp (preserves timestamps) instead of cp -r when copying capy source
+    # into boost-root, so the restored mtimes survive into the b2 build.  Also save a
+    # content-hash snapshot of all capy C++ source files to b2-source/.capy-file-stats
+    # so the next run's restore step knows which files actually changed.
+    for i, line in enumerate(lines):
+        if 'cp -r "$workspace_root"' in line and "libs/" in line:
+            ind = line[: len(line) - len(line.lstrip())]
+            lines[i] = (
+                f'{ind}cp -rp "$workspace_root"/capy-root "libs/$module"\n'
+                f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ]; then\n'
+                f'{ind}  find "$workspace_root/capy-root" -type f \\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.ipp" \\) |\n'
+                f'{ind}  while IFS= read -r f; do\n'
+                f'{ind}    mtime=$(stat -c "%Y" "$f")\n'
+                f'{ind}    fhash=$(sha256sum "$f" | cut -d" " -f1)\n'
+                f'{ind}    echo "$mtime $fhash ${{f#$workspace_root/capy-root/}}"\n'
+                f'{ind}  done > "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n'
+                f'{ind}fi\n'
+            )
+            break
+
+    # Patch: inject a step before b2-workflow to skip bootstrap when the b2 binary is
+    # already in the b2-source cache.  b2's bootstrap.sh compiles the b2 engine from C++
+    # (~20s per run).  On a cache-hit boost-root is a symlink to b2-source, so b2-source/b2
+    # from the previous run is already at boost-root/b2.  We stub bootstrap.sh to a no-op
+    # shell script so b2-workflow skips recompilation and uses the cached binary directly.
+    # This mirrors the iTinkerBell/cpp-actions fork optimisation:
+    # https://github.com/iTinkerBell/cpp-actions/commit/671009a
+    for i, line in enumerate(lines):
+        if "b2-workflow" in line and "uses:" in line:
+            # Walk back from the uses: line to find the step's leading "- name:" line
+            step_start = i
+            while step_start > 0:
+                if re.match(r"^\s+-\s+name:\s*", lines[step_start]):
+                    break
+                step_start -= 1
+            # Idempotency: skip if already patched
+            already_patched = any(
+                "LOCALCI_B2_SOURCE_DIR" in lines[j] and "bootstrap" in lines[j]
+                for j in range(max(0, step_start - 10), step_start)
+            )
+            if not already_patched:
+                new_step = [
+                    "      - name: Skip b2 bootstrap (b2 binary cached)\n",
+                    "        run: |\n",
+                    '          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/b2" ]; then\n',
+                    "            printf '#!/bin/sh\\necho \"b2 binary cached, skipping bootstrap.\"\\n' > boost-root/bootstrap.sh\n",
+                    "            chmod +x boost-root/bootstrap.sh\n",
+                    "          fi\n",
+                ]
+                for j, new_line in enumerate(new_step):
+                    lines.insert(step_start + j, new_line)
             break
 
     if image_tag:

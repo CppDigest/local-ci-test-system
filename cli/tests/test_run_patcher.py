@@ -93,14 +93,92 @@ def test_patched_workflow_uses_persistent_boost_root_cache(
     try:
         content = patched.read_text()
         assert "LOCALCI_B2_SOURCE_DIR" in content
-        # cp -a is used (rsync not guaranteed installed in container)
-        assert "cp -a boost-source/." in content
-        assert "bin.v2" in content
         assert "Jamroot" in content
-        # Sync from boost-source (boost-clone output), not from $BOOST_ROOT
-        assert "$BOOST_ROOT/" not in content
-        # Original cp -rL fallback still present
+        # Cache-hit: headers left untouched, only capy slot cleared and boost-root symlinked
+        assert "ln -sfn" in content
+        assert "libs/capy" in content
+        # Cache-miss: standard cp -rL + seed cache from dereferenced boost-root (no symlinks)
         assert "cp -rL boost-source boost-root" in content
+        assert "cp -a boost-root/." in content
+        # No header copy on cache-hit (would reset timestamps and force full b2 rebuild)
+        assert "cp -a boost-source/." not in content
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+def test_patched_workflow_restores_capy_timestamps(
+    capy_workflow_path, sample_entry
+):
+    """A restore-timestamps step is injected before Patch Boost.
+
+    It reads b2-source/.capy-file-stats and, for each file whose sha256 matches
+    the saved hash, restores the saved mtime.  Only files with different content
+    keep their fresh checkout mtime, so b2 rebuilds exactly those files.
+    """
+    if not capy_workflow_path.exists():
+        pytest.skip("capy workflow fixture not found")
+    patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
+    try:
+        content = patched.read_text()
+        assert "Restore capy source file timestamps" in content
+        assert ".capy-file-stats" in content
+        assert "sha256sum" in content
+        assert "touch -d" in content
+        # Step appears before Patch Boost
+        restore_pos = content.index("Restore capy source file timestamps")
+        patch_pos = content.index("Patch Boost")
+        assert restore_pos < patch_pos
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+def test_patched_workflow_saves_capy_stats_and_uses_cp_rp(
+    capy_workflow_path, sample_entry
+):
+    """The cp -r in Patch Boost is replaced with cp -rp (preserves timestamps).
+
+    A snapshot of capy C++ source file mtimes and sha256 hashes is saved to
+    b2-source/.capy-file-stats so the next run can restore timestamps for
+    unchanged files, enabling single-file incremental b2 builds.
+    """
+    if not capy_workflow_path.exists():
+        pytest.skip("capy workflow fixture not found")
+    patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
+    try:
+        content = patched.read_text()
+        # Timestamps preserved on copy into boost-root
+        assert "cp -rp" in content
+        # Content-hash snapshot saved for next run
+        assert ".capy-file-stats" in content
+        assert "sha256sum" in content
+        assert "stat -c" in content
+        # Original cp -r (without p) should not be present for the capy copy
+        assert 'cp -r "$workspace_root"' not in content
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+def test_patched_workflow_injects_b2_bootstrap_skip(
+    capy_workflow_path, sample_entry
+):
+    """A pre-step is injected before b2-workflow to stub bootstrap.sh when b2 is cached.
+
+    Mirrors https://github.com/iTinkerBell/cpp-actions/commit/671009a but without
+    requiring a fork: the stub is only applied when LOCALCI_B2_SOURCE_DIR/b2 exists.
+    """
+    if not capy_workflow_path.exists():
+        pytest.skip("capy workflow fixture not found")
+    patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
+    try:
+        content = patched.read_text()
+        assert "Skip b2 bootstrap (b2 binary cached)" in content
+        assert "LOCALCI_B2_SOURCE_DIR" in content
+        assert "bootstrap.sh" in content
+        assert "chmod +x boost-root/bootstrap.sh" in content
+        # Step appears before the b2-workflow uses: line
+        skip_pos = content.index("Skip b2 bootstrap")
+        b2_wf_pos = content.index("b2-workflow")
+        assert skip_pos < b2_wf_pos
     finally:
         patched.unlink(missing_ok=True)
 
