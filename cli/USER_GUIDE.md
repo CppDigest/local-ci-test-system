@@ -263,17 +263,17 @@ CMake configuration.
 |-------|---------|--------------------------|
 | **ccache** | Compilation cache (B2, CMake builds) | `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` |
 | **boost** | Pre-cloned Boost superproject | `BOOST_ROOT`; workflow can skip clone |
-| **b2-build** | B2 build artifacts per job (incremental b2 builds) | `LOCALCI_B2_BUILD_DIR` |
+| **b2-source** | Per-job persistent `boost-root` (Boost source + `bin.v2` artifacts) for incremental b2 builds | `LOCALCI_B2_SOURCE_DIR` |
 | **cmake** | Per-job CMake config cache; path keyed by input digest (Issue 11) | `LOCALCI_CMAKE_CACHE_DIR` |
 
 - **Host cache root:** `cache.directory` (default `~/.localci/cache`). Subdirs
-  `ccache/`, `boost/`, `b2-build/<job_matrix_key>/`, `cmake/<job_matrix_key>_<input_digest>/` are created as needed.
+  `ccache/`, `boost/`, `b2-source/<job_matrix_key>/`, `cmake/<job_matrix_key>_<input_digest>/` are created as needed.
 - **Boost cache:** On first run with `cache.boost.enabled`, Local CI runs
   `git clone` (shallow by default; branch from `cache.boost.branch`, remote from
   `cache.boost.remote`). On later runs it runs `git fetch` and `git reset
   --hard origin/<branch>` so the tree is up to date. Jobs see the cache at
   `BOOST_ROOT`. **Local CI patches the workflow** so the Clone Boost step runs only when `BOOST_ROOT` is empty; when set, the step is skipped and a "Use cached Boost (BOOST_ROOT)" step creates `boost-source` from the cache. Use `localci cache update` to refresh the Boost cache without running CI.
-- **B2 build cache:** When `cache.boost.build_dir` is true (default), Local CI creates a per-job directory for b2 build output and sets `LOCALCI_B2_BUILD_DIR`. B2 is timestamp-based; reusing the same build dir lets b2 rebuild only changed files. The workflow or b2-workflow action must pass this dir to b2 (e.g. `--build-dir $LOCALCI_B2_BUILD_DIR`). Success: a small change to a `.cpp`/`.h` should result in b2 building only the changed files (&lt;10s). Clear with `localci cache clear --target b2-build`.
+- **B2 source cache (`b2-source`):** When `cache.boost.build_dir` is true (default), Local CI caches the entire per-job `boost-root` at `b2-source/<job_matrix_key>/` and sets `LOCALCI_B2_SOURCE_DIR`. The workflow patcher replaces the `cp -rL boost-source boost-root` in the Patch Boost step: when the cache exists it rsyncs only changed Boost files into the cache (preserving `bin.v2/` artifacts and `libs/capy`), then symlinks `boost-root` to it; on the first run it falls back to the original `cp -rL` and seeds the cache. Since `bin.v2/` persists and unchanged source files keep their timestamps, b2 only rebuilds what actually changed (&lt;10s for a small `.cpp`/`.h` change). Clear with `localci cache clear --target b2-source`.
 - **Branch:** Set `cache.boost.branch` (e.g. `develop` or `master`) so the
   cached tree matches your workflow; only one branch is cached at a time (the
   dir is updated to that branch on each refresh).
@@ -288,10 +288,20 @@ CMake configuration.
   overrides the file list. Clear with `localci cache clear --target cmake`.
 - **CLI:** `--no-cache` disables all build caches for that run. `--cache-dir
   /path` overrides the cache root.
+- **Job container mounts:** When the workflow uses `container: image: ...`, act
+  does not apply `--container-options` to that job container. Local CI therefore
+  injects the cache volume mounts into the job's `container.options` in the
+  patched workflow so the job container sees `BOOST_ROOT`, `CCACHE_DIR`, etc.
+- **Docker must see the cache path:** Cache dirs are bind-mounted into the job
+  container. If you see "BOOST_ROOT ... is not a directory in the container",
+  the host path (e.g. `~/.localci/cache/boost`) is not visible to the Docker
+  daemon (common with Docker Desktop + WSL2 or mixed host/daemon OS). Use a
+  cache path that Docker can mount (e.g. under a WSL2 path if the daemon runs
+  in WSL2), or run with `--no-cache`.
 
 **Cache invalidation:** Caches are not automatically cleared. To force a clean
 build: use `localci run --no-cache` for one run; or run `localci cache clear`
-(optionally `--target ccache`, `boost`, `cmake`, `b2-build`, or `all`) to remove cache
+(optionally `--target ccache`, `boost`, `cmake`, `b2-source`, or `all`) to remove cache
 dirs; or delete the relevant subdir under `cache.directory` manually. Changing
 compiler or toolchain may require clearing ccache or cmake cache.
 
@@ -308,7 +318,7 @@ reuses object files for unchanged sources). Unlike GitHub-hosted runners, local
 cache size is not limited to 10GB per repo — you can keep a large ccache and
 build-artifact tree so incremental runs feel like local development. Ensure
 your workflow does not run a full clean (e.g. `rm -rf build`) at the start when
-using caches. Local CI sets `BOOST_ROOT` and patches the workflow to skip the Clone Boost step when it is set; set or use `LOCALCI_CMAKE_CACHE_DIR` in the cmake-workflow action so configure is skipped when the cache is valid; use `LOCALCI_B2_BUILD_DIR` in the b2-workflow so b2 reuses build artifacts for incremental builds.
+using caches. Local CI sets `BOOST_ROOT` and patches the workflow to skip the Clone Boost step when it is set; set or use `LOCALCI_CMAKE_CACHE_DIR` in the cmake-workflow action so configure is skipped when the cache is valid; the `b2-source` cache handles incremental b2 builds automatically via the workflow patch.
 
 ### Viewing and Editing Config
 

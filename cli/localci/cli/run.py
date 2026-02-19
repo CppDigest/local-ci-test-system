@@ -86,7 +86,7 @@ from localci.utils.output import (
 @click.option(
     "--dry-run", is_flag=True, help="Preview execution plan without running."
 )
-@click.option("--no-cache", is_flag=True, help="Disable build caching (ccache, boost, b2-build, cmake).")
+@click.option("--no-cache", is_flag=True, help="Disable build caching (ccache, boost, b2-source, cmake).")
 @click.option(
     "--cache-dir",
     type=click.Path(path_type=Path, file_okay=False),
@@ -389,7 +389,11 @@ def _print_execution_plan(queue, workflow_path: Path, timeout: int) -> None:
 
 
 def _write_patched_workflow(
-    workflow_path: Path, entry: MatrixEntry, image_tag: str | None = None
+    workflow_path: Path,
+    entry: MatrixEntry,
+    image_tag: str | None = None,
+    job_id: str | None = None,
+    container_mount_options: str | None = None,
 ) -> Path:
     """Write a copy of the workflow with optional container and Codecov patches.
 
@@ -397,11 +401,58 @@ def _write_patched_workflow(
     and ignores our -P mapping. If image_tag is set, replace this entry's container
     with image_tag. Always patch the Codecov step to skip upload when ACT is set
     (codecov.io often returns 403 when run under act). When BOOST_ROOT is set (by
-    localci cache), the Clone Boost step is skipped. Patching is text-only to
+    localci cache), the Clone Boost step is skipped. When container_mount_options
+    is set, inject those -v options into the job's container.options so the job
+    container gets the cache mounts (act does not apply --container-options to
+    the job container when the workflow has container:). Patching is text-only to
     avoid YAML round-trip issues.
     """
     with open(workflow_path, encoding="utf-8") as f:
         lines = f.readlines()
+
+    # Inject cache mount options into job container so act applies them to the job container
+    if job_id and container_mount_options:
+        job_header = re.compile(r"^\s{2}" + re.escape(job_id) + r"\s*:\s*$")
+        for i, line in enumerate(lines):
+            if not job_header.match(line):
+                continue
+            # We're in job_id; find "container:" then "options:" in this job (indent >= 4)
+            for j in range(i + 1, len(lines)):
+                row = lines[j]
+                if row.strip() and (len(row) - len(row.lstrip())) <= 2:
+                    break  # next job or top-level key
+                if re.match(r"^\s+container\s*:\s*$", row):
+                    for k in range(j + 1, min(j + 10, len(lines))):
+                        opt_match = re.match(r"^(\s+)options\s*:\s*(.*)$", lines[k])
+                        if opt_match:
+                            existing = opt_match.group(2).strip().strip('"\'')
+                            new_val = f"{existing} {container_mount_options}".strip()
+                            lines[k] = f'{opt_match.group(1)}options: "{new_val}"\n'
+                            break
+                    break
+            break
+
+    # Patch Patch Boost step: when LOCALCI_B2_SOURCE_DIR is set, use a persistent per-job
+    # boost-root instead of a fresh cp -rL each run, so b2 sees stable timestamps and
+    # can do incremental builds (bin.v2 artifacts are preserved in the cache).
+    for i, line in enumerate(lines):
+        if "cp -rL boost-source boost-root" in line and "LOCALCI_B2_SOURCE_DIR" not in line:
+            ind = line[: len(line) - len(line.lstrip())]
+            lines[i] = (
+                f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/Jamroot" ]; then\n'
+                f'{ind}  # Persistent boost-root cache exists: rsync Boost updates in, preserve bin.v2 and libs/capy slot\n'
+                f'{ind}  rsync -a --delete --exclude="bin.v2/" --exclude="libs/capy/" "${{BOOST_ROOT}}/" "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
+                f'{ind}  rm -rf "${{LOCALCI_B2_SOURCE_DIR}}/libs/capy" 2>/dev/null || true\n'
+                f'{ind}  ln -sfn "${{LOCALCI_B2_SOURCE_DIR}}" boost-root\n'
+                f'{ind}else\n'
+                f'{ind}  cp -rL boost-source boost-root\n'
+                f'{ind}  if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ]; then\n'
+                f'{ind}    mkdir -p "${{LOCALCI_B2_SOURCE_DIR}}"\n'
+                f'{ind}    rsync -a boost-root/ "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
+                f'{ind}  fi\n'
+                f'{ind}fi\n'
+            )
+            break
 
     # Patch Boost clone step: skip when BOOST_ROOT is set (localci provides cached Boost)
     for i, line in enumerate(lines):
@@ -430,7 +481,18 @@ def _write_patched_workflow(
                 new_step = [
                     "      - name: Use cached Boost (BOOST_ROOT)\n",
                     "        if: ${{ env.BOOST_ROOT != '' }}\n",
-                    '        run: rm -rf boost-source 2>/dev/null; ln -s "$BOOST_ROOT" boost-source\n',
+                    '        run: |\n'
+                    '          set -e\n'
+                    '          if ! [ -d "$BOOST_ROOT" ]; then\n'
+                    '            echo "::error::BOOST_ROOT=$BOOST_ROOT is not a directory in the container. The Boost cache bind mount may not be available (e.g. path not visible to Docker). Run without cache or ensure cache dir is mountable."\n'
+                    '            exit 1\n'
+                    '          fi\n'
+                    '          rm -rf boost-source 2>/dev/null\n'
+                    '          if command -v rsync >/dev/null 2>&1; then\n'
+                    '            rsync -a --link-dest="$BOOST_ROOT" "$BOOST_ROOT"/ boost-source/\n'
+                    '          else\n'
+                    '            mkdir -p boost-source && cp -a "$BOOST_ROOT"/. boost-source/\n'
+                    '          fi\n',
                 ]
                 for j, new_line in enumerate(new_step):
                     lines.insert(step_end + 1 + j, new_line)

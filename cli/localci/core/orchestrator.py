@@ -304,18 +304,9 @@ class ParallelExecutionManager:
             self.queue.mark_preparing(job)
             image_tag = self._prepare_image(job)
             self.queue.mark_running(job)
-            workflow_file = self.workflow_file
-            if self._workflow_patcher is not None:
-                workflow_file = self._workflow_patcher(
-                    self.workflow_file, job.matrix_entry, image_tag
-                )
-            # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
-            # (causes "remove ... no such file or directory" when one job cleans cache)
-            act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
-            act_cache_dir.mkdir(parents=True, exist_ok=True)
-
-            # Phase 2: resolve cache paths and ensure host cache dirs exist
+            # Phase 2: resolve cache paths before patcher (patcher may inject mounts into workflow)
             resolved_cache_paths = None
+            container_mount_options: Optional[str] = None
             if self._cache_config is not None:
                 cmake_digest = None
                 if (
@@ -342,6 +333,41 @@ class ParallelExecutionManager:
             if resolved_cache_paths is not None:
                 for d in resolved_cache_paths.host_dirs_to_ensure():
                     d.mkdir(parents=True, exist_ok=True)
+                # Build -v options so patcher can inject into job container (act does not apply --container-options to job container when workflow has container:)
+                mount_parts: list[str] = []
+                if resolved_cache_paths.ccache_host is not None:
+                    mount_parts.append(
+                        f"-v {resolved_cache_paths.ccache_host}:{resolved_cache_paths.ccache_container}"
+                    )
+                if resolved_cache_paths.boost_host is not None:
+                    mount_parts.append(
+                        f"-v {resolved_cache_paths.boost_host}:{resolved_cache_paths.boost_container}"
+                    )
+                if resolved_cache_paths.cmake_host is not None:
+                    mount_parts.append(
+                        f"-v {resolved_cache_paths.cmake_host}:{resolved_cache_paths.cmake_container}"
+                    )
+                if resolved_cache_paths.b2_source_host is not None:
+                    mount_parts.append(
+                        f"-v {resolved_cache_paths.b2_source_host}:{resolved_cache_paths.b2_source_container}"
+                    )
+                if mount_parts:
+                    container_mount_options = " ".join(mount_parts)
+
+            workflow_file = self.workflow_file
+            if self._workflow_patcher is not None:
+                workflow_file = self._workflow_patcher(
+                    self.workflow_file,
+                    job.matrix_entry,
+                    image_tag,
+                    job_id=job.job_id,
+                    container_mount_options=container_mount_options,
+                )
+
+            # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
+            # (causes "remove ... no such file or directory" when one job cleans cache)
+            act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
+            act_cache_dir.mkdir(parents=True, exist_ok=True)
 
             builder = ActCommandBuilder(
                 workflow_file=self.workflow_file,

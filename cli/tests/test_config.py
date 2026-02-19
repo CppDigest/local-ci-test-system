@@ -209,8 +209,8 @@ class TestResolveCachePaths:
         assert "boost" in str(r.boost_host)
         assert "cmake" in str(r.cmake_host)
         assert "build" in str(r.cmake_host)
-        assert r.b2_build_host is not None
-        assert "b2-build" in str(r.b2_build_host)
+        assert r.b2_source_host is not None
+        assert "b2-source" in str(r.b2_source_host)
         assert len(r.host_dirs_to_ensure()) == 4
 
     def test_resolve_cache_paths_no_cache(self):
@@ -243,26 +243,26 @@ class TestResolveCachePaths:
         assert "a1b2c3d4e5f6" in str(r.cmake_host)
         assert r.cmake_host.name == "build-gcc-15_a1b2c3d4e5f6"
 
-    def test_resolve_cache_paths_b2_build_when_boost_enabled(self):
-        """B2 build cache path is set per job when boost cache and build_dir enabled."""
+    def test_resolve_cache_paths_b2_source_when_boost_enabled(self):
+        """B2 source cache path is set per job when boost cache and build_dir enabled."""
         cfg = LocalCIConfig()
         r = resolve_cache_paths(
             cfg.cache, False, None, "build", "build:gcc-15"
         )
         assert r is not None
-        assert r.b2_build_host is not None
-        assert "b2-build" in str(r.b2_build_host)
-        assert "build-gcc-15" in str(r.b2_build_host)
+        assert r.b2_source_host is not None
+        assert "b2-source" in str(r.b2_source_host)
+        assert "build-gcc-15" in str(r.b2_source_host)
 
-    def test_resolve_cache_paths_b2_build_disabled_when_build_dir_false(self):
-        """B2 build cache path is None when boost.build_dir is False."""
+    def test_resolve_cache_paths_b2_source_disabled_when_build_dir_false(self):
+        """B2 source cache path is None when boost.build_dir is False."""
         cfg = LocalCIConfig()
         cfg.cache.boost.build_dir = False
         r = resolve_cache_paths(
             cfg.cache, False, None, "build", "build:gcc-15"
         )
         assert r is not None
-        assert r.b2_build_host is None
+        assert r.b2_source_host is None
 
     def test_ccache_compress_default(self):
         """Issue 9: CcacheConfig.compress defaults to True."""

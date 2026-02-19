@@ -74,3 +74,44 @@ def test_patched_workflow_preserves_boost_clone_step_structure(
         assert "Patch Boost" in content
     finally:
         patched.unlink(missing_ok=True)
+
+
+def test_patched_workflow_uses_persistent_boost_root_cache(
+    capy_workflow_path, sample_entry
+):
+    """cp -rL boost-source boost-root is replaced with persistent b2-source cache logic."""
+    if not capy_workflow_path.exists():
+        pytest.skip("capy workflow fixture not found")
+    patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
+    try:
+        content = patched.read_text()
+        assert "LOCALCI_B2_SOURCE_DIR" in content
+        assert "rsync -a --delete" in content
+        assert "bin.v2/" in content
+        assert "Jamroot" in content
+        # Original fallback still present
+        assert "cp -rL boost-source boost-root" in content
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+def test_patched_workflow_injects_container_options(
+    capy_workflow_path, sample_entry
+):
+    """container.options gets cache -v mounts injected when container_mount_options set."""
+    if not capy_workflow_path.exists():
+        pytest.skip("capy workflow fixture not found")
+    mounts = "-v /host/boost:/tmp/localci-cache/boost -v /host/ccache:/tmp/localci-cache/ccache"
+    patched = _write_patched_workflow(
+        capy_workflow_path,
+        sample_entry,
+        image_tag=None,
+        job_id="build",
+        container_mount_options=mounts,
+    )
+    try:
+        content = patched.read_text()
+        assert "/host/boost:/tmp/localci-cache/boost" in content
+        assert "/host/ccache:/tmp/localci-cache/ccache" in content
+    finally:
+        patched.unlink(missing_ok=True)

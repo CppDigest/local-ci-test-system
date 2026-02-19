@@ -76,20 +76,59 @@ class YqWrapper:
     """
 
     def __init__(self) -> None:
-        self._yq_path: Optional[str] = shutil.which("yq")
         self._is_linux: bool = sys.platform.startswith("linux")
         self._file_cache: dict[Path, dict] = {}
 
-        if self._yq_path:
-            logger.debug("yq found at %s", self._yq_path)
-        elif self._is_linux:
-            logger.warning(
-                "yq not found on Linux -- falling back to PyYAML. "
-                "Install yq for best results: sudo apt-get install yq "
-                "or sudo snap install yq"
+        raw_path: Optional[str] = shutil.which("yq")
+        self._yq_path: Optional[str] = None
+
+        if raw_path:
+            flavour = self._detect_yq_flavour(raw_path)
+            if flavour == "mikefarah":
+                self._yq_path = raw_path
+                logger.debug("yq (mikefarah) found at %s", raw_path)
+            else:
+                logger.debug(
+                    "yq at %s is not mikefarah/yq (detected: %s) -- "
+                    "using PyYAML fallback. Install mikefarah/yq for best results: "
+                    "sudo snap install yq",
+                    raw_path, flavour,
+                )
+
+        if not self._yq_path and self._is_linux:
+            logger.debug(
+                "mikefarah/yq not available on Linux -- using PyYAML fallback. "
+                "Install with: sudo snap install yq"
             )
-        else:
-            logger.debug("yq not found -- using PyYAML fallback for all queries")
+
+    @staticmethod
+    def _detect_yq_flavour(yq_path: str) -> str:
+        """Return 'mikefarah', 'kislyuk', or 'unknown' based on --version output.
+
+        mikefarah/yq:  'yq (https://github.com/mikefarah/yq/) version v4.x.x'
+        kislyuk/yq:    'yq x.x.x' (no URL) — Python wrapper around jq
+        """
+        try:
+            result = subprocess.run(
+                [yq_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            version_str = (result.stdout + result.stderr).lower()
+            if "mikefarah" in version_str:
+                return "mikefarah"
+            if "kislyuk" in version_str or "jq" in version_str:
+                return "kislyuk"
+            # mikefarah/yq 4.x prints the URL; kislyuk prints nothing with --version
+            # If the output looks like 'yq version v4.' it's mikefarah
+            if "version v" in version_str and "github.com/mikefarah" not in version_str:
+                return "unknown"
+            if "github.com/mikefarah" in version_str:
+                return "mikefarah"
+            return "unknown"
+        except Exception:
+            return "unknown"
 
     # -----------------------------------------------------------------
     # Properties
