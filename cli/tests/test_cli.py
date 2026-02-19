@@ -17,6 +17,7 @@ runner = CliRunner()
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_CI = str(FIXTURES_DIR / "sample_ci.yml")
+SAMPLE_WORKFLOW = str(FIXTURES_DIR / "sample_workflow.yml")
 
 
 # ---------------------------------------------------------------------------
@@ -133,18 +134,16 @@ class TestRun:
         assert "--dry-run" in result.output
 
     def test_dry_run(self):
-        sample = FIXTURES_DIR / "sample_workflow.yml"
         result = runner.invoke(
-            cli, ["run", "--workflow", str(sample), "--dry-run"]
+            cli, ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run"]
         )
         assert result.exit_code == 0
         assert "Dry run" in result.output or "dry" in result.output.lower()
 
     def test_dry_run_with_job(self):
-        sample = FIXTURES_DIR / "sample_workflow.yml"
         result = runner.invoke(
             cli,
-            ["run", "--workflow", str(sample), "--dry-run", "--job", "GCC"],
+            ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run", "--job", "GCC"],
         )
         assert result.exit_code == 0
 

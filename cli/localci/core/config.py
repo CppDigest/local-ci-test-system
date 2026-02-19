@@ -15,6 +15,12 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
+
+def _expand_path(v: Path) -> Path:
+    """Expand ~ and resolve to an absolute path."""
+    return Path(v).expanduser().resolve()
+
+
 # ---------------------------------------------------------------------------
 # Sub-models
 # ---------------------------------------------------------------------------
@@ -81,6 +87,11 @@ class ImagesConfig(BaseModel):
 
     registry: Path = Field(default_factory=lambda: Path.home() / ".localci" / "images")
     auto_build: bool = True
+
+    @field_validator("registry", mode="after")
+    @classmethod
+    def expand_registry(cls, v: Path) -> Path:
+        return _expand_path(v)
     cleanup: ImageCleanupConfig = Field(default_factory=ImageCleanupConfig)
 
 
@@ -106,6 +117,11 @@ class CacheConfig(BaseModel):
     ccache: CcacheConfig = Field(default_factory=CcacheConfig)
     boost: BoostCacheConfig = Field(default_factory=BoostCacheConfig)
 
+    @field_validator("directory", mode="after")
+    @classmethod
+    def expand_directory(cls, v: Path) -> Path:
+        return _expand_path(v)
+
 
 class LoggingConfig(BaseModel):
     """Logging settings."""
@@ -119,7 +135,7 @@ class LoggingConfig(BaseModel):
     @classmethod
     def expand_directory(cls, v: Path) -> Path:
         """Expand ~ so all consumers get an absolute path."""
-        return Path(v).expanduser().resolve()
+        return _expand_path(v)
 
 
 class ExecutionConfig(BaseModel):
@@ -141,6 +157,12 @@ class LocalCIConfig(BaseModel):
     version: int = 1
     workflow: Path = Field(default=Path(".github/workflows/ci.yml"))
     event: str = "push"
+
+    @field_validator("workflow", mode="after")
+    @classmethod
+    def expand_workflow(cls, v: Path) -> Path:
+        return _expand_path(v)
+
     parallel: ParallelConfig = Field(default_factory=ParallelConfig)
     platforms: PlatformConfig = Field(default_factory=PlatformConfig)
     jobs: JobsConfig = Field(default_factory=JobsConfig)

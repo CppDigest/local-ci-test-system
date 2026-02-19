@@ -90,6 +90,14 @@ class TestConfigLoading:
         assert "~" not in str(cfg.logging.directory)
         assert cfg.logging.directory.is_absolute()
 
+    def test_logging_directory_expands_tilde_direct(self):
+        """LoggingConfig expands ~ on direct construction (field_validator runs)."""
+        from localci.core.config import LoggingConfig
+
+        cfg = LoggingConfig(directory="~/.localci/logs")
+        assert "~" not in str(cfg.directory)
+        assert cfg.directory.is_absolute()
+
     def test_load_empty_file(self, tmp_path):
         cfg_file = tmp_path / ".localci.yml"
         cfg_file.write_text("")

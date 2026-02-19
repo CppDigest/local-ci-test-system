@@ -67,6 +67,11 @@ def logs(
 
     JOB is a job index (e.g. 5) or name (e.g. "GCC 15").
     """
+    if follow:
+        print_warning("--follow is not yet implemented; showing log snapshot only.")
+    if timestamps:
+        print_warning("--timestamps is not yet implemented; ignoring.")
+
     cfg = ctx.obj["config"]
     logs_dir: Path = cfg.logging.directory
 

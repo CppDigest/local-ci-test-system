@@ -48,6 +48,9 @@ def status(
     output_format: str,
 ) -> None:
     """Show execution progress."""
+    if follow:
+        print_warning("--follow is not yet implemented; showing current state only.")
+
     cfg = ctx.obj["config"]
     logs_dir: Path = cfg.logging.directory
 
