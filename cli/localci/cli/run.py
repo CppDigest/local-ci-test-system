@@ -400,12 +400,13 @@ def _write_patched_workflow(
     When the workflow has container: ${{ matrix.container }}, act uses that image
     and ignores our -P mapping. If image_tag is set, replace this entry's container
     with image_tag. Always patch the Codecov step to skip upload when ACT is set
-    (codecov.io often returns 403 when run under act). When BOOST_ROOT is set (by
-    localci cache), the Clone Boost step is skipped. When container_mount_options
-    is set, inject those -v options into the job's container.options so the job
-    container gets the cache mounts (act does not apply --container-options to
-    the job container when the workflow has container:). Patching is text-only to
-    avoid YAML round-trip issues.
+    (codecov.io often returns 403 when run under act). When LOCALCI_B2_SOURCE_DIR
+    is set (by the b2-source cache), the ``cp -rL boost-source boost-root`` line in
+    the Patch Boost step is replaced with rsync+symlink logic so b2 reuses its bin.v2
+    artifacts and builds incrementally. When container_mount_options is set, inject
+    those -v options into the job's container.options so the job container gets the
+    cache mounts (act does not apply --container-options to the job container when
+    the workflow has container:). Patching is text-only to avoid YAML round-trip issues.
     """
     with open(workflow_path, encoding="utf-8") as f:
         lines = f.readlines()
@@ -432,16 +433,18 @@ def _write_patched_workflow(
                     break
             break
 
-    # Patch Patch Boost step: when LOCALCI_B2_SOURCE_DIR is set, use a persistent per-job
+    # Patch Boost patch step: when LOCALCI_B2_SOURCE_DIR is set, use a persistent per-job
     # boost-root instead of a fresh cp -rL each run, so b2 sees stable timestamps and
     # can do incremental builds (bin.v2 artifacts are preserved in the cache).
+    # boost-clone still runs normally and creates boost-source; we sync from boost-source
+    # (not from BOOST_ROOT) so the cached tree always contains the right lib submodules.
     for i, line in enumerate(lines):
         if "cp -rL boost-source boost-root" in line and "LOCALCI_B2_SOURCE_DIR" not in line:
             ind = line[: len(line) - len(line.lstrip())]
             lines[i] = (
                 f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/Jamroot" ]; then\n'
-                f'{ind}  # Persistent boost-root cache exists: rsync Boost updates in, preserve bin.v2 and libs/capy slot\n'
-                f'{ind}  rsync -a --delete --exclude="bin.v2/" --exclude="libs/capy/" "${{BOOST_ROOT}}/" "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
+                f'{ind}  # Persistent boost-root cache: sync updates from boost-source, preserve bin.v2 and libs/capy\n'
+                f'{ind}  rsync -a --delete --exclude="bin.v2/" --exclude="libs/capy/" boost-source/. "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
                 f'{ind}  rm -rf "${{LOCALCI_B2_SOURCE_DIR}}/libs/capy" 2>/dev/null || true\n'
                 f'{ind}  ln -sfn "${{LOCALCI_B2_SOURCE_DIR}}" boost-root\n'
                 f'{ind}else\n'
@@ -452,50 +455,6 @@ def _write_patched_workflow(
                 f'{ind}  fi\n'
                 f'{ind}fi\n'
             )
-            break
-
-    # Patch Boost clone step: skip when BOOST_ROOT is set (localci provides cached Boost)
-    for i, line in enumerate(lines):
-        if "boost-clone" in line and ("uses:" in line or "cpp-actions/boost-clone" in line):
-            # Find the start of this step (the "- name:" line)
-            step_start = i
-            while step_start > 0:
-                prev = lines[step_start - 1]
-                if re.match(r"^\s+-\s+name:\s*", prev):
-                    step_start = step_start - 1
-                    break
-                step_start -= 1
-            # Avoid adding if twice
-            step_end = i + 1
-            while step_end < len(lines) and re.match(r"^\s{6,}\S", lines[step_end]):
-                step_end += 1
-            has_boost_root_if = any(
-                "BOOST_ROOT" in lines[j] for j in range(step_start, min(step_end, len(lines)))
-            )
-            if not has_boost_root_if:
-                indent = line[: len(line) - len(line.lstrip())]
-                if_line = f"{indent}if: ${{{{ env.BOOST_ROOT == '' }}}}\n"
-                lines.insert(step_start + 1, if_line)
-                step_end += 1  # one line inserted
-                # When BOOST_ROOT is set, workflow needs boost-source for Patch step
-                new_step = [
-                    "      - name: Use cached Boost (BOOST_ROOT)\n",
-                    "        if: ${{ env.BOOST_ROOT != '' }}\n",
-                    '        run: |\n'
-                    '          set -e\n'
-                    '          if ! [ -d "$BOOST_ROOT" ]; then\n'
-                    '            echo "::error::BOOST_ROOT=$BOOST_ROOT is not a directory in the container. The Boost cache bind mount may not be available (e.g. path not visible to Docker). Run without cache or ensure cache dir is mountable."\n'
-                    '            exit 1\n'
-                    '          fi\n'
-                    '          rm -rf boost-source 2>/dev/null\n'
-                    '          if command -v rsync >/dev/null 2>&1; then\n'
-                    '            rsync -a --link-dest="$BOOST_ROOT" "$BOOST_ROOT"/ boost-source/\n'
-                    '          else\n'
-                    '            mkdir -p boost-source && cp -a "$BOOST_ROOT"/. boost-source/\n'
-                    '          fi\n',
-                ]
-                for j, new_line in enumerate(new_step):
-                    lines.insert(step_end + 1 + j, new_line)
             break
 
     if image_tag:

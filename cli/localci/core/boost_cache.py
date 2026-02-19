@@ -72,32 +72,10 @@ def _git_clone(dest: Path, branch: str, shallow: bool, remote_url: str) -> None:
             e,
             (e.stderr or "").strip() or "(none)",
         )
-        return
-    _git_submodule_update(dest, shallow=False)
-
-
-def _git_submodule_update(repo: Path, shallow: bool = False) -> None:
-    """Initialize and update submodules so tools/build and libs are present.
-
-    ``shallow`` is only safe on a fresh clone; do NOT pass it on subsequent
-    updates because git may fail to find commits outside the shallow history.
-    """
-    args = ["git", "-C", str(repo), "submodule", "update", "--init", "--recursive"]
-    if shallow:
-        args.extend(["--depth", "1"])
-    try:
-        subprocess.run(args, check=True, capture_output=True, text=True)
-        logger.info("Boost cache submodules updated at %s", repo)
-    except subprocess.CalledProcessError as e:
-        logger.warning(
-            "Boost cache submodule update failed: %s (stderr: %s)",
-            (e.stderr or "").strip() or str(e),
-            (e.stderr or "").strip() or "(none)",
-        )
 
 
 def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> None:
-    """Fetch origin and update working tree to origin/<branch>; then update submodules."""
+    """Fetch origin and reset working tree to origin/<branch>."""
     try:
         subprocess.run(
             ["git", "-C", str(dest), "fetch", "origin", branch],
@@ -117,5 +95,3 @@ def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> Non
             "Boost cache fetch/update failed (non-fatal): %s",
             (e.stderr or "").strip() or str(e),
         )
-        return
-    _git_submodule_update(dest, shallow)

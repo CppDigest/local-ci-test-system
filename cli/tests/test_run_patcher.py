@@ -1,4 +1,4 @@
-"""Tests for workflow patcher (run command): BOOST_ROOT skip, Codecov, etc."""
+"""Tests for workflow patcher (run command): b2-source cache, Codecov, container options."""
 
 from __future__ import annotations
 
@@ -44,18 +44,21 @@ def sample_entry():
     )
 
 
-def test_patched_workflow_skips_boost_clone_when_boost_root_set(
+def test_patched_workflow_does_not_skip_boost_clone(
     capy_workflow_path, sample_entry
 ):
-    """When BOOST_ROOT is set (by localci), Clone Boost step gets if: env.BOOST_ROOT == ''."""
+    """boost-clone runs normally; no BOOST_ROOT conditional is injected onto that step."""
     if not capy_workflow_path.exists():
         pytest.skip("capy workflow fixture not found")
     patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
     try:
         content = patched.read_text()
-        assert "env.BOOST_ROOT == ''" in content
-        assert "Use cached Boost (BOOST_ROOT)" in content
-        assert "BOOST_ROOT != ''" in content
+        # boost-clone step must still be present and unconditional
+        assert "boost-clone" in content
+        assert "Clone Boost" in content
+        # No skip-clone conditional from localci
+        assert "env.BOOST_ROOT == ''" not in content
+        assert "Use cached Boost (BOOST_ROOT)" not in content
     finally:
         patched.unlink(missing_ok=True)
 
@@ -63,7 +66,7 @@ def test_patched_workflow_skips_boost_clone_when_boost_root_set(
 def test_patched_workflow_preserves_boost_clone_step_structure(
     capy_workflow_path, sample_entry
 ):
-    """Patched workflow still has Clone Boost step and the new Use cached Boost step."""
+    """Patched workflow still has the Clone Boost and Patch Boost steps."""
     if not capy_workflow_path.exists():
         pytest.skip("capy workflow fixture not found")
     patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
@@ -79,7 +82,11 @@ def test_patched_workflow_preserves_boost_clone_step_structure(
 def test_patched_workflow_uses_persistent_boost_root_cache(
     capy_workflow_path, sample_entry
 ):
-    """cp -rL boost-source boost-root is replaced with persistent b2-source cache logic."""
+    """cp -rL boost-source boost-root is replaced with persistent b2-source cache logic.
+
+    The rsync source must be boost-source (created by boost-clone, which still runs
+    normally) — NOT $BOOST_ROOT (the host-side reference clone which may lack lib submodules).
+    """
     if not capy_workflow_path.exists():
         pytest.skip("capy workflow fixture not found")
     patched = _write_patched_workflow(capy_workflow_path, sample_entry, image_tag=None)
@@ -89,7 +96,10 @@ def test_patched_workflow_uses_persistent_boost_root_cache(
         assert "rsync -a --delete" in content
         assert "bin.v2/" in content
         assert "Jamroot" in content
-        # Original fallback still present
+        # Sync from boost-source (boost-clone output), not from $BOOST_ROOT
+        assert "boost-source/." in content
+        assert "$BOOST_ROOT/" not in content or "boost-source/." in content
+        # Original cp -rL fallback still present
         assert "cp -rL boost-source boost-root" in content
     finally:
         patched.unlink(missing_ok=True)
