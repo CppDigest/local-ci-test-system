@@ -18,6 +18,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolve_image_tag_and_build(
+    entry: MatrixEntry,
+    registry_path: Optional[Path],
+) -> tuple[str, Optional[str], bool]:
+    """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build."""
+    if not registry_path or not registry_path.exists():
+        return _derive_image_tag(entry), None, False
+    from localci.core.registry import ImageRegistry
+
+    registry = ImageRegistry(registry_path)
+    registry.load()
+    result = registry.select(entry)
+    if result.use_image:
+        return result.use_image.docker_tag, None, False
+    if result.base_image:
+        return _derive_image_tag(entry), result.base_image.docker_tag, True
+    return _derive_image_tag(entry), None, True
+
+
 def _derive_image_tag(entry: MatrixEntry) -> str:
     """Derive Docker image tag from matrix entry (same logic as run.py)."""
     if entry.container.image:
@@ -93,6 +112,7 @@ class QueueBuilder:
         matrix_include: Optional[list[dict]] = None,
         matrix_exclude: Optional[list[dict]] = None,
         entries_include: Optional[set[tuple[str, int]]] = None,
+        registry_path: Optional[Path] = None,
     ) -> PriorityJobQueue:
         """Build queue. entries_include: when set, only (job_id, entry.index) in this set."""
         queue = PriorityJobQueue()
@@ -120,19 +140,22 @@ class QueueBuilder:
                 job_keys.setdefault(job_id, []).append(key)
                 candidates.append((job, entry))
 
-        # Second pass: create QueuedJob with dependency keys and assign priority
+        # Second pass: create QueuedJob with dependency keys, image selection, and priority
         for job, entry in candidates:
             dep_keys = []
             for dep in job.needs:
                 dep_keys.extend(job_keys.get(dep, []))
-            image_tag = _derive_image_tag(entry)
+            image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
+                entry, registry_path
+            )
             queued = QueuedJob(
                 job_id=job.id,
                 matrix_entry=entry,
                 priority=0,
                 dependencies=dep_keys,
                 image_tag=image_tag,
-                needs_build=False,
+                base_image_tag=base_image_tag,
+                needs_build=needs_build,
             )
             queued.priority = self.priority_config.resolve_priority(queued)
             queue.enqueue(queued)

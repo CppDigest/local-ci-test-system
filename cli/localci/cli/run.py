@@ -236,6 +236,9 @@ def run(
         else None
     )
     priority_config = PriorityConfig.from_config(cfg)
+    registry_path = project_dir / "image-registry.yml"
+    if not registry_path.exists():
+        registry_path = None
     builder = QueueBuilder(wf, priority_config=priority_config)
     queue = builder.build(
         platform_filter=plat_filter,
@@ -244,6 +247,7 @@ def run(
         matrix_include=matrix_include,
         matrix_exclude=matrix_exclude,
         entries_include=selected_set,
+        registry_path=registry_path,
     )
 
     # ── 4. Dry-run mode ───────────────────────────────────────────
