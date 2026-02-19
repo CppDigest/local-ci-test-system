@@ -151,10 +151,10 @@ def analyze(
         wf = analyzer.analyze(Path(workflow), event)
     except WorkflowError as exc:
         print_error(str(exc))
-        raise SystemExit(1) from exc
+        ctx.exit(1)
     except FileNotFoundError as exc:
         print_error(str(exc))
-        raise SystemExit(1) from exc
+        ctx.exit(1)
 
     # ── JSON output ──────────────────────────────────────────────
     if output_format == "json":

@@ -53,7 +53,7 @@ Key features:
 | Python 3.11+ | Runtime | [python.org](https://www.python.org/downloads/) |
 | Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
-| act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash` |
+| act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` |
 
 ### Install for usage
 
@@ -416,7 +416,7 @@ localci run --job 5 --rebuild-image
 
 If your workflow uses external GitHub Actions (composite actions from other repositories), `act` needs a GitHub token to download them. Without authentication, you'll see errors like:
 
-```
+```text
 authentication required: Invalid username or token
 ```
 

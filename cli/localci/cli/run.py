@@ -141,7 +141,6 @@ def run(
     except Exception as exc:
         print_error(f"Failed to parse workflow: {exc}")
         ctx.exit(1)
-        return
 
     # Collect all matrix entries across jobs
     all_entries = []
@@ -253,14 +252,12 @@ def run(
     except ActNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
-        return
 
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
-        return
 
     # ── 6. Execute jobs ───────────────────────────────────────────
     summary = ExecutionSummary(
@@ -404,15 +401,35 @@ def _write_patched_workflow(
                 break
         if name_idx is None:
             raise ValueError(f"Matrix entry name '{entry.name}' not found in workflow")
+
+        # Use indentation of the matched name line so we work with any indent width
+        name_line = lines[name_idx]
+        name_indent = name_line[: len(name_line) - len(name_line.lstrip())]
+        name_indent_len = len(name_indent)
+
+        # Find block start: the "- " list item line that contains this name (go backward)
         block_start = name_idx
-        while block_start > 0 and not re.match(r"^\s{10}-\s", lines[block_start]):
+        while block_start > 0:
             block_start -= 1
+            line = lines[block_start]
+            line_indent = line[: len(line) - len(line.lstrip())]
+            if line.strip().startswith("-") and len(line_indent) <= name_indent_len:
+                break
+
+        # Block end: next "- " at same indent as block_start, or first line with less indent
+        list_item_indent = lines[block_start][: len(lines[block_start]) - len(lines[block_start].lstrip())]
+        list_item_indent_len = len(list_item_indent)
         block_end = name_idx + 1
-        while block_end < len(lines) and not (
-            re.match(r"^\s{10}-\s", lines[block_end])
-            or re.match(r"^\s{4}\w", lines[block_end])
-        ):
+        while block_end < len(lines):
+            line = lines[block_end]
+            line_indent = line[: len(line) - len(line.lstrip())]
+            if line_indent == list_item_indent and line.strip().startswith("-"):
+                break
+            if len(line_indent) < list_item_indent_len:
+                break
             block_end += 1
+
+        # Replace container within this block (container_pattern accepts any leading whitespace)
         container_pattern = re.compile(
             r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$"
         )
