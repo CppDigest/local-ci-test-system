@@ -180,6 +180,33 @@ cache:
 
 ---
 
+## Verifying incremental builds (B2)
+
+After a small change (e.g. one source file) and a successful `localci run`, you can confirm that only the modified file (and its dependents) were rebuilt instead of the whole project.
+
+1. **Run with verbose output** so the full B2 log is visible:
+   ```bash
+   localci run -v
+   ```
+   Or inspect the job log file from a previous run (see `localci run --help` for log location).
+
+2. **In the "Boost B2 Workflow" step log**, B2 prints one line per compilation, e.g.:
+   ```text
+   clang-linux.compile.c++ bin.v2/libs/capy/build/.../src/detail/thread_name.o
+   ```
+   - **Incremental:** You see only one or a few `compile.c++` lines (the changed file and anything that depends on it). For a single change in one `.cpp`, expect one such line (and possibly a link step).
+   - **Full rebuild:** You see many `compile.c++` lines (dozens or hundreds) for lots of `.o` files.
+
+3. **Quick count** (if the log is in a file):
+   ```bash
+   grep -c "compile.c++" <path-to-job-log>
+   ```
+   A small number (e.g. 1–3) means incremental; a large number (e.g. 50+) means a larger or full rebuild.
+
+4. **Timing:** An incremental run after a one-file change should complete the B2 step in well under 30 seconds; a full rebuild takes much longer.
+
+---
+
 ## Phase 2 Deliverables Summary
 
 | Component | Status | Scope |
