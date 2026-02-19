@@ -1,6 +1,6 @@
 """Core modules for Local CI."""
 
-from localci.core.workflow import (  # noqa: F401
+from localci.core.workflow import (
     MissingFieldError,
     UnsupportedMatrixError,
     WorkflowError,

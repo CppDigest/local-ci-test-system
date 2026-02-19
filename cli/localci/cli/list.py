@@ -50,6 +50,16 @@ _PLATFORM_COLOR = {
     Platform.MACOS: "yellow",
 }
 
+_MATRIX_TABLE_COLUMNS = (
+    "#",
+    "Name",
+    "Platform",
+    "Compiler",
+    "Container",
+    "Build",
+    "Variants",
+)
+
 
 # =====================================================================
 # Command
@@ -212,9 +222,7 @@ def list_cmd(
         print_info("No entries match the given filters.")
         return
 
-    table = make_table(
-        "#", "Name", "Platform", "Compiler", "Container", "Build", "Variants",
-    )
+    table = make_table(*_MATRIX_TABLE_COLUMNS)
 
     for entry in entries:
         color = _PLATFORM_COLOR.get(entry.platform, "white")

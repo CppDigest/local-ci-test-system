@@ -281,15 +281,23 @@ class Workflow:
     def dependency_order(self) -> list[str]:
         """Topological sort of jobs by dependencies."""
         visited: set[str] = set()
+        in_progress: set[str] = set()
         order: list[str] = []
 
         def visit(job_id: str) -> None:
             if job_id in visited:
                 return
+            if job_id not in self.jobs:
+                logger.warning("Dependency '%s' not found in jobs", job_id)
+                return
+            if job_id in in_progress:
+                logger.warning("Circular dependency detected involving '%s'", job_id)
+                return
+            in_progress.add(job_id)
             visited.add(job_id)
-            if job_id in self.jobs:
-                for dep in self.jobs[job_id].needs:
-                    visit(dep)
+            for dep in self.jobs[job_id].needs:
+                visit(dep)
+            in_progress.discard(job_id)
             order.append(job_id)
 
         for job_id in self.jobs:
@@ -448,8 +456,15 @@ class WorkflowAnalyzer:
         for yml in sorted(workflow_dir.glob("*.yml")):
             try:
                 workflows.append(self.analyze(yml))
-            except Exception as exc:
+            except (WorkflowError, FileNotFoundError) as exc:
                 logger.warning("Failed to parse %s: %s", yml, exc)
+            except Exception as exc:
+                logger.error(
+                    "Unexpected error parsing %s: %s",
+                    yml,
+                    exc,
+                    exc_info=True,
+                )
         return workflows
 
     # -----------------------------------------------------------------

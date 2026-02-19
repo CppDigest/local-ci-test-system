@@ -144,14 +144,22 @@ class YqWrapper:
     # -----------------------------------------------------------------
 
     def _load_yaml(self, file: Path) -> dict:
-        """Load *file* via PyYAML (result is cached)."""
+        """Load *file* via PyYAML (result is cached).
+
+        Caller must ensure file exists (e.g. query() checks before calling).
+        """
         resolved = file.resolve()
         if resolved not in self._file_cache:
-            if not file.exists():
-                raise FileNotFoundError(f"Workflow file not found: {file}")
             with open(file, "r", encoding="utf-8") as fh:
                 data = yaml.safe_load(fh)
-            self._file_cache[resolved] = data if isinstance(data, dict) else {}
+            if not isinstance(data, dict):
+                logger.warning(
+                    "YAML root is not a dict (got %s) in %s; treating as empty.",
+                    type(data).__name__,
+                    file,
+                )
+                data = {}
+            self._file_cache[resolved] = data
         return self._file_cache[resolved]
 
     def _query_python(self, file: Path, expression: str) -> Any:
@@ -241,13 +249,16 @@ class YqWrapper:
         """Return ``yq --version`` string, or *None* if yq is absent."""
         if not self._yq_path:
             return None
-        result = subprocess.run(
-            [self._yq_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.stdout.strip()
+        try:
+            result = subprocess.run(
+                [self._yq_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result.stdout.strip() if result.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
 
     # =================================================================
     # High-level helpers -- all delegate to self.query()

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from localci.utils.yq import YqNotFoundError, YqWrapper
+from localci.utils.yq import YqWrapper
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_CI = FIXTURES_DIR / "sample_ci.yml"
@@ -163,8 +163,8 @@ class TestYqErrors:
         assert yq.workflow_name(SAMPLE_CI) == "CI Test"
 
     def test_version_without_yq(self, yq):
-        if not yq.has_yq:
-            assert yq.version() is None
+        yq._yq_path = None
+        assert yq.version() is None
 
     def test_has_yq_property(self, yq):
         # Just verify property is accessible
