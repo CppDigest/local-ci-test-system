@@ -50,6 +50,9 @@ def status(
     output_format: str,
 ) -> None:
     """Show execution progress."""
+    if follow:
+        print_warning("--follow is not yet implemented; showing current state only.")
+
     cfg = ctx.obj["config"]
     logs_dir = Path(cfg.logging.directory)
 
@@ -91,7 +94,6 @@ def status(
     except Exception as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
-        return
 
     if output_format == "json":
         click.echo(json.dumps(summary.to_dict(), indent=2))

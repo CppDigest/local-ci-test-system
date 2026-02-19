@@ -67,6 +67,9 @@ def logs(
 
     JOB is a job index (e.g. 5) or name (e.g. "GCC 15").
     """
+    if follow:
+        print_warning("--follow is not yet implemented; showing log snapshot only.")
+
     cfg = ctx.obj["config"]
     logs_dir: Path = cfg.logging.directory
 
@@ -87,7 +90,6 @@ def logs(
     except Exception as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
-        return
 
     # Find matching job result
     match = _find_job(summary, job)
