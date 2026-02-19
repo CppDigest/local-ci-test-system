@@ -50,6 +50,9 @@ def status(
     output_format: str,
 ) -> None:
     """Show execution progress."""
+    if follow:
+        print_warning("--follow is not yet implemented; showing current state only.")
+
     cfg = ctx.obj["config"]
     logs_dir = Path(cfg.logging.directory)
 
@@ -79,7 +82,10 @@ def status(
 
     if not results_file.exists():
         if execution_id:
-            print_warning(f"No results found for execution: {execution_id}")
+            print_warning(
+                f"No results found for execution: {execution_id}. "
+                f"Expected file: {results_file}"
+            )
         else:
             print_warning(
                 "No previous execution found. Run `localci run` first."
@@ -91,7 +97,6 @@ def status(
     except Exception as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
-        return
 
     if output_format == "json":
         click.echo(json.dumps(summary.to_dict(), indent=2))

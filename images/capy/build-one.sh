@@ -35,26 +35,40 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
-IMAGE_NAME="$1"
-shift
+# Handle --help before assigning IMAGE_NAME so "build-one.sh --help" works
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  usage
+  exit 0
+fi
 
+IMAGE_NAME=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --save)
-      SAVE=true
-      shift
-      ;;
     -h|--help)
       usage
       exit 0
       ;;
+    --save)
+      SAVE=true
+      shift
+      ;;
     *)
-      echo "Unknown argument: $1" >&2
-      usage
-      exit 1
+      if [[ -z "${IMAGE_NAME:-}" ]]; then
+        IMAGE_NAME="$1"
+      else
+        echo "Unknown argument: $1" >&2
+        usage
+        exit 1
+      fi
+      shift
       ;;
   esac
 done
+
+if [[ -z "${IMAGE_NAME:-}" ]]; then
+  usage
+  exit 1
+fi
 
 DOCKERFILE="${FILES[$IMAGE_NAME]:-}"
 if [[ -z "${DOCKERFILE}" ]]; then

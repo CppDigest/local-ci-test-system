@@ -451,12 +451,11 @@ class JobExecutor:
             result.started_at = datetime.now()
 
             exit_code, stdout, stderr = self._execute_process(
-                cmd=cmd.build(),
+                act_cmd=cmd,
                 timeout=timeout,
                 log_file=log_file,
                 stream_output=stream_output,
                 on_output=on_output,
-                workdir=cmd.workdir or Path("."),
             )
 
             result.finished_at = datetime.now()
@@ -514,40 +513,37 @@ class JobExecutor:
 
     def _execute_process(
         self,
-        cmd: list[str],
+        act_cmd: ActCommand,
         timeout: int,
         log_file: Path,
         stream_output: bool,
         on_output: Optional[Callable[[str], None]],
-        workdir: Path,
     ) -> tuple[int, str, str]:
         """Execute ``act`` process with output capture and streaming.
 
+        Uses ActCommand.display() for the log header (secrets redacted) and
+        ActCommand.secrets for env, so the token is never written to disk.
+
         Returns ``(exit_code, stdout, stderr)``.
         """
+        cmd = act_cmd.build()
+        workdir = act_cmd.workdir or Path(".")
         stdout_lines: list[str] = []
         stderr_lines: list[str] = []
         log_lock = threading.Lock()
 
         with open(log_file, "w", encoding="utf-8") as log_f:
-            # Write header
+            # Write header with redacted command (no secrets on disk)
             log_f.write("# LocalCI Job Log\n")
-            log_f.write(f"# Command: {' '.join(cmd)}\n")
+            log_f.write(f"# Command: {act_cmd.display()}\n")
             log_f.write(f"# Started: {datetime.now().isoformat()}\n")
             log_f.write(f"# {'=' * 60}\n\n")
 
-            # Build environment for act subprocess
-            # Include parent environment and add GITHUB_TOKEN from secrets if present
+            # Build environment: parent env + GITHUB_TOKEN from ActCommand.secrets
             env = dict(os.environ)
-            # Extract GITHUB_TOKEN from cmd secrets if present
-            for i, arg in enumerate(cmd):
-                if arg == "--secret" and i + 1 < len(cmd):
-                    secret_pair = cmd[i + 1]
-                    if secret_pair.startswith("GITHUB_TOKEN="):
-                        token = secret_pair.split("=", 1)[1]
-                        env["GITHUB_TOKEN"] = token
-                        break
-            
+            if "GITHUB_TOKEN" in act_cmd.secrets:
+                env["GITHUB_TOKEN"] = act_cmd.secrets["GITHUB_TOKEN"]
+
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,

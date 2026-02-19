@@ -67,6 +67,11 @@ def logs(
 
     JOB is a job index (e.g. 5) or name (e.g. "GCC 15").
     """
+    if follow:
+        print_warning("--follow is not yet implemented; showing log snapshot only.")
+    if timestamps:
+        print_warning("--timestamps is not yet implemented; ignoring.")
+
     cfg = ctx.obj["config"]
     logs_dir: Path = cfg.logging.directory
 
@@ -77,9 +82,15 @@ def logs(
         results_file = logs_dir / "last-run.json"
 
     if not results_file.exists():
-        print_warning(
-            "No previous execution found. Run `localci run` first."
-        )
+        if execution_id:
+            print_warning(
+                f"No results found for execution: {execution_id}. "
+                f"Expected file: {results_file}"
+            )
+        else:
+            print_warning(
+                "No previous execution found. Run `localci run` first."
+            )
         return
 
     try:
@@ -87,7 +98,6 @@ def logs(
     except Exception as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
-        return
 
     # Find matching job result
     match = _find_job(summary, job)

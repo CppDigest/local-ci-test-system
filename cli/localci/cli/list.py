@@ -51,6 +51,22 @@ _PLATFORM_COLOR = {
 }
 
 
+def _entry_matches_list(entry_name: str, names: list[str]) -> bool:
+    """True if *entry_name* matches any string in *names* (case-insensitive).
+
+    Match: exact equality or the list item is a substring of entry name,
+    so config "GCC 15" matches entry "GCC 15: C++20".
+    """
+    entry_lower = entry_name.lower()
+    for s in names:
+        part = s.strip().lower()
+        if not part:
+            continue
+        if entry_lower == part or part in entry_lower:
+            return True
+    return False
+
+
 # =====================================================================
 # Command
 # =====================================================================
@@ -119,11 +135,11 @@ def list_cmd(
             "No workflow file specified. "
             "Use --workflow or create a .localci.yml config."
         )
-        raise SystemExit(1)
+        ctx.exit(1)
 
     if not wf_path.exists():
         print_error(f"Workflow file not found: {wf_path}")
-        raise SystemExit(1)
+        ctx.exit(1)
 
     # Parse
     try:
@@ -131,10 +147,22 @@ def list_cmd(
         wf = analyzer.analyze(wf_path)
     except (WorkflowError, FileNotFoundError) as exc:
         print_error(str(exc))
-        raise SystemExit(1) from exc
+        ctx.exit(1)
 
-    # Collect entries and apply filters
-    entries = wf.all_matrix_entries()
+    # Collect entries and apply filters (config.jobs.include / exclude for --enabled / --disabled)
+    if config and (enabled or disabled):
+        entries = []
+        for job_id, job in wf.jobs.items():
+            if enabled and config.jobs.include and job_id not in config.jobs.include:
+                continue
+            if disabled and config.jobs.exclude and job_id not in config.jobs.exclude:
+                continue
+            if enabled and disabled:
+                if config.jobs.exclude and job_id in config.jobs.exclude:
+                    continue
+            entries.extend(job.matrix)
+    else:
+        entries = wf.all_matrix_entries()
 
     if platform != "all":
         target = _PLATFORM_MAP.get(platform)
@@ -148,6 +176,28 @@ def list_cmd(
 
     if comp_version:
         entries = [e for e in entries if e.compiler.version == comp_version]
+
+    # Filter by config.jobs.include / config.jobs.exclude (--enabled / --disabled)
+    if enabled or disabled:
+        if config:
+            include_names = config.jobs.include or []
+            exclude_names = config.jobs.exclude or []
+
+            if enabled:
+                if include_names:
+                    entries = [e for e in entries if _entry_matches_list(e.name, include_names)]
+                elif exclude_names:
+                    entries = [e for e in entries if not _entry_matches_list(e.name, exclude_names)]
+
+            if disabled:
+                if exclude_names:
+                    entries = [e for e in entries if _entry_matches_list(e.name, exclude_names)]
+                else:
+                    entries = []
+        else:
+            # No config: --enabled/--disabled have no include/exclude list
+            if disabled:
+                entries = []
 
     # ── JSON output ──────────────────────────────────────────────
     if output_format == "json":
@@ -178,12 +228,20 @@ def list_cmd(
 
     # ── Table output (default) ───────────────────────────────────
     filter_desc = []
+    if enabled:
+        filter_desc.append("enabled")
+    if disabled:
+        filter_desc.append("disabled")
     if platform != "all":
         filter_desc.append(f"platform={platform}")
     if compiler:
         filter_desc.append(f"compiler={compiler}")
     if comp_version:
         filter_desc.append(f"version={comp_version}")
+    if enabled:
+        filter_desc.append("enabled")
+    if disabled:
+        filter_desc.append("disabled")
 
     title = f"Matrix Entries ({len(entries)})"
     if filter_desc:

@@ -18,6 +18,7 @@ runner = CliRunner()
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_CI = str(FIXTURES_DIR / "sample_ci.yml")
+SAMPLE_WORKFLOW = str(FIXTURES_DIR / "sample_workflow.yml")
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +94,32 @@ class TestList:
         result = runner.invoke(cli, ["list"])
         assert result.exit_code != 0
 
+    def test_list_enabled_with_config(self, tmp_path):
+        """--enabled filters by config.jobs.include when present."""
+        config_file = tmp_path / ".localci.yml"
+        config_file.write_text(
+            f"version: 1\nworkflow: {SAMPLE_CI}\njobs:\n  include:\n    - GCC 15\n"
+        )
+        result = runner.invoke(
+            cli, ["-c", str(config_file), "list", "--enabled", "--format", "simple"]
+        )
+        assert result.exit_code == 0
+        # Should only show entries whose name matches "GCC 15"
+        assert "GCC 15" in result.output
+
+    def test_list_disabled_with_config(self, tmp_path):
+        """--disabled filters by config.jobs.exclude when present."""
+        config_file = tmp_path / ".localci.yml"
+        config_file.write_text(
+            f"version: 1\nworkflow: {SAMPLE_CI}\njobs:\n  exclude:\n    - GCC 15\n"
+        )
+        result = runner.invoke(
+            cli, ["-c", str(config_file), "list", "--disabled", "--format", "simple"]
+        )
+        assert result.exit_code == 0
+        # Disabled shows only entries in exclude (names matching "GCC 15")
+        assert "GCC 15" in result.output
+
 
 # ---------------------------------------------------------------------------
 # run
@@ -108,18 +135,16 @@ class TestRun:
         assert "--dry-run" in result.output
 
     def test_dry_run(self):
-        sample = FIXTURES_DIR / "sample_workflow.yml"
         result = runner.invoke(
-            cli, ["run", "--workflow", str(sample), "--dry-run"]
+            cli, ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run"]
         )
         assert result.exit_code == 0
         assert "Dry run" in result.output or "dry" in result.output.lower()
 
     def test_dry_run_with_job(self):
-        sample = FIXTURES_DIR / "sample_workflow.yml"
         result = runner.invoke(
             cli,
-            ["run", "--workflow", str(sample), "--dry-run", "--job", "GCC"],
+            ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run", "--job", "GCC"],
         )
         assert result.exit_code == 0
 

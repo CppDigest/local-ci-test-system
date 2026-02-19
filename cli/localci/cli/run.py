@@ -157,7 +157,6 @@ def run(
     except Exception as exc:
         print_error(f"Failed to parse workflow: {exc}")
         ctx.exit(1)
-        return
 
     # Collect (job_id, entry) pairs
     all_pairs: list[tuple[str, MatrixEntry]] = []
@@ -261,13 +260,12 @@ def run(
     except ActNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
-        return
+
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
-        return
 
     # ── 5b. Phase 2: ensure Boost cache (clone/fetch when enabled) ───
     if not no_cache and cfg.cache.enabled and cfg.cache.boost.enabled:
@@ -339,10 +337,16 @@ def run(
                 for line in stats.splitlines():
                     console.print(f"  {line}")
 
-    results_file = logs_dir / "last-run.json"
+    # Save results: both last-run.json and {execution_id}.json so
+    # status --execution-id X and logs -e X can find this run
+    logs_dir = cfg.logging.directory
+    last_run_file = logs_dir / "last-run.json"
+    execution_file = logs_dir / f"{summary.execution_id}.json"
     try:
-        summary.save(results_file)
-        print_info(f"Results saved to {results_file}")
+        summary.save(last_run_file)
+        summary.save(execution_file)
+        print_info(f"Results saved to {last_run_file}")
+        print_info(f"Execution ID: {summary.execution_id} (use with status -e or logs -e)")
     except Exception as exc:
         print_warning(f"Could not save results: {exc}")
 
@@ -564,15 +568,35 @@ def _write_patched_workflow(
                 break
         if name_idx is None:
             raise ValueError(f"Matrix entry name '{entry.name}' not found in workflow")
+
+        # Use indentation of the matched name line so we work with any indent width
+        name_line = lines[name_idx]
+        name_indent = name_line[: len(name_line) - len(name_line.lstrip())]
+        name_indent_len = len(name_indent)
+
+        # Find block start: the "- " list item line that contains this name (go backward)
         block_start = name_idx
-        while block_start > 0 and not re.match(r"^\s{10}-\s", lines[block_start]):
+        while block_start > 0:
             block_start -= 1
+            line = lines[block_start]
+            line_indent = line[: len(line) - len(line.lstrip())]
+            if line.strip().startswith("-") and len(line_indent) <= name_indent_len:
+                break
+
+        # Block end: next "- " at same indent as block_start, or first line with less indent
+        list_item_indent = lines[block_start][: len(lines[block_start]) - len(lines[block_start].lstrip())]
+        list_item_indent_len = len(list_item_indent)
         block_end = name_idx + 1
-        while block_end < len(lines) and not (
-            re.match(r"^\s{10}-\s", lines[block_end])
-            or re.match(r"^\s{4}\w", lines[block_end])
-        ):
+        while block_end < len(lines):
+            line = lines[block_end]
+            line_indent = line[: len(line) - len(line.lstrip())]
+            if line_indent == list_item_indent and line.strip().startswith("-"):
+                break
+            if len(line_indent) < list_item_indent_len:
+                break
             block_end += 1
+
+        # Replace container within this block (container_pattern accepts any leading whitespace)
         container_pattern = re.compile(
             r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$"
         )
@@ -598,33 +622,3 @@ def _write_patched_workflow(
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.writelines(lines)
     return Path(path)
-
-
-def _derive_image_tag(entry: MatrixEntry) -> str:
-    """Derive a Docker image tag from a matrix entry.
-
-    Always uses our built capy image names so act runs local images
-    (e.g. capy-ubuntu-24.04-clang20-x86) instead of pulling ubuntu:24.04
-    with linux/386, which does not exist. Uses container image or runs_on
-    to get the OS label (e.g. ubuntu:24.04 -> ubuntu-24.04).
-    """
-    if entry.container.image:
-        # e.g. "ubuntu:24.04" or "ubuntu:25.04" -> "ubuntu-24.04"
-        img = entry.container.image.strip().lower()
-        if ":" in img:
-            os_label = img.replace(":", "-", 1)
-        else:
-            os_label = img
-    else:
-        os_label = entry.runs_on
-    compiler_label = (
-        f"{entry.compiler.family.value}{entry.compiler.version}"
-    )
-    base = f"capy-{os_label}-{compiler_label}"
-    if entry.variant.coverage:
-        base += "-cov"
-    elif entry.variant.asan:
-        base += "-asan"
-    elif entry.variant.x86:
-        base += "-x86"
-    return f"{base}:latest"
