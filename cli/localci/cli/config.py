@@ -14,6 +14,7 @@ from localci.core.config import (
     LocalCIConfig,
     default_config_yaml,
     find_config_file,
+    _stringify_paths,
 )
 from localci.utils.output import (
     console,
@@ -168,16 +169,3 @@ def _coerce_value(raw: str) -> str | int | float | bool:
     except ValueError:
         pass
     return raw
-
-
-def _stringify_paths(obj: object) -> None:
-    """Recursively convert Path-like values to strings inside nested dicts."""
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if isinstance(value, Path):
-                obj[key] = str(value)
-            else:
-                _stringify_paths(value)
-    elif isinstance(obj, list):
-        for item in obj:
-            _stringify_paths(item)

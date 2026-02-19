@@ -133,8 +133,20 @@ def list_cmd(
         print_error(str(exc))
         ctx.exit(1)
 
-    # Collect entries and apply filters
-    entries = wf.all_matrix_entries()
+    # Collect entries and apply filters (config.jobs.include / exclude for --enabled / --disabled)
+    if config and (enabled or disabled):
+        entries = []
+        for job_id, job in wf.jobs.items():
+            if enabled and config.jobs.include and job_id not in config.jobs.include:
+                continue
+            if disabled and config.jobs.exclude and job_id not in config.jobs.exclude:
+                continue
+            if enabled and disabled:
+                if config.jobs.exclude and job_id in config.jobs.exclude:
+                    continue
+            entries.extend(job.matrix)
+    else:
+        entries = wf.all_matrix_entries()
 
     if platform != "all":
         target = _PLATFORM_MAP.get(platform)
@@ -178,6 +190,10 @@ def list_cmd(
 
     # ── Table output (default) ───────────────────────────────────
     filter_desc = []
+    if enabled:
+        filter_desc.append("enabled")
+    if disabled:
+        filter_desc.append("disabled")
     if platform != "all":
         filter_desc.append(f"platform={platform}")
     if compiler:

@@ -437,33 +437,3 @@ def _write_patched_workflow(
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.writelines(lines)
     return Path(path)
-
-
-def _derive_image_tag(entry: MatrixEntry) -> str:
-    """Derive a Docker image tag from a matrix entry.
-
-    Always uses our built capy image names so act runs local images
-    (e.g. capy-ubuntu-24.04-clang20-x86) instead of pulling ubuntu:24.04
-    with linux/386, which does not exist. Uses container image or runs_on
-    to get the OS label (e.g. ubuntu:24.04 -> ubuntu-24.04).
-    """
-    if entry.container.image:
-        # e.g. "ubuntu:24.04" or "ubuntu:25.04" -> "ubuntu-24.04"
-        img = entry.container.image.strip().lower()
-        if ":" in img:
-            os_label = img.replace(":", "-", 1)
-        else:
-            os_label = img
-    else:
-        os_label = entry.runs_on
-    compiler_label = (
-        f"{entry.compiler.family.value}{entry.compiler.version}"
-    )
-    base = f"capy-{os_label}-{compiler_label}"
-    if entry.variant.coverage:
-        base += "-cov"
-    elif entry.variant.asan:
-        base += "-asan"
-    elif entry.variant.x86:
-        base += "-x86"
-    return f"{base}:latest"

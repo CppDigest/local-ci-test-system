@@ -6,8 +6,10 @@ JSON status for MCP, and post-execution summary reports.
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -310,8 +312,6 @@ class ProgressTracker:
                 logger.debug("Live update error: %s", e)
 
         if self.status_file:
-            import time
-
             now = time.time()
             if now - self._last_status_write >= self._status_write_interval:
                 self._last_status_write = now
@@ -324,26 +324,18 @@ class ProgressTracker:
 
     def _write_status_file(self) -> None:
         """Write current status to status_file (throttled)."""
-        if not self.status_file:
-            return
-        try:
-            data = self.get_status_dict()
-            import json
-
-            self.status_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.status_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.debug("Could not write status file: %s", e)
+        self._write_status_file_impl()
 
     def write_status_file(self) -> None:
         """Write current status to status_file unconditionally (e.g. at end of run)."""
+        self._write_status_file_impl()
+
+    def _write_status_file_impl(self) -> None:
+        """Write current status to status_file."""
         if not self.status_file:
             return
         try:
             data = self.get_status_dict()
-            import json
-
             self.status_file.parent.mkdir(parents=True, exist_ok=True)
             with open(self.status_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
