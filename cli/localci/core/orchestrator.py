@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.config import resolve_cache_paths
 from localci.core.cmake_cache import compute_cmake_input_digest
+from localci.core.image_manager import ImageManager
 from localci.core.workflow import MatrixEntry
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
@@ -139,6 +140,8 @@ class ParallelExecutionManager:
         cache_config: Optional["CacheConfig"] = None,
         no_cache: bool = False,
         cache_dir_override: Optional[Path] = None,
+        registry_path: Optional[Path] = None,
+        images_dir: Optional[Path] = None,
     ):
         self.queue = queue
         self.workflow_file = Path(workflow_file)
@@ -154,6 +157,8 @@ class ParallelExecutionManager:
             if cache_dir_override is not None
             else None
         )
+        self._registry_path = Path(registry_path) if registry_path else (self.project_dir / "image-registry.yml")
+        self._images_dir = Path(images_dir) if images_dir else (self.project_dir / "images" / "capy")
 
         self._executor = JobExecutor(logs_dir=self.logs_dir)
         self._docker = DockerManager()
@@ -416,6 +421,22 @@ class ParallelExecutionManager:
         if self._docker.image_exists(job.image_tag):
             logger.debug("Image already loaded: %s", job.image_tag)
             return job.image_tag
+        # Use ImageManager when registry exists: load from .tar or build new image
+        if self._registry_path.exists():
+            try:
+                img_mgr = ImageManager(
+                    project_dir=self.project_dir,
+                    registry_path=self._registry_path,
+                    images_dir=self._images_dir,
+                    docker=self._docker,
+                )
+                tag = img_mgr.prepare_image_for_job(job)
+                if tag:
+                    logger.info("Image ready: %s", tag)
+                    return tag
+            except Exception as e:
+                logger.exception("Image preparation failed: %s", e)
+                raise
         logger.info("Image ready: %s", job.image_tag)
         return job.image_tag
 

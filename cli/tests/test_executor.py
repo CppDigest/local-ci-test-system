@@ -1018,6 +1018,39 @@ class TestDockerManager:
         dm = DockerManager()
         assert dm.has_docker is True
 
+    def test_parse_load_output_image_tag(self):
+        from localci.utils.docker import DockerManager
+
+        out = "Loaded image: capy-ubuntu-25.04-gcc15:latest"
+        assert DockerManager.parse_load_output(out) == "capy-ubuntu-25.04-gcc15:latest"
+
+    def test_parse_load_output_image_id(self):
+        from localci.utils.docker import DockerManager
+
+        out = "Loaded image ID: sha256:abc123def"
+        assert DockerManager.parse_load_output(out) == "sha256:abc123def"
+
+    def test_parse_load_output_empty(self):
+        from localci.utils.docker import DockerManager
+
+        assert DockerManager.parse_load_output("") is None
+        assert DockerManager.parse_load_output("Some other line") is None
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_save_image_success(self, mock_which, mock_run, tmp_path):
+        mock_which.return_value = "/usr/bin/docker"
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
+
+        from localci.utils.docker import DockerManager
+
+        dm = DockerManager()
+        out_path = tmp_path / "out.tar"
+        mock_run.return_value = MagicMock(returncode=0)
+        ok, err = dm.save_image("capy-ubuntu-25.04-gcc15:latest", out_path)
+        assert ok is True
+        assert err == ""
+
 
 # =====================================================================
 # ExecutionSummary tests

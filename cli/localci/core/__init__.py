@@ -38,6 +38,10 @@ from localci.core.registry import (  # noqa: F401
     extra_marks,
     select_image,
 )
+from localci.core.image_manager import (  # noqa: F401
+    ImageManager,
+    image_name_from_entry,
+)
 from localci.core.orchestrator import (  # noqa: F401
     ExecutionRun,
     OrchestratorConfig,

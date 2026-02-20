@@ -7,13 +7,16 @@ Uses the image registry (image-registry.yml) and two-mark matching from core.reg
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import click
 import yaml
 
 from localci.core.registry import ImageRegistry
+from localci.utils.docker import DockerManager
 from localci.utils.output import (
     console,
     make_table,
@@ -189,11 +192,28 @@ def images_build(
 # ---------------------------------------------------------------------------
 
 
+def _parse_older_than(s: str) -> timedelta | None:
+    """Parse --older-than value: e.g. 7d, 30d, 2w, 1m (m = 30 days)."""
+    m = re.match(r"^(\d+)(d|w|m)$", s.strip().lower())
+    if not m:
+        return None
+    num = int(m.group(1))
+    unit = m.group(2)
+    if unit == "d":
+        return timedelta(days=num)
+    if unit == "w":
+        return timedelta(weeks=num)
+    if unit == "m":
+        return timedelta(days=num * 30)
+    return None
+
+
 @images.command("clean")
-@click.option("--older-than", type=str, default=None, help="Remove images older than (e.g. 30d).")
-@click.option("--unused", is_flag=True, help="Remove unused images.")
-@click.option("--all", "clean_all", is_flag=True, help="Remove all localci images.")
+@click.option("--older-than", type=str, default=None, help="Remove registry images not used since (e.g. 30d, 7d, 2w).")
+@click.option("--unused", is_flag=True, help="Remove registry images with usage_count 0.")
+@click.option("--all", "clean_all", is_flag=True, help="Remove all localci capy images (Docker + registry).")
 @click.option("--dry-run", is_flag=True, help="Preview without removing.")
+@click.option("--registry", "-r", "registry_path", type=click.Path(path_type=Path, exists=False), default=None, help="Path to image-registry.yml.")
 @click.pass_context
 def images_clean(
     ctx: click.Context,
@@ -201,17 +221,70 @@ def images_clean(
     unused: bool,
     clean_all: bool,
     dry_run: bool,
+    registry_path: Path | None,
 ) -> None:
-    """Clean up Docker images."""
-    if older_than:
-        print_warning("--older-than is not yet implemented; ignoring.")
-    if unused:
-        print_warning("--unused is not yet implemented; ignoring.")
+    """Clean up Docker images and optionally registry / .tar files."""
+    reg_path = registry_path or REGISTRY_FILE
+    project_dir = REPO_ROOT
 
-    if not clean_all:
-        print_info("Nothing to clean. Use --all to remove localci images.")
+    # Disk space management: --older-than and --unused (registry-based)
+    if older_than or unused:
+        if not reg_path.exists():
+            print_error(f"Registry not found: {reg_path}. Cannot use --older-than/--unused.")
+            ctx.exit(1)
+        delta = None
+        if older_than:
+            delta = _parse_older_than(older_than)
+            if not delta:
+                print_error("--older-than must be like 7d, 30d, 2w, 1m")
+                ctx.exit(1)
+        registry = ImageRegistry(reg_path)
+        registry.load()
+        cutoff = (datetime.now(timezone.utc) - delta) if delta else None
+        to_remove: list[str] = []
+        for e in registry.entries:
+            if older_than and cutoff and e.last_used:
+                try:
+                    lu = datetime.fromisoformat(e.last_used.replace("Z", "+00:00"))
+                    if lu.tzinfo is None:
+                        lu = lu.replace(tzinfo=timezone.utc)
+                    if lu < cutoff:
+                        to_remove.append(e.name)
+                except ValueError:
+                    pass
+            if unused and (e.usage_count or 0) == 0:
+                to_remove.append(e.name)
+        to_remove = list(dict.fromkeys(to_remove))
+        if not to_remove:
+            print_info("No images match --older-than/--unused.")
+            return
+        docker = DockerManager()
+        for name in to_remove:
+            entry = registry.find_by_name(name)
+            if not entry:
+                continue
+            tag = entry.docker_tag
+            if dry_run:
+                console.print(f"  Would remove: {name} (Docker: {tag})")
+                continue
+            if docker.image_exists(tag):
+                docker.remove_image(tag, force=True)
+            tar_path = project_dir / entry.file if not Path(entry.file).is_absolute() else Path(entry.file)
+            if tar_path.exists():
+                tar_path.unlink()
+            registry.remove(name)
+        if not dry_run:
+            registry.save()
+            print_success(f"Removed {len(to_remove)} image(s) from registry and disk.")
+        else:
+            print_info(f"Dry-run: would remove {len(to_remove)} image(s).")
         return
 
+    if not clean_all:
+        print_info("Nothing to clean. Use --all, --older-than, or --unused.")
+        return
+
+    # --all: remove all capy Docker images (and optionally registry entries)
     result = _run(["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"])
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to list Docker images.")

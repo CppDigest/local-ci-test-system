@@ -70,7 +70,9 @@ class DockerManager:
     def load_image(self, tar_path: Path) -> tuple[bool, str]:
         """Load Docker image from a ``.tar`` file.
 
-        Returns ``(success, image_id_or_error)``.
+        Returns ``(success, output_or_error)``. On success, output is the raw
+        stdout (e.g. "Loaded image: repo:tag" or "Loaded image ID: sha256:...").
+        Use parse_load_output() to get an image reference for tagging.
         """
         if not tar_path.exists():
             return False, f"Image file not found: {tar_path}"
@@ -93,6 +95,45 @@ class DockerManager:
         output = result.stdout.strip()
         logger.info("Loaded in %.1fs: %s", duration, output)
         return True, output
+
+    @staticmethod
+    def parse_load_output(load_stdout: str) -> Optional[str]:
+        """Parse docker load stdout to get image reference for tagging.
+
+        - "Loaded image: repo:tag" -> "repo:tag"
+        - "Loaded image ID: sha256:abc..." -> "sha256:abc..."
+        - Multiple lines (e.g. multiple images in tar) -> first image ref
+        Returns None if no recognized pattern.
+        """
+        for line in load_stdout.strip().splitlines():
+            line = line.strip()
+            if line.startswith("Loaded image: "):
+                return line.replace("Loaded image: ", "", 1).strip()
+            if line.startswith("Loaded image ID: "):
+                return line.replace("Loaded image ID: ", "", 1).strip()
+        return None
+
+    def save_image(self, image_ref: str, tar_path: Path) -> tuple[bool, str]:
+        """Save a Docker image to a ``.tar`` file.
+
+        image_ref: image name:tag or ID (e.g. capy-ubuntu-25.04-gcc15:latest).
+        Returns (success, error_message). On success error_message is empty.
+        """
+        tar_path = Path(tar_path)
+        tar_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Saving image %s to %s", image_ref, tar_path)
+        start = time.time()
+        result = subprocess.run(
+            self._docker_cmd("save", "-o", str(tar_path), image_ref),
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 min for large images
+        )
+        duration = time.time() - start
+        if result.returncode != 0:
+            return False, result.stderr.strip() or "docker save failed"
+        logger.info("Saved in %.1fs", duration)
+        return True, ""
 
     def tag_image(self, source: str, target: str) -> bool:
         """Tag a Docker image."""

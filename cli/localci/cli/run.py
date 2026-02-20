@@ -284,6 +284,8 @@ def run(
         default_secrets={"GITHUB_TOKEN": gh_token},
         default_env={},
     )
+    registry_path = project_dir / "image-registry.yml"
+    images_dir = project_dir / "images" / "capy"
     orchestrator = ParallelExecutionManager(
         queue=queue,
         workflow_file=workflow_path,
@@ -294,6 +296,8 @@ def run(
         cache_config=cfg.cache,
         no_cache=no_cache,
         cache_dir_override=cache_dir,
+        registry_path=registry_path,
+        images_dir=images_dir,
     )
 
     status_file = logs_dir / "last-status.json"
