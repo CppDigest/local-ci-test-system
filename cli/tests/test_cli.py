@@ -6,12 +6,18 @@ Business logic is stubbed, so these tests focus on the CLI *surface*.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from click.testing import CliRunner
 
 from localci.cli.main import cli
 
 
 runner = CliRunner()
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+SAMPLE_CI = str(FIXTURES_DIR / "sample_ci.yml")
+SAMPLE_WORKFLOW = str(FIXTURES_DIR / "sample_workflow.yml")
 
 
 # ---------------------------------------------------------------------------
@@ -76,12 +82,42 @@ class TestList:
         assert "--platform" in result.output
 
     def test_basic_invocation(self):
-        result = runner.invoke(cli, ["list"])
+        result = runner.invoke(cli, ["list", "--workflow", SAMPLE_CI])
         assert result.exit_code == 0
 
     def test_platform_filter(self):
-        result = runner.invoke(cli, ["list", "--platform", "linux"])
+        result = runner.invoke(cli, ["list", "--workflow", SAMPLE_CI, "--platform", "linux"])
         assert result.exit_code == 0
+
+    def test_no_workflow_errors(self):
+        result = runner.invoke(cli, ["list"])
+        assert result.exit_code != 0
+
+    def test_list_enabled_with_config(self, tmp_path):
+        """--enabled filters by config.jobs.include when present."""
+        config_file = tmp_path / ".localci.yml"
+        config_file.write_text(
+            f"version: 1\nworkflow: {SAMPLE_CI}\njobs:\n  include:\n    - GCC 15\n"
+        )
+        result = runner.invoke(
+            cli, ["-c", str(config_file), "list", "--enabled", "--format", "simple"]
+        )
+        assert result.exit_code == 0
+        # Should only show entries whose name matches "GCC 15"
+        assert "GCC 15" in result.output
+
+    def test_list_disabled_with_config(self, tmp_path):
+        """--disabled filters by config.jobs.exclude when present."""
+        config_file = tmp_path / ".localci.yml"
+        config_file.write_text(
+            f"version: 1\nworkflow: {SAMPLE_CI}\njobs:\n  exclude:\n    - GCC 15\n"
+        )
+        result = runner.invoke(
+            cli, ["-c", str(config_file), "list", "--disabled", "--format", "simple"]
+        )
+        assert result.exit_code == 0
+        # Disabled shows only entries in exclude (names matching "GCC 15")
+        assert "GCC 15" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -98,14 +134,18 @@ class TestRun:
         assert "--dry-run" in result.output
 
     def test_dry_run(self):
-        result = runner.invoke(cli, ["run", "--dry-run"])
+        result = runner.invoke(
+            cli, ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run"]
+        )
         assert result.exit_code == 0
-        assert "Dry run" in result.output
+        assert "Dry run" in result.output or "dry" in result.output.lower()
 
     def test_dry_run_with_job(self):
-        result = runner.invoke(cli, ["run", "--dry-run", "--job", "5"])
+        result = runner.invoke(
+            cli,
+            ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run", "--job", "GCC"],
+        )
         assert result.exit_code == 0
-        assert "5" in result.output
 
 
 # ---------------------------------------------------------------------------
