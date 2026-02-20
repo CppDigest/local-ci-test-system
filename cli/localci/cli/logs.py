@@ -129,8 +129,13 @@ def logs(
     # Save to file
     if output_file:
         out = Path(output_file)
-        out.write_text(content, encoding="utf-8")
-        print_info(f"Logs saved to {out}")
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(content, encoding="utf-8")
+            print_info(f"Logs saved to {out}")
+        except (FileNotFoundError, OSError) as exc:
+            print_error(f"Failed to write logs to {out}: {exc}")
+            ctx.exit(1)
         return
 
     # Print to console
