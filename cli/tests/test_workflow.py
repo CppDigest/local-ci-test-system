@@ -100,6 +100,13 @@ class TestWorkflowAnalyzer:
                 FIXTURES_DIR / "sample_ci.yml", event="schedule"
             )
         assert "schedule" in caplog.text
+    def test_analyze_with_event_filter_same_when_no_conditions(self, analyzer):
+        """With no event-specific job conditions, --event does not change job set."""
+        wf_no_event = analyzer.analyze(FIXTURES_DIR / "sample_ci.yml")
+        wf_push = analyzer.analyze(FIXTURES_DIR / "sample_ci.yml", event="push")
+        wf_pr = analyzer.analyze(FIXTURES_DIR / "sample_ci.yml", event="pull_request")
+        assert wf_no_event.total_jobs == wf_push.total_jobs == wf_pr.total_jobs
+        assert set(wf_no_event.jobs) == set(wf_push.jobs) == set(wf_pr.jobs)
 
 
 # =====================================================================
@@ -577,6 +584,67 @@ class TestErrorClasses:
         err = MissingFieldError("compiler", "matrix entry 3")
         assert "compiler" in str(err)
         assert isinstance(err, WorkflowError)
+# Event filtering
+# =====================================================================
+
+
+class TestEventFiltering:
+    """--event filter: only jobs that run on the given event."""
+
+    def test_job_runs_on_event_no_condition(self):
+        """Job with no condition runs on any event."""
+        job = Job(
+            id="build",
+            name="Build",
+            runs_on="ubuntu-latest",
+            condition=None,
+        )
+        assert WorkflowAnalyzer._job_runs_on_event(job, "push") is True
+        assert WorkflowAnalyzer._job_runs_on_event(job, "pull_request") is True
+
+    def test_job_runs_on_event_equals_push(self):
+        """Job with if: github.event_name == 'push' runs only on push."""
+        job = Job(
+            id="build",
+            name="Build",
+            runs_on="ubuntu-latest",
+            condition="github.event_name == 'push'",
+        )
+        assert WorkflowAnalyzer._job_runs_on_event(job, "push") is True
+        assert WorkflowAnalyzer._job_runs_on_event(job, "pull_request") is False
+
+    def test_job_runs_on_event_equals_pull_request(self):
+        """Job with if: github.event_name == 'pull_request' runs only on pull_request."""
+        job = Job(
+            id="changelog",
+            name="Changelog",
+            runs_on="ubuntu-latest",
+            condition='github.event_name == "pull_request"',
+        )
+        assert WorkflowAnalyzer._job_runs_on_event(job, "pull_request") is True
+        assert WorkflowAnalyzer._job_runs_on_event(job, "push") is False
+
+    def test_job_runs_on_event_not_equals(self):
+        """Job with if: github.event_name != 'schedule' runs on push, not on schedule."""
+        job = Job(
+            id="build",
+            name="Build",
+            runs_on="ubuntu-latest",
+            condition="github.event_name != 'schedule'",
+        )
+        assert WorkflowAnalyzer._job_runs_on_event(job, "push") is True
+        assert WorkflowAnalyzer._job_runs_on_event(job, "schedule") is False
+
+    def test_job_runs_on_event_condition_without_event_name(self):
+        """Job with if that doesn't mention event_name runs on any event."""
+        job = Job(
+            id="build",
+            name="Build",
+            runs_on="ubuntu-latest",
+            condition="github.ref == 'refs/heads/main'",
+        )
+        assert WorkflowAnalyzer._job_runs_on_event(job, "push") is True
+        assert WorkflowAnalyzer._job_runs_on_event(job, "pull_request") is True
 
 
 # =====================================================================
