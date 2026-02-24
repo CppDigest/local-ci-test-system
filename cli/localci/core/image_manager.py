@@ -55,6 +55,21 @@ def image_name_from_entry(entry: "MatrixEntry", project: str = DEFAULT_PROJECT) 
     return base
 
 
+def image_name_base_from_entry(entry: "MatrixEntry", project: str = DEFAULT_PROJECT) -> str:
+    """Derive base-only image name (OS + compiler, no variant suffix).
+
+    Use when building a single base image per OS+toolchain for all variants
+    (standard, asan, x86, cov); variants use the same image with different flags.
+    """
+    if entry.container.image:
+        img = entry.container.image.strip().lower()
+        os_label = img.replace(":", "-", 1) if ":" in img else img
+    else:
+        os_label = (entry.runs_on or "ubuntu-latest").strip().lower()
+    compiler_label = f"{entry.compiler.family.value}{entry.compiler.version}"
+    return f"{project}-{os_label}-{compiler_label}"
+
+
 def _sanitize_name_for_dockerfile(name: str) -> str:
     """Dockerfile filenames: allow alphanumeric, dash, dot."""
     return re.sub(r"[^a-zA-Z0-9.-]", "-", name)
@@ -153,10 +168,18 @@ class ImageManager:
         registry: ImageRegistry,
         base_entry: Optional[RegistryEntry],
     ) -> Optional[str]:
-        """Build a new image when no full match exists; save to .tar and add to registry."""
+        """Build a new image when no full match exists; save to .tar and add to registry.
+
+        Uses base-only naming (OS + compiler, no variant) so one image serves
+        all variants (standard, asan, x86, cov); variants use workflow flags.
+        """
         entry = job.matrix_entry
-        image_name = image_name_from_entry(entry, self.project)
+        image_name = image_name_base_from_entry(entry, self.project)
         image_tag = f"{image_name}:latest"
+
+        if self._docker.image_exists(image_tag):
+            logger.debug("Base image already exists: %s", image_tag)
+            return image_tag
 
         # Ensure base image is loaded
         if base_entry:

@@ -24,6 +24,8 @@
   - [First-Time Setup](#first-time-setup)
   - [Day-to-Day Usage](#day-to-day-usage)
   - [CI/CD Comparison](#cicd-comparison)
+- [Testing](#testing)
+  - [Testing Docker Image Management](#testing-docker-image-management)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -931,6 +933,130 @@ localci run --matrix compiler=clang --matrix version=20
 | Single job | 3-5 minutes | ~15 seconds |
 | Offline | Not possible | Fully supported |
 | Cost | GitHub Actions minutes | Free (your hardware) |
+
+---
+
+## Testing
+
+### Testing Docker Image Management
+
+How to test the Docker image management feature (registry, two-mark matching,
+load/build/save, base images).
+
+#### Unit tests (no Docker required)
+
+Most tests mock Docker. From the **cli** directory:
+
+```bash
+cd cli
+pip install -e ".[dev]"   # if not already
+python3 -m pytest tests/test_registry.py tests/test_image_manager.py -v
+```
+
+**What they cover:**
+
+- **`tests/test_registry.py`**: Two-mark algorithm (essential/extra marks),
+  `select_image`, tie-breaking, `ImageRegistry` load/save/CRUD, queue builder
+  with registry (full match vs needs_build).
+- **`tests/test_image_manager.py`**: `image_name_from_entry`,
+  `image_name_base_from_entry`, `ImageManager.prepare_image_for_job` (use
+  existing, load from tar) with mocked Docker.
+
+Run all related tests (including executor/orchestrator that use cache paths):
+
+```bash
+python3 -m pytest tests/test_registry.py tests/test_image_manager.py tests/test_orchestrator.py tests/test_executor.py -v
+```
+
+#### CLI checks (list / info)
+
+With an `image-registry.yml` in the project (or use `--registry`), you can
+test list and info without Docker:
+
+```bash
+# Create a minimal registry so list works
+echo 'version: "1.0"
+images:
+  - name: capy-ubuntu-25.04-gcc15
+    docker_tag: capy-ubuntu-25.04-gcc15:latest
+    file: images/capy/capy-ubuntu-25.04-gcc15.tar
+    os: ubuntu:25.04
+    architecture: x86_64
+    compilers: [gcc-15]' > image-registry.yml
+
+localci images list
+localci images info capy-ubuntu-25.04-gcc15
+```
+
+With Docker installed you can pass the registry path explicitly:
+
+```bash
+localci images list --registry image-registry.yml
+localci images info capy-ubuntu-25.04-gcc15 --registry image-registry.yml
+```
+
+#### End-to-end with Docker and a workflow
+
+**Prerequisites:** Docker running, `act` installed, and a workflow that uses a
+matrix with `container:` (e.g. capy’s CI).
+
+**Registry present, image in registry**
+
+1. Create `image-registry.yml` in the project root (or where you run `localci`):
+
+   ```yaml
+   version: "1.0"
+   images:
+     - name: capy-ubuntu-25.04-gcc15
+       file: images/capy/capy-ubuntu-25.04-gcc15.tar
+       docker_tag: capy-ubuntu-25.04-gcc15:latest
+       os: ubuntu:25.04
+       architecture: x86_64
+       compilers: [gcc-15]
+   ```
+
+2. Build or import the image and save as `.tar`:
+
+   ```bash
+   docker build -t capy-ubuntu-25.04-gcc15:latest -f images/capy/Dockerfile.capy-ubuntu-25.04-gcc15 images/capy
+   mkdir -p images/capy
+   docker save -o images/capy/capy-ubuntu-25.04-gcc15.tar capy-ubuntu-25.04-gcc15:latest
+   ```
+
+3. Run one job; the orchestrator should load the image from the registry:
+
+   ```bash
+   cd /path/to/capy   # or project with .github/workflows/ci.yml
+   localci run --workflow .github/workflows/ci.yml --job build --matrix compiler=gcc --matrix version=15
+   ```
+
+**No registry:** Without an `image-registry.yml` (or with an empty registry),
+the queue uses base-only tags and does not build; `act` uses the default
+runner image or you must provide images another way.
+
+**Registry present, no matching image (needs_build):** Use a registry with no
+image matching your matrix (e.g. empty `images:` or different OS/compiler).
+Run the same `localci run` as above. The queue sets `needs_build=True` and the
+orchestrator calls `ImageManager.prepare_image_for_job`, which will try to
+build a base image and save it if Docker and a suitable Dockerfile or
+generated build path exist.
+
+#### Quick checklist
+
+| Test | Command / action |
+|------|-------------------|
+| Registry + matching | `pytest tests/test_registry.py -v` |
+| Image manager (mocked) | `pytest tests/test_image_manager.py -v` |
+| Queue builder + registry | In `test_registry.py`: `TestQueueBuilderWithRegistry` |
+| Base-only naming | `pytest tests/test_image_manager.py::TestImageNameBaseFromEntry -v` |
+| CLI list/info | `localci images list`, `localci images info <name>` with a valid `image-registry.yml` |
+| Load from .tar | Build image, `docker save` to path in registry `file`, run `localci run`; check logs for “Loading image” / “Image ready”. |
+| Build when no match | Empty or non-matching registry + `localci run`; confirm build and save. |
+
+**File reference:** Registry and matching: `localci/core/registry.py`. Image
+manager (load/build/save): `localci/core/image_manager.py`. Queue image
+resolution: `localci/core/queue_builder.py`. CLI: `localci/cli/images.py`
+(`localci images list|info|build|clean|import|export`).
 
 ---
 

@@ -24,7 +24,7 @@ def _resolve_image_tag_and_build(
 ) -> tuple[str, Optional[str], bool]:
     """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build."""
     if not registry_path or not registry_path.exists():
-        return _derive_image_tag(entry), None, False
+        return _derive_image_tag_base(entry), None, False
     from localci.core.registry import ImageRegistry
 
     registry = ImageRegistry(registry_path)
@@ -33,8 +33,8 @@ def _resolve_image_tag_and_build(
     if result.use_image:
         return result.use_image.docker_tag, None, False
     if result.base_image:
-        return _derive_image_tag(entry), result.base_image.docker_tag, True
-    return _derive_image_tag(entry), None, True
+        return _derive_image_tag_base(entry), result.base_image.docker_tag, True
+    return _derive_image_tag_base(entry), None, True
 
 
 def _derive_image_tag(entry: MatrixEntry) -> str:
@@ -53,6 +53,21 @@ def _derive_image_tag(entry: MatrixEntry) -> str:
     elif entry.variant.x86:
         base += "-x86"
     return f"{base}:latest"
+
+
+def _derive_image_tag_base(entry: MatrixEntry) -> str:
+    """Derive base-only Docker image tag (OS + compiler, no variant).
+
+    Used when needs_build so one image per OS+toolchain is built and reused
+    for all variants (standard, asan, x86, cov).
+    """
+    if entry.container.image:
+        img = entry.container.image.strip().lower()
+        os_label = img.replace(":", "-", 1) if ":" in img else img
+    else:
+        os_label = entry.runs_on
+    compiler_label = f"{entry.compiler.family.value}{entry.compiler.version}"
+    return f"capy-{os_label}-{compiler_label}:latest"
 
 
 def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:

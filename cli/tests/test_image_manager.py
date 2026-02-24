@@ -9,6 +9,7 @@ import pytest
 
 from localci.core.image_manager import (
     ImageManager,
+    image_name_base_from_entry,
     image_name_from_entry,
 )
 from localci.core.workflow import (
@@ -72,6 +73,24 @@ class TestImageNameFromEntry:
     def test_variant_x86(self):
         entry = _make_entry(x86=True)
         assert image_name_from_entry(entry) == "capy-ubuntu-25.04-gcc15-x86"
+
+
+class TestImageNameBaseFromEntry:
+    """image_name_base_from_entry: base-only (OS + compiler), no variant suffix."""
+
+    def test_base_no_variant(self):
+        entry = _make_entry(container_image="ubuntu:25.04", compiler_family="gcc", compiler_version="15")
+        assert image_name_base_from_entry(entry) == "capy-ubuntu-25.04-gcc15"
+
+    def test_base_ignores_asan(self):
+        entry = _make_entry(asan=True)
+        assert image_name_base_from_entry(entry) == "capy-ubuntu-25.04-gcc15"
+
+    def test_base_ignores_cov_and_x86(self):
+        entry = _make_entry(coverage=True)
+        assert image_name_base_from_entry(entry) == "capy-ubuntu-25.04-gcc15"
+        entry_x86 = _make_entry(x86=True)
+        assert image_name_base_from_entry(entry_x86) == "capy-ubuntu-25.04-gcc15"
 
 
 class TestImageManager:
