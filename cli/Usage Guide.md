@@ -1,4 +1,4 @@
-# Local CI - User Guide
+# Local CI - Usage Guide
 
 ## Table of Contents
 
@@ -51,7 +51,7 @@ Key features:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| Python 3.11+ | Runtime | [python.org](https://www.python.org/downloads/) |
+| Python 3.10+ | Runtime | [python.org](https://www.python.org/downloads/) |
 | Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
 | act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` |
@@ -203,12 +203,16 @@ cache:
     enabled: true
     branch: develop
     shallow: true
+    build_dir: true   # per-job b2-source cache for incremental B2 builds
     # dir: ~/.localci/cache/boost   # optional; default: directory/boost
     # remote: https://github.com/boostorg/boost.git   # optional; default Boost superproject URL
   cmake:
     enabled: true
     # dir: ~/.localci/cache/cmake   # base dir; per-job path: dir/<job_matrix_key>_<input_digest>
     # inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; files/globs for change detection (default shown)
+  apt:
+    enabled: true
+    # dir: ~/.localci/cache/apt   # optional; per-job dir mounted at /var/cache/apt/archives
 
 # Logging
 logging:
@@ -301,7 +305,7 @@ CMake configuration.
 
 **Cache invalidation:** Caches are not automatically cleared. To force a clean
 build: use `localci run --no-cache` for one run; or run `localci cache clear`
-(optionally `--target ccache`, `boost`, `cmake`, `b2-source`, or `all`) to remove cache
+(optionally `--target ccache`, `boost`, `b2-source`, `cmake`, `apt`, or `all`) to remove cache
 dirs; or delete the relevant subdir under `cache.directory` manually. Changing
 compiler or toolchain may require clearing ccache or cmake cache.
 
@@ -656,6 +660,9 @@ localci images list
 
 # JSON output
 localci images list --format json
+
+# Use a specific registry file
+localci images list --registry /path/to/image-registry.yml
 ```
 
 #### localci images info
@@ -663,6 +670,9 @@ localci images list --format json
 ```bash
 # Show details for a specific image
 localci images info capy-ubuntu-25.04-gcc15
+
+# Use a specific registry file
+localci images info capy-ubuntu-25.04-gcc15 --registry /path/to/image-registry.yml
 ```
 
 #### localci images build
@@ -751,8 +761,8 @@ Supported image names: `capy-ubuntu-24.04-base`, `capy-ubuntu-25.04-base`,
 
 ### localci cache
 
-Manage build caches (ccache, boost, cmake). Use after changing compiler/toolchain
-or to free disk space.
+Manage build caches (ccache, boost, b2-source, cmake, apt). Use after changing
+compiler/toolchain or to free disk space.
 
 #### localci cache clear
 
@@ -765,7 +775,9 @@ localci cache clear
 # Clear a specific cache
 localci cache clear --target ccache
 localci cache clear --target boost
+localci cache clear --target b2-source
 localci cache clear --target cmake
+localci cache clear --target apt
 
 # Clear all caches
 localci cache clear --target all

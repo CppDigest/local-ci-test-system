@@ -1,351 +1,200 @@
-WORK ITEM
-Owner: Brad
-Date: 2026-02-14
-Status: done
-Time Spent (today): 0h
-Time Spent (total): TBD
+# Parallel Execution and Orchestration — Feature Guide
 
-Repo/Area: CppDigest/local-ci-test-system, cppalliance/capy
-GitHub Issues: TBD
-GitHub PRs:
-Related Links: https://github.com/CppDigest/local-ci-test-system/blob/37d41b5cac3bb9e64cbafe5298038c61dc1ff8ca/Design%20Guide.md
-Invoice Notes:
-Tags: local-ci, capy, orchestrator, parallel, priority-queue, progress, phase-3
+This document explains how Local CI **runs multiple jobs in parallel**, how **priorities** and **progress tracking** work, and how to configure and interpret a run.
+
+**See also:** [User Guide](../cli/USER_GUIDE.md) for commands and config; [Core Infrastructure](Core%20Infrastructure.md) for the executor and workflow analysis; [Design Guide](Design%20Guide.md) and [Preparation and Plan](Preparation%20and%20Plan.md) for development and implementation plan.
+
 ---
-Title: Local CI Phase 3 - Parallel Execution and Orchestration
 
 ## Overview
 
-Phase 3 builds upon the Phase 1 foundation (CLI, Workflow Analyzer, Job Executor, Docker Images) to enable **coordinated parallel execution** of multiple CI jobs. Where Phase 1 can execute individual jobs sequentially, Phase 3 introduces the intelligence layer that runs ~20 jobs simultaneously with priority-based scheduling, resource management, and real-time progress tracking.
+When you run `localci run --platform linux`, Local CI does not run jobs one after another. It:
 
-**Prerequisite**: Phase 1 components (Issues 1, 2, 5, 12) must be functional.
+1. **Builds a queue** of jobs from the workflow matrix and your config (platform, job, and matrix filters).
+2. **Assigns a priority** to each job (from config or defaults) so that more important jobs can run first.
+3. **Runs many jobs at once** (e.g. 8 or 20) up to a configurable parallelism limit.
+4. **Monitors resources** (CPU, memory, disk) and can pause starting new jobs when the system is under pressure.
+5. **Shows live progress** in the terminal (job table, current step, per-job status) and writes a summary and status file at the end.
 
-**Target**: Execute all 10 Linux capy matrix entries in parallel, completing in ~1-2 minutes instead of 12-15 minutes.
+Together, these are the **orchestrator** and **parallel execution** features: they turn a list of matrix entries into a coordinated, parallel run with clear feedback.
 
 ---
 
-## Architecture Context
+## How It Fits in the Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      MCP Server Interface                        │
-│  analyze_workflow | run_local_ci | get_status | get_logs        │
+│                      MCP / CLI                                    │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
-│                    Test Orchestrator (PHASE 3)                    │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
-│  │ Priority     │  │ Parallel     │  │ Real-time Progress    │  │
-│  │ Job Queue    │  │ Execution    │  │ Tracking              │  │
-│  │ (Issue 6)    │  │ Manager      │  │ (Issue 8)             │  │
-│  │              │  │ (Issue 7)    │  │                       │  │
-│  └──────┬───────┘  └──────┬───────┘  └───────────┬───────────┘  │
-│         │                 │                       │              │
-│         └─────────────────┼───────────────────────┘              │
-└─────────────────────┬─────┘─────────────────────────────────────┘
-                      │
-        ┌─────────────┼─────────────┐
-        ▼             ▼             ▼
+│                    Orchestrator                                    │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────────┐   │
+│  │ Priority     │  │ Parallel     │  │ Progress Tracking    │   │
+│  │ Job Queue    │  │ Execution    │  │ (live UI, summary)   │   │
+│  └──────┬───────┘  └──────┬───────┘  └───────────┬───────────┘   │
+│         │                 │                       │               │
+└─────────┼─────────────────┼───────────────────────┼───────────────┘
+          │                 │                       │
+          ▼                 ▼                       ▼
 ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│ CI Workflow   │ │ Image Mgmt    │ │ Job Executor  │
-│ Analyzer      │ │ System        │ │ (act)         │
-│ (Phase 1)     │ │ (Phase 1)     │ │ (Phase 1)     │
+│ Workflow      │ │ Image         │ │ Job Executor   │
+│ Analyzer      │ │ Registry      │ │ (act)          │
 └───────────────┘ └───────────────┘ └───────────────┘
 ```
 
-Phase 3 components sit between the MCP/CLI interface and the Phase 1 execution layer, coordinating when and how jobs run.
+The orchestrator uses the workflow analyzer to get the job list, the image registry to resolve images, and the job executor to run each job. It feeds a **priority queue**, runs jobs in parallel with **resource awareness**, and drives **progress tracking** and the **summary report**.
 
 ---
 
-## Phase 3 Components
+## Feature 1: Priority-Based Job Queue
 
-### Issue 6: Priority-Based Job Queue
+### What it does
 
-**Scope**: Manage job execution order with priorities and dependency resolution.
+Jobs are not run in an arbitrary order. They are placed in a **priority queue**: lower priority number means higher priority. Higher-priority jobs are run before lower-priority ones; within the same priority level, jobs can run in parallel up to the parallelism limit.
 
-**Key Responsibilities**:
-- Priority queue backed by a heap data structure
-- Job dependency graph resolution (topological sort)
-- Priority extraction from configuration and workflow
-- Queue state management (enqueue, dequeue, peek, reorder)
-- Priority constraints: higher-priority jobs must complete before lower-priority jobs start
+This lets you, for example, run quick “smoke” configurations first or ensure coverage jobs run early.
 
-**Design Reference**: Design Guide Step 2 (Determine Test List) and Step 4.1 (priority-ordered queue)
+### How it works
 
-**Priority Rules** (from Design Guide):
-- Jobs with higher priority (lower number) must complete before lower priority jobs can start
-- Within the same priority level, jobs can run in parallel up to the parallel limit
-- Priority can be extracted from workflow file or assigned via configuration
+- Each matrix entry is turned into a **queued job** with a **priority** (integer). Defaults can be derived from the workflow or config.
+- The queue is ordered by priority. The orchestrator takes jobs from the queue and starts them until the parallelism limit is reached. When a job finishes, it starts the next available job that does not violate priority (higher-priority jobs must complete before lower-priority ones start, as per the design).
+- Dependencies (e.g. `needs:` in the workflow) can be respected so that dependent jobs only run after their dependencies complete.
 
-**Dependencies**: Issue 2 (Workflow Analyzer for MatrixEntry data)
-**Blocks**: Issue 7 (Parallel Execution Manager consumes the queue)
+### Configuration
 
----
+In `.localci.yml` you can set priorities by job name:
 
-### Issue 7: Parallel Execution Manager
-
-**Scope**: Run multiple jobs concurrently with resource-aware scheduling.
-
-**Key Responsibilities**:
-- Configurable parallelism limit (~20 jobs concurrently)
-- Resource monitoring (CPU, memory, disk thresholds)
-- Priority-based scheduling with dependency enforcement
-- Per-job lifecycle: image preparation → act execution → cleanup
-- Job completion handling and next-job dispatch
-- Graceful cancellation and error recovery
-
-**Design Reference**: Design Guide Step 4 (Execute Jobs with Parallel Control), sections 4.1-4.3
-
-**Execution Flow** (from Design Guide):
-1. Image Preparation (load or build from execution plan)
-2. Execute `act` command with output capture
-3. Cleanup: extract results, clean containers, unload images
-
-**Dependencies**: Issues 5 (Job Executor), 6 (Priority Queue), 3 (Image Registry)
-**Blocks**: Issue 8 (Progress Tracking observes the manager)
-
----
-
-### Issue 8: Real-time Progress Tracking
-
-**Scope**: Monitor and report execution progress with a rich terminal UI.
-
-**Key Responsibilities**:
-- Progress aggregation: X/Y jobs completed, estimated time remaining
-- Per-job status tracking: pending → preparing → running → passed/failed/timeout
-- Live terminal UI with Rich Live display
-- Summary report generation (text, JSON)
-- Event-driven updates via callback/observer pattern
-- MCP-compatible status reporting
-
-**Design Reference**: Design Guide Step 4.4 (Progress Tracking) and Appendix B (get_status endpoint)
-
-**Dependencies**: Issue 7 (Parallel Execution Manager emits events)
-**Blocks**: Issue 15 (MCP Server consumes progress data)
-
----
-
-## Data Flow
-
-```
-                    ┌──────────────────┐
-                    │ Workflow Analyzer │
-                    │ (Phase 1)        │
-                    └────────┬─────────┘
-                             │ list[MatrixEntry]
-                             ▼
-┌────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-│ Configuration  │──►│ Priority Queue   │   │ Image Registry   │
-│ (.localci.yml) │   │ (Issue 6)        │   │ (Phase 1)        │
-└────────────────┘   └────────┬─────────┘   └────────┬─────────┘
-                              │ QueuedJob             │ MatchResult
-                              ▼                       ▼
-                    ┌──────────────────────────────────┐
-                    │   Parallel Execution Manager     │
-                    │   (Issue 7)                      │
-                    │                                  │
-                    │   ┌─ Worker 1: act process ──┐   │
-                    │   ├─ Worker 2: act process ──┤   │
-                    │   ├─ Worker 3: act process ──┤   │
-                    │   └─ Worker N: act process ──┘   │
-                    └────────┬─────────────────────────┘
-                             │ JobEvent stream
-                             ▼
-                    ┌──────────────────┐
-                    │ Progress Tracker │
-                    │ (Issue 8)        │
-                    │                  │
-                    │ ┌──────────────┐ │
-                    │ │ Rich Live UI │ │
-                    │ └──────────────┘ │
-                    │ ┌──────────────┐ │
-                    │ │ Summary Rpt  │ │
-                    │ └──────────────┘ │
-                    └──────────────────┘
+```yaml
+priorities:
+  "GCC 15: C++20": 1
+  "Clang 20: C++20-23": 2
+  "GCC 13: C++20 (coverage)": 3
 ```
 
+Lower number = higher priority. Jobs not listed get a default priority (e.g. 5). The exact default and behavior are described in the User Guide and Design Guide.
+
 ---
 
-## Shared Data Models
+## Feature 2: Parallel Execution Manager
 
-Phase 3 introduces several shared data models used across all three issues:
+### What it does
 
-```python
-# localci/core/models.py (additions for Phase 3)
+Runs **multiple jobs at the same time** instead of one by one. You set a **maximum number of concurrent jobs** (e.g. 8); the orchestrator starts that many jobs and, as each completes, starts the next from the queue (subject to priority and dependencies).
 
-from enum import Enum
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional, Callable, Any
+### How it works
 
+- **Workers:** The orchestrator uses a thread pool (or similar). Each “slot” runs one job: resolve image, build act command (with cache mounts), run act, collect result.
+- **Per-job lifecycle:** For each job, the orchestrator (1) ensures the image is available (load from tar or trigger build if configured), (2) resolves cache paths and optionally patches the workflow (e.g. inject cache mounts, bootstrap skip), (3) invokes the executor (act), (4) records the result and updates progress. Containers are cleaned up at the end of the run (not after each job) to avoid interfering with parallel act runs.
+- **Resource monitoring:** Optional CPU/memory/disk checks can pause starting new jobs when the system is overloaded, then resume when resources are back under the configured limits.
 
-class JobPriority(Enum):
-    """Priority levels (lower number = higher priority)"""
-    CRITICAL = 1
-    HIGH = 2
-    NORMAL = 5
-    LOW = 8
-    BACKGROUND = 10
+### Configuration
 
+```yaml
+parallel:
+  max_jobs: 8
+  resource_limit:
+    cpu_percent: 80
+    memory_percent: 70
+```
 
-class QueuedJobStatus(Enum):
-    """Status of a job in the queue"""
-    QUEUED = "queued"
-    WAITING_DEPS = "waiting_deps"
-    WAITING_PRIORITY = "waiting_priority"
-    READY = "ready"
-    PREPARING = "preparing"
-    RUNNING = "running"
-    PASSED = "passed"
-    FAILED = "failed"
-    TIMEOUT = "timeout"
-    ERROR = "error"
-    CANCELLED = "cancelled"
-    SKIPPED = "skipped"
+- **max_jobs:** Maximum number of jobs running at once.
+- **resource_limit:** If resource monitoring is enabled, dispatch is paused when CPU or memory exceeds these percentages (and optionally when disk is low). Requires `psutil` for CPU/memory.
 
+**CLI override:** `localci run --parallel 4` (or similar) overrides `max_jobs` for that run.
 
-class JobEventType(Enum):
-    """Events emitted during execution"""
-    JOB_QUEUED = "job_queued"
-    JOB_READY = "job_ready"
-    JOB_PREPARING = "job_preparing"
-    JOB_STARTED = "job_started"
-    JOB_OUTPUT = "job_output"
-    JOB_COMPLETED = "job_completed"
-    JOB_FAILED = "job_failed"
-    JOB_TIMEOUT = "job_timeout"
-    JOB_CANCELLED = "job_cancelled"
-    PRIORITY_LEVEL_COMPLETE = "priority_level_complete"
-    ALL_COMPLETE = "all_complete"
-    RESOURCE_WARNING = "resource_warning"
+**Other execution options** (in `execution`):
 
+- **timeout:** Per-job timeout in seconds.
+- **keep_containers:** If true, containers are not removed after the run (useful for debugging).
+- **stop_on_first_failure:** If true, the run stops as soon as one job fails (no new jobs started; already running jobs may still finish).
 
-@dataclass
-class QueuedJob:
-    """A job ready for queue insertion"""
-    job_id: str                         # e.g., "build"
-    matrix_entry: 'MatrixEntry'
-    priority: int                       # Lower = higher priority
-    dependencies: list[str] = field(default_factory=list)
-    status: QueuedJobStatus = QueuedJobStatus.QUEUED
-    image_tag: Optional[str] = None     # Resolved by planner
-    needs_build: bool = False           # From MatchResult
+---
 
-    @property
-    def queue_key(self) -> str:
-        """Unique key for this job in the queue"""
-        return f"{self.job_id}:{self.matrix_entry.index}:{self.matrix_entry.name}"
+## Feature 3: Real-Time Progress Tracking
 
-    def __lt__(self, other: 'QueuedJob') -> bool:
-        """For heap ordering: lower priority number = higher priority"""
-        return self.priority < other.priority
+### What it does
 
+While a run is in progress, Local CI shows:
 
-@dataclass
-class JobEvent:
-    """Event emitted by the execution manager"""
-    event_type: JobEventType
-    job: QueuedJob
-    timestamp: datetime = field(default_factory=datetime.now)
-    data: dict = field(default_factory=dict)
+- A **live-updating table** of jobs: status (pending, preparing, running, passed, failed, timeout), duration, and the **current step** (e.g. “Main Install packages”, “Main Boost B2 Workflow”) from act output.
+- **Priority levels** and how many jobs in each level have completed.
+- **Overall progress** (e.g. “5/10 jobs completed”).
 
+When the run finishes, it prints a **summary**: total duration, pass/fail counts, and a table of each job with result and duration. It also writes machine-readable output (e.g. `last-run.json`, `last-status.json`) for use by `localci status` and by the MCP server.
 
-@dataclass
-class ResourceSnapshot:
-    """System resource snapshot"""
-    cpu_percent: float
-    memory_percent: float
-    disk_free_gb: float
-    active_containers: int
-    timestamp: datetime = field(default_factory=datetime.now)
+### How you use it
 
-    @property
-    def is_healthy(self) -> bool:
-        return (
-            self.cpu_percent < 90
-            and self.memory_percent < 85
-            and self.disk_free_gb > 10
-        )
+- **During run:** Just run `localci run ...`; the live display updates automatically. No extra flags needed.
+- **After run:** `localci status` shows the status of the last run (or a specific execution by ID). Use `localci status --format json` for scriptable output. Logs for a specific job: `localci logs <job>` (e.g. by index or name).
+
+### Status file and MCP
+
+The orchestrator (or progress tracker) writes a status file (e.g. `last-status.json`) during and after the run. It includes execution ID, start time, duration, per-job status, and optional current step. The MCP server’s `get_status` endpoint can expose this so that IDEs or agents can query run status without parsing the terminal.
+
+---
+
+## Data Flow (Conceptual)
+
+```
+Workflow file + Config
+        │
+        ▼
+Workflow Analyzer  ──►  list of MatrixEntry
+        │
+        ├──────────────────────┐
+        ▼                      ▼
+Config (filters,          Image Registry
+priorities)                    │
+        │                      │
+        ▼                      ▼
+Priority Queue  ◄────  QueuedJob (entry + image_tag + priority)
+        │
+        ▼
+Orchestrator: for each slot, pop next job
+        │
+        ├──► Image prep (load/build if needed)
+        ├──► Resolve cache paths, patch workflow
+        ├──► Executor.run(act)
+        ├──► Emit events (started, output, completed)
+        └──► Update progress, write status
+        │
+        ▼
+Progress Tracker  ──►  Live UI + Summary + last-status.json
 ```
 
 ---
 
-## Phase 3 Deliverables Summary
+## Summary of What You Can Configure
 
-Phase 3 is implemented: the priority queue (Issue 6), parallel execution manager (Issue 7), and real-time progress tracking (Issue 8) are wired into the CLI. `localci run` builds a queue from the workflow and config, runs jobs in parallel via the orchestrator (with per-job act cache and end-of-run container cleanup), and shows a Rich Live display plus post-run summary; `localci status` reads MCP-style status from `last-status.json` with `--format json` and `--follow`. Config and CLI support `--parallel`, `--timeout`, `keep_containers`, and `stop_on_first_failure`; resource limits (CPU/memory) pause dispatch when exceeded.
+| Area | What you set | Where |
+|------|----------------------|--------|
+| Parallelism | Max concurrent jobs | `parallel.max_jobs` or `--parallel` |
+| Resources | When to pause starting jobs | `parallel.resource_limit` (CPU, memory) |
+| Priorities | Which jobs run first | `priorities` (job name → number) |
+| Failure behavior | Stop on first failure | `execution.stop_on_first_failure` |
+| Timeout | Per-job timeout (seconds) | `execution.timeout` |
+| Containers | Keep containers after run | `execution.keep_containers` |
 
-| Component | Status | Files |
-|-----------|--------|-------|
-| Priority Queue | **Done** | `cli/localci/core/queue.py` — PriorityJobQueue, PriorityConfig, PriorityRule, event emission, priority gating |
-| Dependency Resolver | **Done** | `cli/localci/core/queue.py` — DependencyResolver (topological sort), integrated with queue |
-| Queue Builder | **Done** | `cli/localci/core/queue_builder.py` — builds queue from WorkflowAnalyzer + config (platform/job/compiler/matrix filters, entries_include) |
-| Parallel Execution Manager | **Done** | `cli/localci/core/orchestrator.py` — ParallelExecutionManager, OrchestratorConfig, ExecutionRun; ThreadPoolExecutor; per-job act cache; container cleanup at end only (no per-job cleanup to avoid killing parallel jobs) |
-| Resource Monitor | **Done** | `cli/localci/utils/resources.py` — ResourceSnapshot, ResourceMonitor (optional psutil; CPU/memory/disk/container thresholds) |
-| Progress Tracker | **Done** | `cli/localci/core/progress.py` — JobProgress, PriorityLevelProgress, ProgressTracker; event-driven state; current_step from act output |
-| Live Terminal UI | **Done** | `cli/localci/core/progress.py` — Rich Live display (header, progress bar, priority levels, job table with Step column), 4 fps refresh |
-| Summary Reporter | **Done** | `cli/localci/core/progress.py` — `print_summary()`; `cli/localci/core/results.py` — ExecutionSummary, summary_report() |
-| MCP-style status (JSON) | **Done** | `cli/localci/core/progress.py` — `get_status_dict()`; `last-status.json` written during/after run |
-| CLI Integration (run) | **Done** | `cli/localci/cli/run.py` — queue + orchestrator + tracker; live display; `last-status.json`; `tracker.print_summary()` |
-| CLI Integration (status) | **Done** | `cli/localci/cli/status.py` — prefers `last-status.json`; `--format json`, `--follow`; _print_status_table with current_step |
-| Data models (Phase 3) | **Done** | `cli/localci/core/models.py` — JobEvent (timestamp), JobEventType (JOB_TIMEOUT, etc.), QueuedJob (queue_key `job_id:index`) |
-
-## Dependencies to Install (additions to Phase 1)
-
-```
-psutil>=5.9.0       # System resource monitoring
-```
-
-All other dependencies (click, rich, pydantic, pyyaml, docker) are already required by Phase 1.
+Details and defaults are in the [User Guide](../cli/USER_GUIDE.md).
 
 ---
 
-## Integration with Phase 1
-
-Phase 3 wires into Phase 1 components:
-
-| Phase 1 Component | Phase 3 Consumer | Integration Point |
-|-------------------|-----------------|-------------------|
-| `WorkflowAnalyzer` | Priority Queue | `analyzer.analyze()` → `list[MatrixEntry]` → queue |
-| `ImageMatcher` / `ExecutionPlanner` | Parallel Execution Manager | `planner.plan()` → `ExecutionPlan` → image loading |
-| `JobExecutor` | Parallel Execution Manager | `executor.run()` called per worker |
-| `DockerManager` | Parallel Execution Manager | Image load/unload, container cleanup |
-| `LocalCIConfig` | Priority Queue, Execution Manager | Parallelism limits, platform filters, priorities |
-| CLI `run` command | Orchestrator | `localci run --parallel 8` invokes orchestrator |
-| CLI `status` command | Progress Tracker | `localci status --follow` renders live UI |
-
----
-
-## Success Criteria
+## Success Criteria (Targets)
 
 | Metric | Target |
 |--------|--------|
-| Full Linux CI (10 jobs) | < 2 minutes with warm cache |
-| Incremental build (10 jobs) | < 1 minute |
-| Parallel utilization | > 80% CPU during execution |
-| Priority enforcement | Higher priority jobs always finish first |
-| Progress accuracy | Real-time within 1 second |
-| Resource safety | No OOM kills, CPU < 95% |
+| Full Linux CI (e.g. 10 jobs) | &lt; 2 minutes with warm cache |
+| Incremental run | &lt; 1 minute |
+| Priority | Higher-priority jobs finish before lower-priority ones start |
+| Progress | Updates within about 1 second |
+| Resource safety | No OOM; CPU kept under configured limit when monitoring is on |
 
 ---
 
-## Implementation Priority Order
+## Reference
 
-### Sprint 1: Queue and Scheduling
-1. Issue 6: Priority-Based Job Queue
-2. Issue 7: Parallel Execution Manager (core scheduling loop)
-
-### Sprint 2: Execution and UI
-3. Issue 7: Per-job lifecycle (image prep → execute → cleanup)
-4. Issue 8: Real-time Progress Tracking
-5. Wire into CLI `run` and `status` commands
-
----
-
-## Next Steps
-
-1. ~~Implement Issue 6 (Priority Queue)~~ — Done
-2. ~~Implement Issue 7 (Parallel Manager)~~ — Done
-3. ~~Implement Issue 8 (Progress Tracking)~~ — Done
-4. Integration test: run all Linux capy jobs in parallel (manual/CI)
-5. Performance benchmark against GitHub CI times
-6. Issue 15: MCP Server endpoints (consume get_status / progress data) when ready
+- **User Guide:** [cli/USER_GUIDE.md](../cli/USER_GUIDE.md) — Commands, config, troubleshooting.
+- **Core Infrastructure:** [Core Infrastructure.md](Core%20Infrastructure.md) — Executor, analyzer, images.
+- **Design Guide:** [Design Guide.md](Design%20Guide.md) — Architecture, queue, execution flow.
+- **Preparation and Plan:** [Preparation and Plan.md](Preparation%20and%20Plan.md) — Implementation plan and issue breakdown (e.g. priority queue, parallel manager, progress tracking).
