@@ -293,6 +293,16 @@ For each job ready to execute (when under parallel limit AND priority allows):
 - Client polls `get_status` endpoint for updates
 - Results available via `get_status` and `get_logs` endpoints
 
+#### Running the MCP server
+
+The Local CI MCP server is implemented in `localci.mcp_server` and exposes the five tools above over **stdio** (so an MCP client spawns the server process and communicates via stdin/stdout).
+
+- **Entry point**: From the project root (or `cli/`), run:
+  - `localci-mcp` (if the package is installed), or
+  - `python -m localci.mcp_server`
+- **Config**: The server uses the same config as the CLI (`.localci.yml` discovered from the workflow file path or current directory). For `run_local_ci`, the workflow file path is resolved relative to the current working directory or as an absolute path.
+- **Execution registry**: Running executions are tracked in memory so `get_status` and `cancel_execution` can target the correct run. After a run finishes, status and logs are read from the logs directory (same as CLI: `last-status.json`, `{execution_id}.json`).
+
 ### C. Setup
 
 #### Prerequisites

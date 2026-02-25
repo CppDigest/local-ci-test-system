@@ -203,7 +203,10 @@ class ParallelExecutionManager:
             except Exception as e:
                 logger.warning("Listener error: %s", e)
 
-    def execute(self) -> ExecutionRun:
+    def execute(
+        self,
+        on_run_started: Optional[Callable[[ExecutionRun], None]] = None,
+    ) -> ExecutionRun:
         self._run = ExecutionRun(
             execution_id=str(uuid.uuid4())[:8],
             started_at=datetime.now(),
@@ -211,6 +214,11 @@ class ParallelExecutionManager:
         )
         self._state = OrchestratorState.RUNNING
         self._shutdown_event.clear()
+        if on_run_started is not None:
+            try:
+                on_run_started(self._run)
+            except Exception as e:
+                logger.warning("on_run_started callback error: %s", e)
 
         logger.info(
             "Starting execution %s: %d jobs, max_parallel=%d",

@@ -11,6 +11,7 @@ license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.0",
+    "mcp>=1.0.0",
     "pyyaml>=6.0",
     "rich>=13.0.0",
     "pydantic>=2.0.0",
@@ -24,6 +25,7 @@ dev = [
 
 [project.scripts]
 localci = "localci.cli.main:cli"
+localci-mcp = "localci.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["localci"]
