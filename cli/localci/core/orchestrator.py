@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import signal
+import subprocess
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -445,8 +446,54 @@ class ParallelExecutionManager:
             except Exception as e:
                 logger.exception("Image preparation failed: %s", e)
                 raise
+        if not self._docker.image_exists(job.image_tag):
+            if self._try_build_image_with_script(job):
+                logger.info("Image ready (built): %s", job.image_tag)
+                return job.image_tag
+            raise RuntimeError(
+                f"Image {job.image_tag} is not available locally. "
+                "Build it with 'localci images build <image_name>' (e.g. capy-ubuntu-24.04-gcc13) "
+                "or add it to image-registry.yml and place the .tar in images/capy/. "
+                "Local CI uses local images only and does not pull from a registry."
+            )
         logger.info("Image ready: %s", job.image_tag)
         return job.image_tag
+
+    def _try_build_image_with_script(self, job: QueuedJob) -> bool:
+        """Try to build the job's image using the project's build-one.sh script.
+
+        Returns True if the image exists after the attempt (build succeeded or was already present).
+        """
+        if not job.image_tag:
+            return False
+        image_name = job.image_tag.replace(":latest", "").strip() or job.image_tag
+        build_script = self._images_dir / "build-one.sh"
+        if not build_script.is_file():
+            logger.debug("No build-one.sh at %s; skipping auto-build", build_script)
+            return False
+        logger.info("Building image %s via %s ...", job.image_tag, build_script.name)
+        try:
+            result = subprocess.run(
+                ["bash", str(build_script), image_name, "--save"],
+                cwd=self.project_dir,
+                capture_output=True,
+                text=True,
+                timeout=3600,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "build-one.sh failed for %s: %s",
+                    image_name,
+                    (result.stderr or result.stdout or "unknown error").strip()[:500],
+                )
+                return False
+        except subprocess.TimeoutExpired:
+            logger.warning("build-one.sh timed out for %s", image_name)
+            return False
+        except Exception as e:
+            logger.warning("build-one.sh error for %s: %s", image_name, e)
+            return False
+        return self._docker.image_exists(job.image_tag)
 
     def _on_job_done(self, job: QueuedJob, future: Future) -> None:
         try:
