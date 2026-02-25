@@ -34,7 +34,7 @@ def cache_cmd(ctx: click.Context) -> None:
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["ccache", "boost", "cmake", "b2-source", "all"]),
+    type=click.Choice(["ccache", "boost", "cmake", "b2-source", "apt", "all"]),
     default="ccache",
     help="Which cache to clear (default: ccache).",
 )
@@ -77,6 +77,8 @@ def cache_clear(
         cfg.cache.boost, "build_dir", True
     ):
         d = root / "b2-source"
+    if target in ("apt", "all") and cfg.cache.apt.enabled:
+        d = cfg.cache.apt.dir or root / "apt"
         dirs_to_remove.append(Path(d).expanduser().resolve())
 
     if not dirs_to_remove:

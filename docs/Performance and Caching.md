@@ -121,6 +121,22 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 
 ---
 
+### APT package install cache (main packages installation step)
+
+**Scope:** Speed up the workflow's "Install packages" step (e.g. `package-install` or `apt-get install`) by reusing downloaded `.deb` files across runs.
+
+**Deliverables:**
+
+- Per-job APT archives directory (e.g. `~/.localci/cache/apt/<job_matrix_key>`) bind-mounted over the container's `/var/cache/apt/archives`. ✅
+- First run: `apt-get install` downloads packages into the mounted dir; subsequent runs reuse the same dir so install is much faster. ✅
+- Config: `cache.apt.enabled` (default true), `cache.apt.dir` (default `cache.directory/apt`). ✅
+
+**Integration:** Same bind-mount mechanism as other caches: the host dir is passed into the job container via the patcher-injected `container.options` so the "Install packages" step sees existing `.deb` files when present. No workflow patch is required; the workflow's existing apt step uses the container's `/var/cache/apt/archives`, which is our mount.
+
+**Alignment with GHA:** In ci-main-install-cached.yml, APT is cached by copying from `actions/cache` into the container before install and saving after. Local CI achieves the same effect by mounting a host directory directly over `/var/cache/apt/archives`.
+
+---
+
 ## Data Flow and Cache Layout
 
 - **Host cache root:** e.g. `~/.localci/cache/` (or value from `.localci.yml`).
@@ -129,7 +145,8 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
   - `boost/` — Boost superproject clone (Issue 10); one branch at a time, updated via fetch+reset.
   - `b2-source/<job_matrix_key>/` — per-job `boost-root` tree including `bin.v2/` artifacts (when `cache.boost.build_dir` true); enables incremental b2 builds.
   - `cmake/<job_matrix_key>_<input_digest>/` — CMake cache per job/matrix and input digest (Issue 11); digest changes when CMakeLists.txt, toolchain, compiler, or BOOST_ROOT change.
-- **Visibility:** Cache dirs are bind-mounted into the container at `/tmp/localci-cache/{ccache,boost,b2-source,cmake}`. Environment variables: `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS`, `BOOST_ROOT`, `LOCALCI_B2_SOURCE_DIR`, `LOCALCI_CMAKE_CACHE_DIR`.
+  - `apt/<job_matrix_key>/` — per-job APT archives (`.deb` files) for the "Install packages" step; mounted at `/var/cache/apt/archives` in the container.
+- **Visibility:** Cache dirs are bind-mounted into the container at `/tmp/localci-cache/{ccache,boost,b2-source,cmake}` and (for apt) at `/var/cache/apt/archives`. Environment variables: `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS`, `BOOST_ROOT`, `LOCALCI_B2_SOURCE_DIR`, `LOCALCI_CMAKE_CACHE_DIR`.
 
 ---
 
@@ -165,9 +182,14 @@ cache:
     enabled: true
     dir: ~/.localci/cache/cmake
     inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; default for change detection
+
+  # APT package install cache (main packages step); per-job dir mounted at /var/cache/apt/archives
+  apt:
+    enabled: true
+    dir: ~/.localci/cache/apt
 ```
 
-**CLI:** `--no-cache` disables all caches; `--cache-dir <path>` overrides cache root. **Cache commands:** `localci cache clear [--target ccache|boost|cmake|b2-source|all]`, `localci cache stats` (ccache), `localci cache update` (Boost).
+**CLI:** `--no-cache` disables all caches; `--cache-dir <path>` overrides cache root. **Cache commands:** `localci cache clear [--target ccache|boost|cmake|b2-source|apt|all]`, `localci cache stats` (ccache), `localci cache update` (Boost).
 
 ---
 

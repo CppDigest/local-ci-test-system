@@ -126,6 +126,18 @@ class CmakeCacheConfig(BaseModel):
     inputs: Optional[list[str]] = None
 
 
+class AptCacheConfig(BaseModel):
+    """APT package install cache (main packages installation step).
+
+    When the workflow runs an apt-get install step (e.g. package-install),
+    bind-mounting a host directory over the container's /var/cache/apt/archives
+    persists .deb files across runs so subsequent runs reuse them.
+    """
+
+    enabled: bool = True
+    dir: Optional[Path] = None  # default: cache.directory / "apt"; per-job: dir / <queue_key>
+
+
 class CacheConfig(BaseModel):
     """Build caching settings."""
 
@@ -134,6 +146,7 @@ class CacheConfig(BaseModel):
     ccache: CcacheConfig = Field(default_factory=CcacheConfig)
     boost: BoostCacheConfig = Field(default_factory=BoostCacheConfig)
     cmake: CmakeCacheConfig = Field(default_factory=CmakeCacheConfig)
+    apt: AptCacheConfig = Field(default_factory=AptCacheConfig)
 
     @field_validator("directory", mode="after")
     @classmethod
@@ -200,6 +213,10 @@ class LocalCIConfig(BaseModel):
 LOCALCI_CACHE_CONTAINER_ROOT = "/tmp/localci-cache"
 
 
+# Container path for APT archives (standard Debian/Ubuntu location)
+APT_ARCHIVES_CONTAINER = "/var/cache/apt/archives"
+
+
 @dataclass
 class ResolvedCachePaths:
     """Resolved host paths and container paths for Phase 2 caches."""
@@ -208,6 +225,7 @@ class ResolvedCachePaths:
     boost_host: Optional[Path] = None
     cmake_host: Optional[Path] = None  # per-job: cache_base / job_id / matrix_key
     b2_source_host: Optional[Path] = None  # per-job: persistent boost-root (source + bin.v2 artifacts)
+    apt_host: Optional[Path] = None  # per-job: apt .deb cache for "Install packages" step
 
     @property
     def ccache_container(self) -> str:
@@ -225,6 +243,10 @@ class ResolvedCachePaths:
     def b2_source_container(self) -> str:
         return f"{LOCALCI_CACHE_CONTAINER_ROOT}/b2-source"
 
+    @property
+    def apt_container(self) -> str:
+        return APT_ARCHIVES_CONTAINER
+
     def host_dirs_to_ensure(self) -> list[Path]:
         """Host directories that must exist before bind-mounting."""
         out: list[Path] = []
@@ -236,6 +258,8 @@ class ResolvedCachePaths:
             out.append(self.cmake_host)
         if self.b2_source_host is not None:
             out.append(self.b2_source_host)
+        if self.apt_host is not None:
+            out.append(self.apt_host)
         return out
 
 
@@ -283,12 +307,18 @@ def resolve_cache_paths(
         else:
             subdir = safe_key
         r.cmake_host = base / subdir
+    if cache_config.apt.enabled and job_id and queue_key:
+        base = cache_config.apt.dir or root / "apt"
+        base = Path(base).expanduser().resolve()
+        safe_key = queue_key.replace(":", "-")
+        r.apt_host = base / safe_key
 
     if (
         r.ccache_host is None
         and r.boost_host is None
         and r.cmake_host is None
         and r.b2_source_host is None
+        and r.apt_host is None
     ):
         return None
     return r

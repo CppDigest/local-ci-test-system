@@ -144,6 +144,10 @@ class ActCommandBuilder:
                 mount_parts.append(
                     f"-v {resolved_cache_paths.b2_source_host}:{resolved_cache_paths.b2_source_container}"
                 )
+            if resolved_cache_paths.apt_host is not None:
+                mount_parts.append(
+                    f"-v {resolved_cache_paths.apt_host}:{resolved_cache_paths.apt_container}"
+                )
             if mount_parts:
                 container_options = " ".join(mount_parts)
             if resolved_cache_paths.ccache_host is not None:
