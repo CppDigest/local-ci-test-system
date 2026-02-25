@@ -15,6 +15,7 @@ from pathlib import Path
 import click
 import yaml
 
+from localci.core.config import find_config_file
 from localci.core.registry import ImageRegistry
 from localci.utils.docker import DockerManager
 from localci.utils.output import (
@@ -26,13 +27,25 @@ from localci.utils.output import (
     print_warning,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-IMAGES_DIR = REPO_ROOT / "images" / "capy"
-REGISTRY_FILE = REPO_ROOT / "image-registry.yml"
+
+def _project_root() -> Path:
+    """Project root for images/registry: directory containing .localci.yml, or cwd."""
+    config_path = find_config_file(Path.cwd())
+    if config_path is not None:
+        return config_path.parent.resolve()
+    return Path.cwd().resolve()
+
+
+def _images_dir() -> Path:
+    return _project_root() / "images" / "capy"
+
+
+def _registry_file() -> Path:
+    return _project_root() / "image-registry.yml"
 
 
 def _get_registry(registry_path: Path | None = None) -> ImageRegistry:
-    path = registry_path or REGISTRY_FILE
+    path = registry_path or _registry_file()
     if not path.exists():
         raise FileNotFoundError(f"Registry file not found: {path}")
     registry = ImageRegistry(path)
@@ -158,12 +171,13 @@ def images_build(
     if force:
         print_warning("--force is not yet implemented; proceeding without force logic.")
 
-    if not IMAGES_DIR.exists():
-        print_error(f"Images directory not found: {IMAGES_DIR}")
+    images_dir = _images_dir()
+    if not images_dir.exists():
+        print_error(f"Images directory not found: {images_dir}")
         ctx.exit(1)
 
-    build_all_script = IMAGES_DIR / "build-all.sh"
-    build_one_script = IMAGES_DIR / "build-one.sh"
+    build_all_script = images_dir / "build-all.sh"
+    build_one_script = images_dir / "build-one.sh"
 
     if build_all:
         cmd = ["bash", str(build_all_script), "--save"]
@@ -224,8 +238,8 @@ def images_clean(
     registry_path: Path | None,
 ) -> None:
     """Clean up Docker images and optionally registry / .tar files."""
-    reg_path = registry_path or REGISTRY_FILE
-    project_dir = REPO_ROOT
+    reg_path = registry_path or _registry_file()
+    project_dir = _project_root()
 
     # Disk space management: --older-than and --unused (registry-based)
     if older_than or unused:
