@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import signal
 import time
 import uuid
@@ -337,19 +338,19 @@ class ParallelExecutionManager:
                 mount_parts: list[str] = []
                 if resolved_cache_paths.ccache_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.ccache_host}:{resolved_cache_paths.ccache_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.ccache_host))}:{shlex.quote(str(resolved_cache_paths.ccache_container))}"
                     )
                 if resolved_cache_paths.boost_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.boost_host}:{resolved_cache_paths.boost_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.boost_host))}:{shlex.quote(str(resolved_cache_paths.boost_container))}"
                     )
                 if resolved_cache_paths.cmake_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.cmake_host}:{resolved_cache_paths.cmake_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.cmake_host))}:{shlex.quote(str(resolved_cache_paths.cmake_container))}"
                     )
                 if resolved_cache_paths.b2_source_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.b2_source_host}:{resolved_cache_paths.b2_source_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.b2_source_host))}:{shlex.quote(str(resolved_cache_paths.b2_source_container))}"
                     )
                 if mount_parts:
                     container_mount_options = " ".join(mount_parts)
