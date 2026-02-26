@@ -435,14 +435,21 @@ def _write_patched_workflow(
                 if row.strip() and (len(row) - len(row.lstrip())) <= 2:
                     break  # next job or top-level key
                 if re.match(r"^\s+container\s*:\s*$", row):
-                    for k in range(j + 1, min(j + 10, len(lines))):
+                    options_found = False
++                   for k in range(j + 1, min(j + 10, len(lines))):
                         opt_match = re.match(r"^(\s+)options\s*:\s*(.*)$", lines[k])
                         if opt_match:
                             existing = opt_match.group(2).strip().strip('"\'')
                             new_val = f"{existing} {container_mount_options}".strip()
                             lines[k] = f'{opt_match.group(1)}options: "{new_val}"\n'
++                           options_found = True
                             break
-                    break
+                    if not options_found:
++                        # Determine indent from the container: line and add options below it
++                        container_indent = row[: len(row) - len(row.lstrip())]
++                        options_indent = container_indent + "  "
++                        lines.insert(j + 1, f'{options_indent}options: "{container_mount_options}"\n')
++                   break
             break
 
     # Patch Boost patch step: when LOCALCI_B2_SOURCE_DIR is set, reuse the cached boost-root
