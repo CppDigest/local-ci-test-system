@@ -30,7 +30,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow logs in real-time.",
+    help="Follow logs in real-time (not yet implemented; shows snapshot only).",
 )
 @click.option(
     "--tail",
