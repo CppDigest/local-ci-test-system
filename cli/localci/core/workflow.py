@@ -91,16 +91,28 @@ class ContainerInfo:
 
     @property
     def os_name(self) -> Optional[str]:
-        """Extract OS name from image, e.g. 'ubuntu'."""
-        if self.image:
-            return self.image.split(":")[0]
-        return None
+        """Extract OS name from image, e.g. 'ubuntu'.
+
+        Handles registry-prefixed images (e.g. ghcr.io/owner/ubuntu:25.04)
+        by taking the substring after the last '/' before parsing name:tag.
+        """
+        if not self.image:
+            return None
+        name_part = self.image.rsplit("/", 1)[-1]
+        return name_part.split(":", 1)[0] if name_part else None
 
     @property
     def os_version(self) -> Optional[str]:
-        """Extract OS version from image, e.g. '25.04'."""
-        if self.image and ":" in self.image:
-            return self.image.split(":")[1]
+        """Extract OS version from image, e.g. '25.04'.
+
+        Handles registry-prefixed images by isolating the name:tag part
+        (after the last '/') before splitting on ':'.
+        """
+        if not self.image:
+            return None
+        name_part = self.image.rsplit("/", 1)[-1]
+        if ":" in name_part:
+            return name_part.split(":", 1)[1]
         return None
 
 
