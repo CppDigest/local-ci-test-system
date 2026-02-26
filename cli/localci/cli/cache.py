@@ -64,20 +64,39 @@ def cache_clear(
     root = Path(cfg.cache.directory).expanduser().resolve()
     dirs_to_remove: list[Path] = []
 
-    if target in ("ccache", "all") and cfg.cache.ccache.enabled:
-        d = cfg.cache.ccache.dir or root / "ccache"
-        dirs_to_remove.append(Path(d).expanduser().resolve())
-    if target in ("boost", "all") and cfg.cache.boost.enabled:
-        d = cfg.cache.boost.dir or root / "boost"
-        dirs_to_remove.append(Path(d).expanduser().resolve())
-    if target in ("cmake", "all") and cfg.cache.cmake.enabled:
-        d = cfg.cache.cmake.dir or root / "cmake"
-        dirs_to_remove.append(Path(d).expanduser().resolve())
-    if target in ("b2-source", "all") and cfg.cache.boost.enabled and getattr(
-        cfg.cache.boost, "build_dir", True
-    ):
-        d = root / "b2-source"
-        dirs_to_remove.append(Path(d).expanduser().resolve())
+    if target == "all":
+        if cfg.cache.ccache.enabled:
+            d = cfg.cache.ccache.dir or root / "ccache"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+        if cfg.cache.boost.enabled:
+            d = cfg.cache.boost.dir or root / "boost"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+        if cfg.cache.cmake.enabled:
+            d = cfg.cache.cmake.dir or root / "cmake"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+        if cfg.cache.boost.enabled and getattr(cfg.cache.boost, "build_dir", True):
+            dirs_to_remove.append((root / "b2-source").resolve())
+    else:
+        # Explicit target: honor regardless of enabled; warn if that cache is disabled
+        if target == "ccache":
+            d = cfg.cache.ccache.dir or root / "ccache"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+            if not cfg.cache.ccache.enabled:
+                print_warning("ccache is disabled in config; clearing anyway.")
+        elif target == "boost":
+            d = cfg.cache.boost.dir or root / "boost"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+            if not cfg.cache.boost.enabled:
+                print_warning("Boost cache is disabled in config; clearing anyway.")
+        elif target == "cmake":
+            d = cfg.cache.cmake.dir or root / "cmake"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+            if not cfg.cache.cmake.enabled:
+                print_warning("CMake cache is disabled in config; clearing anyway.")
+        elif target == "b2-source":
+            dirs_to_remove.append((root / "b2-source").resolve())
+            if not cfg.cache.boost.enabled:
+                print_warning("Boost cache is disabled in config; clearing b2-source anyway.")
 
     if not dirs_to_remove:
         print_info("No cache directories configured for the selected target.")
