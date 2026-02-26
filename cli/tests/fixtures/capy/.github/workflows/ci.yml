@@ -315,7 +315,7 @@ jobs:
 
       - name: CMake Workflow
         uses: alandefreitas/cpp-actions/cmake-workflow@v1.9.0
-        if: ${{ matrix.coverage || matrix.time-trace || matrix.build-cmake || matrix.is-earliest }}
+        if: ${{ matrix.coverage || matrix.time-trace || matrix.build-cmake || matrix.is-latest }}
         with:
           source-dir: capy-root
           build-dir: __build__
