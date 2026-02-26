@@ -33,7 +33,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow mode (live updates).",
+    help="Follow mode / live updates (not yet implemented; shows current state only).",
 )
 @click.option(
     "--format",
