@@ -179,6 +179,9 @@ def list_cmd(
 
     # Filter by config.jobs.include / config.jobs.exclude (--enabled / --disabled)
     if enabled or disabled:
+        if enabled and disabled:
+            print_error("Cannot use both --enabled and --disabled; choose one.")
+            ctx.exit(1)
         if config:
             include_names = config.jobs.include or []
             exclude_names = config.jobs.exclude or []
