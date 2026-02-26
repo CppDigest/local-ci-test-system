@@ -13,6 +13,7 @@ from localci.core.workflow import MatrixEntry, Platform
 
 if TYPE_CHECKING:
     from localci.core.config import LocalCIConfig
+    from localci.core.registry import ImageRegistry
     from localci.core.workflow import Job, Workflow
 
 logger = logging.getLogger(__name__)
@@ -20,15 +21,11 @@ logger = logging.getLogger(__name__)
 
 def _resolve_image_tag_and_build(
     entry: MatrixEntry,
-    registry_path: Optional[Path],
+    registry: Optional["ImageRegistry"],
 ) -> tuple[str, Optional[str], bool]:
     """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build."""
-    if not registry_path or not registry_path.exists():
+    if registry is None:
         return _derive_image_tag(entry), None, False
-    from localci.core.registry import ImageRegistry
-
-    registry = ImageRegistry(registry_path)
-    registry.load()
     result = registry.select(entry)
     if result.use_image:
         return result.use_image.docker_tag, None, False
@@ -140,13 +137,21 @@ class QueueBuilder:
                 job_keys.setdefault(job_id, []).append(key)
                 candidates.append((job, entry))
 
+        # Load registry once so _resolve_image_tag_and_build does not do O(N) disk reads
+        registry = None
+        if registry_path and registry_path.exists():
+            from localci.core.registry import ImageRegistry
+
+            registry = ImageRegistry(registry_path)
+            registry.load()
+
         # Second pass: create QueuedJob with dependency keys, image selection, and priority
         for job, entry in candidates:
             dep_keys = []
             for dep in job.needs:
                 dep_keys.extend(job_keys.get(dep, []))
             image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
-                entry, registry_path
+                entry, registry
             )
             queued = QueuedJob(
                 job_id=job.id,
