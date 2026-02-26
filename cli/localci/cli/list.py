@@ -169,8 +169,10 @@ def list_cmd(
 
     if compiler:
         target_family = _COMPILER_MAP.get(compiler.lower())
-        if target_family:
-            entries = [e for e in entries if e.compiler.family == target_family]
+        if target_family is None:
+            print_error(f"Unknown compiler: {compiler!r}. Valid: {', '.join(sorted(_COMPILER_MAP))}.")
+            ctx.exit(1)
+        entries = [e for e in entries if e.compiler.family == target_family]
 
     if comp_version:
         entries = [e for e in entries if e.compiler.version == comp_version]
