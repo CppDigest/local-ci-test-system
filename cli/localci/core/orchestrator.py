@@ -66,13 +66,14 @@ class OrchestratorConfig:
         rl = getattr(config.parallel, "resource_limit", None) or {}
         cpu = getattr(rl, "cpu_percent", 90) if hasattr(rl, "cpu_percent") else 90.0
         mem = getattr(rl, "memory_percent", 85) if hasattr(rl, "memory_percent") else 85.0
+        disk_gb = float(getattr(rl, "disk_min_free_gb", 10.0))
         images = getattr(config, "images", None)
         registry_path = getattr(images, "registry", None) if images else None
         return cls(
             max_parallel=getattr(config.parallel, "max_jobs", 8),
             cpu_threshold=float(cpu),
             memory_threshold=float(mem),
-            disk_min_free_gb=10.0,
+            disk_min_free_gb=disk_gb,
             job_timeout=getattr(config.execution, "timeout", 3600),
             keep_containers=getattr(config.execution, "keep_containers", False),
             stop_on_first_failure=getattr(

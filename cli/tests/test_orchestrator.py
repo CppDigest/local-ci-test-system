@@ -131,7 +131,7 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
     def test_parallel_execution(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
-        def mock_run(*args, **kwargs):
+        def mock_run(*_args, **_kwargs):
             time.sleep(0.1)
             return JobResult(
                 job_id="build",
@@ -209,7 +209,7 @@ class TestParallelExecutionManager:
     def test_priority_enforcement(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
         execution_order = []
 
-        def mock_run(cmd, matrix_index=0, matrix_name="", **kwargs):
+        def mock_run(_cmd, matrix_index=0, matrix_name="", **_kwargs):
             execution_order.append(matrix_name)
             time.sleep(0.05)
             return JobResult(

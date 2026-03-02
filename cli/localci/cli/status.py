@@ -51,7 +51,7 @@ def status(
 ) -> None:
     """Show execution progress."""
     if follow:
-        print_warning("--follow is not yet implemented; showing current state only.")
+        print_info("Follow mode: polling status file until Ctrl+C.")
 
     cfg = ctx.obj["config"]
     logs_dir = Path(cfg.logging.directory)
