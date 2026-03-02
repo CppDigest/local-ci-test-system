@@ -62,8 +62,11 @@ def status(
         try:
             with open(status_file, encoding="utf-8") as f:
                 status_data = json.load(f)
-        except Exception as exc:
-            print_warning(f"Could not load status file: {exc}")
+        except FileNotFoundError as exc:
+            print_warning(f"Status file not found: {status_file}; {exc}")
+            status_data = None
+        except json.JSONDecodeError as exc:
+            print_warning(f"Invalid JSON in status file {status_file}: {exc}")
             status_data = None
         if status_data is not None and "progress" in status_data:
             if output_format == "json":
@@ -207,7 +210,11 @@ def _follow_status(status_file: Path, output_format: str) -> None:
             try:
                 with open(status_file, encoding="utf-8") as f:
                     new_data = json.load(f)
-            except Exception:
+            except FileNotFoundError as exc:
+                print_warning(f"Status file not found: {status_file}; {exc}")
+                continue
+            except json.JSONDecodeError as exc:
+                print_warning(f"Invalid JSON in status file {status_file}: {exc}")
                 continue
             if new_data != last_data:
                 last_data = new_data

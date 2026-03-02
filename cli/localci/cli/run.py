@@ -88,9 +88,10 @@ from localci.utils.output import (
     "--rebuild-image", is_flag=True, help="Force rebuild Docker image."
 )
 @click.option(
-    "--keep-containers",
-    is_flag=True,
-    help="Keep containers after execution.",
+    "--keep-containers/--no-keep-containers",
+    "keep_containers",
+    default=None,
+    help="Keep containers after execution (default: from config).",
 )
 @click.option(
     "--interactive", "-i", is_flag=True, help="Interactive job selection."
@@ -124,7 +125,7 @@ def run(
     dry_run: bool,
     no_cache: bool,
     rebuild_image: bool,
-    keep_containers: bool,
+    keep_containers: bool | None,
     interactive: bool,
     verbose: bool,
     github_token: str | None,
@@ -135,6 +136,9 @@ def run(
 
     effective_timeout = timeout or cfg.execution.timeout
     effective_parallel = parallel or cfg.parallel.max_jobs
+    effective_keep_containers = (
+        keep_containers if keep_containers is not None else cfg.execution.keep_containers
+    )
     workflow_path = Path(workflow) if workflow else cfg.workflow
     project_dir = Path(".").resolve()
 
@@ -174,18 +178,17 @@ def run(
         "windows": Platform.WINDOWS,
         "macos": Platform.MACOS,
     }
+    compiler_filter = compiler.lower() if compiler else None
     selected: list[tuple[str, MatrixEntry]] = list(all_pairs)
     if platform:
         target_plat = plat_map.get(platform)
         selected = [(jid, e) for jid, e in selected if e.platform == target_plat]
 
-    if compiler:
-        comp_lower = compiler.lower()
+    if compiler_filter:
         selected = [
             (jid, e)
             for jid, e in selected
-            if comp_lower in e.compiler.family.value.lower()
-            or comp_lower in e.compiler.display_name.lower()
+            if e.compiler.family.value == compiler_filter
         ]
 
     if jobs:
@@ -216,7 +219,6 @@ def run(
     selected_set = {(jid, e.index) for jid, e in selected}
     job_filter_list = list({jid for jid, _ in selected})
     plat_filter = plat_map.get(platform) if platform else None
-    compiler_filter = compiler.lower() if compiler else None
     matrix_include = (
         [f.model_dump(exclude_none=True) for f in cfg.matrix.include]
         if cfg.matrix.include
@@ -264,7 +266,7 @@ def run(
         max_parallel=effective_parallel,
         job_timeout=effective_timeout,
         stop_on_first_failure=cfg.execution.stop_on_first_failure,
-        keep_containers=keep_containers,
+        keep_containers=effective_keep_containers,
         default_secrets={"GITHUB_TOKEN": gh_token},
         default_env={},
     )
