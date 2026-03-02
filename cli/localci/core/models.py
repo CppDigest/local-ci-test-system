@@ -69,6 +69,7 @@ class QueuedJob:
     priority: int
     dependencies: list[str]  # queue_key of dependent jobs
     image_tag: Optional[str] = None
+    base_image_tag: Optional[str] = None  # When needs_build, tag of base image to build from
     needs_build: bool = False
     status: QueuedJobStatus = field(default=QueuedJobStatus.QUEUED)
 

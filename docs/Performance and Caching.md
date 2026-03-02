@@ -52,6 +52,8 @@ Phase 2 (Sprint 2 in the implementation priority order) focuses on **performance
 
 Phase 2 adds cache layers that are mounted or bind-mounted into containers (or used by the executor) so that repeated runs reuse build artifacts, Boost tree, and CMake configuration instead of recomputing them.
 
+**Alignment with Boost-hands-on-exp:** Local CI uses the same conceptual approach for incremental build and caching as the [Boost-hands-on-exp](https://github.com/boostorg/Boost-hands-on-exp) project: (1) **Incremental b2** — a persistent directory (b2-source per job) holds boost-root plus b2’s bin.v2; on cache hit the workflow uses that tree so b2 only rebuilds what changed. (2) **Compiler cache** — ccache wraps the compiler (CC/CXX set to `ccache gcc` / `ccache g++`) so every compilation is cached. Cold vs warm runs behave the same way as in Boost-hands-on-exp’s Step 3/4 scripts.
+
 ---
 
 ## Phase 2 Components
@@ -69,7 +71,7 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 
 **Dependencies:** Issue 5 (Job Executor). Containers must have ccache/sccache installed and configured (Phase 1 images may already include ccache).
 
-**Integration:** Executor bind-mounts host ccache dir; sets `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` for the job.
+**Integration:** Executor bind-mounts host ccache dir; sets `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` for the job. When ccache is enabled, CC and CXX are set to `ccache gcc` and `ccache g++` (or `ccache <matrix-compiler>`) so b2 and other build steps use ccache — same approach as Boost-hands-on-exp.
 
 **Design reference:** Preparation doc — Bottleneck “B2 Build: Full build from scratch each time”.
 

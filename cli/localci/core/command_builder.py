@@ -152,6 +152,16 @@ class ActCommandBuilder:
                 if cache_config and cache_config.ccache.enabled:
                     env["CCACHE_MAXSIZE"] = cache_config.ccache.max_size
                     env["CCACHE_COMPRESS"] = "1" if cache_config.ccache.compress else "0"
+                    # Same approach as Boost-hands-on-exp: wrap compiler with ccache so
+                    # b2 and other build steps use ccache when they invoke CC/CXX.
+                    if env.get("CC"):
+                        env["CC"] = f"ccache {env['CC']}"
+                    else:
+                        env["CC"] = "ccache gcc"
+                    if env.get("CXX"):
+                        env["CXX"] = f"ccache {env['CXX']}"
+                    else:
+                        env["CXX"] = "ccache g++"
             if resolved_cache_paths.boost_host is not None:
                 env["BOOST_ROOT"] = resolved_cache_paths.boost_container
             if resolved_cache_paths.cmake_host is not None:
