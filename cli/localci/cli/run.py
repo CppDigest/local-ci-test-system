@@ -269,6 +269,7 @@ def run(
         keep_containers=effective_keep_containers,
         default_secrets={"GITHUB_TOKEN": gh_token},
         default_env={},
+        image_registry_path=cfg.images.registry,
     )
     orchestrator = ParallelExecutionManager(
         queue=queue,
