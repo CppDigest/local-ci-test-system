@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from localci.core.image_tag import derive_image_tag
 from localci.core.models import QueuedJob
 from localci.core.queue import PriorityConfig, PriorityJobQueue
 from localci.core.workflow import MatrixEntry, Platform
@@ -16,24 +17,6 @@ if TYPE_CHECKING:
     from localci.core.workflow import Job, Workflow
 
 logger = logging.getLogger(__name__)
-
-
-def _derive_image_tag(entry: MatrixEntry) -> str:
-    """Derive Docker image tag from matrix entry (same logic as run.py)."""
-    if entry.container.image:
-        img = entry.container.image.strip().lower()
-        os_label = img.replace(":", "-", 1) if ":" in img else img
-    else:
-        os_label = entry.runs_on
-    compiler_label = f"{entry.compiler.family.value}{entry.compiler.version}"
-    base = f"capy-{os_label}-{compiler_label}"
-    if entry.variant.coverage:
-        base += "-cov"
-    elif entry.variant.asan:
-        base += "-asan"
-    elif entry.variant.x86:
-        base += "-x86"
-    return f"{base}:latest"
 
 
 def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:
@@ -128,7 +111,7 @@ class QueueBuilder:
             dep_keys = []
             for dep in job.needs:
                 dep_keys.extend(job_keys.get(dep, []))
-            image_tag = _derive_image_tag(entry)
+            image_tag = derive_image_tag(entry)
             queued = QueuedJob(
                 job_id=job.id,
                 matrix_entry=entry,

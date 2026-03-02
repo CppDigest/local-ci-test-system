@@ -132,10 +132,11 @@ class PriorityLevelProgress:
     failed: int = 0
     running: int = 0
     pending: int = 0
+    cancelled: int = 0
 
     @property
     def complete(self) -> int:
-        return self.passed + self.failed
+        return self.passed + self.failed + self.cancelled
 
     @property
     def is_done(self) -> bool:
@@ -398,7 +399,6 @@ class ProgressTracker:
         parts.append(self._render_progress_bar())
         parts.append(self._render_priority_levels())
         parts.append(self._render_job_table())
-        parts.append(self._render_resources())
         return Group(*parts)
 
     def _render_header(self):
@@ -487,12 +487,6 @@ class ProgressTracker:
                 job.elapsed_display,
             )
         return table
-
-    def _render_resources(self):
-        """Render resource usage line (placeholder)."""
-        from rich.text import Text
-
-        return Text("")
 
     # -----------------------------------------------------------------------
     # Summary report
@@ -741,6 +735,7 @@ class ProgressTracker:
                     "total": level.total,
                     "passed": level.passed,
                     "failed": level.failed,
+                    "cancelled": level.cancelled,
                     "running": level.running,
                     "pending": level.pending,
                     "status": level.status_label,
@@ -776,6 +771,11 @@ class ProgressTracker:
                 ):
                     level.failed += 1
                 elif job.status in (
+                    QueuedJobStatus.CANCELLED,
+                    QueuedJobStatus.SKIPPED,
+                ):
+                    level.cancelled += 1
+                elif job.status in (
                     QueuedJobStatus.RUNNING,
                     QueuedJobStatus.PREPARING,
                 ):
@@ -783,7 +783,7 @@ class ProgressTracker:
                 else:
                     level.pending += 1
 
-        return sorted(levels.values(), key=lambda l: l.priority)
+        return sorted(levels.values(), key=lambda level: level.priority)
 
     def _elapsed_seconds(self) -> float:
         """Total elapsed time since first job started."""
