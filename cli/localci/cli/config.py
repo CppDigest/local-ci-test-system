@@ -14,6 +14,7 @@ from localci.core.config import (
     LocalCIConfig,
     default_config_yaml,
     find_config_file,
+    _stringify_paths,
 )
 from localci.utils.output import (
     console,
@@ -75,7 +76,6 @@ def config_init(ctx: click.Context, force: bool) -> None:
             "  Use --force to overwrite."
         )
         ctx.exit(1)
-        return
 
     content = default_config_yaml()
     target.write_text(content, encoding="utf-8")
@@ -100,7 +100,6 @@ def config_set(ctx: click.Context, key: str, value: str) -> None:
     if config_path is None:
         print_error("No config file found. Run 'localci config init' first.")
         ctx.exit(1)
-        return
 
     with open(config_path, "r", encoding="utf-8") as fh:
         data: dict = yaml.safe_load(fh) or {}
@@ -146,7 +145,6 @@ def config_get(ctx: click.Context, key: str) -> None:
         else:
             print_error(f"Key not found: {key}")
             ctx.exit(1)
-            return
 
     console.print(current)
 
@@ -171,16 +169,3 @@ def _coerce_value(raw: str) -> str | int | float | bool:
     except ValueError:
         pass
     return raw
-
-
-def _stringify_paths(obj: object) -> None:
-    """Recursively convert Path-like values to strings inside nested dicts."""
-    if isinstance(obj, dict):
-        for key, value in obj.items():
-            if isinstance(value, Path):
-                obj[key] = str(value)
-            else:
-                _stringify_paths(value)
-    elif isinstance(obj, list):
-        for item in obj:
-            _stringify_paths(item)
