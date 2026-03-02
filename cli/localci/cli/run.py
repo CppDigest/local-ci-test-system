@@ -141,6 +141,7 @@ def run(
     except Exception as exc:
         print_error(f"Failed to parse workflow: {exc}")
         ctx.exit(1)
+        return
 
     # Collect all matrix entries across jobs
     all_entries = []
@@ -252,12 +253,14 @@ def run(
     except ActNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # ── 6. Execute jobs ───────────────────────────────────────────
     summary = ExecutionSummary(
@@ -377,6 +380,7 @@ def run(
     # Exit code
     if not summary.all_passed:
         ctx.exit(1)
+        return
 
 
 # ─── Helpers ───────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ images:
     architecture: x86_64
     compilers: []
     variants: [base]
+    packages: [build-essential, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -13,6 +14,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-25.04-base
     docker_tag: capy-ubuntu-25.04-base:latest
@@ -21,6 +23,7 @@ images:
     architecture: x86_64
     compilers: []
     variants: [base]
+    packages: [build-essential, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -28,6 +31,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-22.04-gcc12
     docker_tag: capy-ubuntu-22.04-gcc12:latest
@@ -36,6 +40,7 @@ images:
     architecture: x86_64
     compilers: [gcc-12]
     variants: [standard]
+    packages: [gcc-12, g++-12, build-essential, libssl-dev, zlib1g-dev, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -43,6 +48,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-24.04-gcc13-cov
     docker_tag: capy-ubuntu-24.04-gcc13-cov:latest
@@ -52,6 +58,7 @@ images:
     compilers: [gcc-13]
     variants: [coverage]
     tools: [lcov]
+    packages: [gcc-13, g++-13, build-essential, lcov, wget, unzip, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -59,6 +66,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-24.04-clang17
     docker_tag: capy-ubuntu-24.04-clang17:latest
@@ -67,6 +75,7 @@ images:
     architecture: x86_64
     compilers: [clang-17]
     variants: [standard]
+    packages: [clang-17, build-essential, libssl-dev, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -74,6 +83,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-24.04-clang20
     docker_tag: capy-ubuntu-24.04-clang20:latest
@@ -82,6 +92,7 @@ images:
     architecture: x86_64
     compilers: [clang-20]
     variants: [standard]
+    packages: [clang-20, build-essential, libssl-dev, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -89,6 +100,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-24.04-clang20-asan
     docker_tag: capy-ubuntu-24.04-clang20-asan:latest
@@ -97,6 +109,7 @@ images:
     architecture: x86_64
     compilers: [clang-20]
     variants: [asan, ubsan]
+    packages: [clang-20, build-essential, libssl-dev, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -104,6 +117,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-24.04-clang20-x86
     docker_tag: capy-ubuntu-24.04-clang20-x86:latest
@@ -112,6 +126,7 @@ images:
     architecture: x86
     compilers: [clang-20]
     variants: [x86]
+    packages: [clang-20, build-essential, gcc-multilib, g++-multilib, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -119,6 +134,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-25.04-gcc15
     docker_tag: capy-ubuntu-25.04-gcc15:latest
@@ -127,6 +143,7 @@ images:
     architecture: x86_64
     compilers: [gcc-15]
     variants: [standard]
+    packages: [gcc-15, g++-15, build-essential, libssl-dev, zlib1g-dev, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -134,6 +151,7 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null
 
   - name: capy-ubuntu-25.04-gcc15-asan
     docker_tag: capy-ubuntu-25.04-gcc15-asan:latest
@@ -142,6 +160,7 @@ images:
     architecture: x86_64
     compilers: [gcc-15]
     variants: [asan, ubsan]
+    packages: [gcc-15, g++-15, build-essential, libssl-dev, zlib1g-dev, cmake]
     boost_preinstalled: true
     boost_path: /opt/boost-source
     b2_preinstalled: true
@@ -149,3 +168,4 @@ images:
     created: 2026-02-10T00:00:00Z
     usage_count: 0
     last_used: null
+    size_mb: null

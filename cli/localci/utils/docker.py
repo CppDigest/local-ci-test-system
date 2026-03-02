@@ -67,6 +67,10 @@ class DockerManager:
         assert self._docker_path is not None
         return [self._docker_path, *args]
 
+    def build_cmd(self, *args: str) -> list[str]:
+        """Return command list [docker_path, *args] for portable subprocess use (e.g. CLI)."""
+        return self._docker_cmd(*args)
+
     def load_image(self, tar_path: Path) -> tuple[bool, str]:
         """Load Docker image from a ``.tar`` file.
 
