@@ -584,11 +584,11 @@ class ProgressTracker:
                 step_table.add_column("Duration", justify="right")
                 longest_step = max(steps, key=lambda x: x[1])
                 for name, dur in steps:
-                    dur_str = f"{dur:.1f}s"
+                    step_dur_str = f"{dur:.1f}s"
                     if (name, dur) == longest_step:
-                        step_table.add_row(f"[bold]{name}[/bold]", f"[bold]{dur_str}[/bold] ← longest")
+                        step_table.add_row(f"[bold]{name}[/bold]", f"[bold]{step_dur_str}[/bold] ← longest")
                     else:
-                        step_table.add_row(name, dur_str)
+                        step_table.add_row(name, step_dur_str)
                 console.print(step_table)
                 console.print()
 
@@ -680,7 +680,16 @@ class ProgressTracker:
                     "priority": j.priority,
                     "duration_seconds": j.duration_seconds,
                     "status": j.status.value,
-                    **({"step_timings": j.step_timings} if j.step_timings else {}),
+                    **(
+                        {
+                            "step_timings": [
+                                {"name": name, "duration": dur}
+                                for name, dur in j.step_timings
+                            ]
+                        }
+                        if j.step_timings
+                        else {}
+                    ),
                 }
                 for j in completed
             ],
@@ -694,7 +703,16 @@ class ProgressTracker:
                     "error_message": j.error_message,
                     "log_file": j.log_file,
                     "status": j.status.value,
-                    **({"step_timings": j.step_timings} if j.step_timings else {}),
+                    **(
+                        {
+                            "step_timings": [
+                                {"name": name, "duration": dur}
+                                for name, dur in j.step_timings
+                            ]
+                        }
+                        if j.step_timings
+                        else {}
+                    ),
                 }
                 for j in failed
             ],

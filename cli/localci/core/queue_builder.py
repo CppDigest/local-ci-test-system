@@ -63,7 +63,10 @@ def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:
                 if entry.platform.value != value:
                     match = False
             else:
-                match = False
+                # Arbitrary matrix key from workflow (e.g. from --matrix key=value)
+                raw_val = entry.raw.get(key)
+                if raw_val is None or str(raw_val) != str(value):
+                    match = False
         if match:
             return True
     return False

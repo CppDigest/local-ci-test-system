@@ -135,8 +135,8 @@ class ParallelExecutionManager:
         config: Optional[OrchestratorConfig] = None,
         logs_dir: Optional[Path] = None,
         workflow_patcher: Optional[
-            Callable[[Path, MatrixEntry, Optional[str]], Path]
-        ] = None,
+            Callable[..., Path]
+        ] = None,  # (workflow_path, entry, image_tag, job_id=..., container_mount_options=...) -> Path
         cache_config: Optional["CacheConfig"] = None,
         no_cache: bool = False,
         cache_dir_override: Optional[Path] = None,

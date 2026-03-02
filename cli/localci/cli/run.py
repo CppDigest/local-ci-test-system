@@ -173,8 +173,6 @@ def run(
         print_warning("--rebuild-image is not yet implemented; ignoring.")
     if interactive:
         print_warning("--interactive is not yet implemented; ignoring.")
-    if matrix_filters:
-        print_warning("--matrix filters are not yet implemented; ignoring.")
 
     # ── 3. Filter entries ──────────────────────────────────────────
     plat_map = {
@@ -225,10 +223,24 @@ def run(
     job_filter_list = list({jid for jid, _ in selected})
     plat_filter = plat_map.get(platform) if platform else None
     compiler_filter = compiler.lower() if compiler else None
+    # CLI --matrix key=value (repeatable) → single include filter dict; overrides config when set
+    cli_matrix_include: list[dict] | None = None
+    if matrix_filters:
+        cli_matrix_include = [{}]
+        for s in matrix_filters:
+            if "=" in s:
+                k, v = s.split("=", 1)
+                cli_matrix_include[0][k.strip()] = v.strip()
+        if not cli_matrix_include[0]:
+            cli_matrix_include = None
     matrix_include = (
-        [f.model_dump(exclude_none=True) for f in cfg.matrix.include]
-        if cfg.matrix.include
-        else None
+        cli_matrix_include
+        if cli_matrix_include
+        else (
+            [f.model_dump(exclude_none=True) for f in cfg.matrix.include]
+            if cfg.matrix.include
+            else None
+        )
     )
     matrix_exclude = (
         [f.model_dump(exclude_none=True) for f in cfg.matrix.exclude]
@@ -328,7 +340,7 @@ def run(
     # Issue 9: ccache stats after run (when cache enabled)
     if not no_cache and cfg.cache.enabled and cfg.cache.ccache.enabled:
         resolved = resolve_cache_paths(
-            cfg.cache, False, cache_dir, None, None
+            cfg.cache, no_cache, cache_dir, None, None
         )
         if resolved and resolved.ccache_host is not None:
             stats = get_ccache_stats(resolved.ccache_host)
@@ -436,20 +448,20 @@ def _write_patched_workflow(
                     break  # next job or top-level key
                 if re.match(r"^\s+container\s*:\s*$", row):
                     options_found = False
-+                   for k in range(j + 1, min(j + 10, len(lines))):
+                    for k in range(j + 1, min(j + 10, len(lines))):
                         opt_match = re.match(r"^(\s+)options\s*:\s*(.*)$", lines[k])
                         if opt_match:
                             existing = opt_match.group(2).strip().strip('"\'')
                             new_val = f"{existing} {container_mount_options}".strip()
                             lines[k] = f'{opt_match.group(1)}options: "{new_val}"\n'
-+                           options_found = True
+                            options_found = True
                             break
                     if not options_found:
-+                        # Determine indent from the container: line and add options below it
-+                        container_indent = row[: len(row) - len(row.lstrip())]
-+                        options_indent = container_indent + "  "
-+                        lines.insert(j + 1, f'{options_indent}options: "{container_mount_options}"\n')
-+                   break
+                        # Determine indent from the container: line and add options below it
+                        container_indent = row[: len(row) - len(row.lstrip())]
+                        options_indent = container_indent + "  "
+                        lines.insert(j + 1, f'{options_indent}options: "{container_mount_options}"\n')
+                    break
             break
 
     # Patch Boost patch step: when LOCALCI_B2_SOURCE_DIR is set, reuse the cached boost-root
