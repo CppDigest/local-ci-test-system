@@ -372,7 +372,6 @@ class ProgressTracker:
         parts.append(self._render_progress_bar())
         parts.append(self._render_priority_levels())
         parts.append(self._render_job_table())
-        parts.append(self._render_resources())
         return Group(*parts)
 
     def _render_header(self):
@@ -459,12 +458,6 @@ class ProgressTracker:
                 job.elapsed_display,
             )
         return table
-
-    def _render_resources(self):
-        """Render resource usage line (placeholder)."""
-        from rich.text import Text
-
-        return Text("")
 
     # -----------------------------------------------------------------------
     # Summary report
