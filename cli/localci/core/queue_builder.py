@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from localci.core.image_tag import derive_image_tag
 from localci.core.models import QueuedJob
 from localci.core.queue import PriorityConfig, PriorityJobQueue
 from localci.core.workflow import MatrixEntry, Platform
@@ -79,7 +80,10 @@ def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:
                 if entry.platform.value != value:
                     match = False
             else:
-                match = False
+                # Arbitrary matrix key from workflow (e.g. from --matrix key=value)
+                raw_val = entry.raw.get(key)
+                if raw_val is None or str(raw_val) != str(value):
+                    match = False
         if match:
             return True
     return False
@@ -153,6 +157,7 @@ class QueueBuilder:
             image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
                 entry, registry
             )
+            
             queued = QueuedJob(
                 job_id=job.id,
                 matrix_entry=entry,

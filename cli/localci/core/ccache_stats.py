@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,15 +25,22 @@ def get_ccache_stats(host_ccache_dir: Path) -> Optional[str]:
     if not host_ccache_dir.exists():
         return None
     try:
+        env = os.environ.copy()
+        env["CCACHE_DIR"] = str(host_ccache_dir)
         result = subprocess.run(
             [ccache, "-s"],
-            env={"CCACHE_DIR": str(host_ccache_dir)},
+            env=env,
             capture_output=True,
             text=True,
             timeout=10,
         )
         if result.returncode != 0:
-            logger.debug("ccache -s failed: %s", result.stderr or result.stdout)
+            logger.warning(
+                "ccache -s failed (returncode=%s): stderr=%r stdout=%r",
+                result.returncode,
+                result.stderr,
+                result.stdout,
+            )
             return None
         return result.stdout.strip() if result.stdout else None
     except (subprocess.TimeoutExpired, OSError) as e:

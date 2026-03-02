@@ -116,15 +116,12 @@ class YqWrapper:
                 timeout=10,
             )
             version_str = (result.stdout + result.stderr).lower()
-            if "mikefarah" in version_str:
+            if "mikefarah" in version_str or "github.com/mikefarah" in version_str:
                 return "mikefarah"
             if "kislyuk" in version_str or "jq" in version_str:
                 return "kislyuk"
-            # mikefarah/yq 4.x prints the URL; kislyuk prints nothing with --version
-            # If the output looks like 'yq version v4.' it's mikefarah
-            if "version v" in version_str and "github.com/mikefarah" not in version_str:
-                return "unknown"
-            if "github.com/mikefarah" in version_str:
+            # mikefarah/yq 4.x often prints "yq ... version v4.x"; some builds omit the URL
+            if "version v" in version_str:
                 return "mikefarah"
             return "unknown"
         except Exception:

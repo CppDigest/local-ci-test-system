@@ -273,7 +273,17 @@ class TestResolveCachePaths:
     def test_resolve_cache_paths_b2_source_disabled_when_build_dir_false(self):
         """B2 source cache path is None when boost.build_dir is False."""
         cfg = LocalCIConfig()
-        cfg.cache.boost.build_dir = False
+        cfg = cfg.model_copy(
+            update={
+                "cache": cfg.cache.model_copy(
+                    update={
+                        "boost": cfg.cache.boost.model_copy(
+                            update={"build_dir": False}
+                        )
+                    }
+                )
+            }
+        )
         r = resolve_cache_paths(
             cfg.cache, False, None, "build", "build:gcc-15"
         )

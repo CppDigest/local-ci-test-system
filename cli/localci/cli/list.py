@@ -149,20 +149,8 @@ def list_cmd(
         print_error(str(exc))
         ctx.exit(1)
 
-    # Collect entries and apply filters (config.jobs.include / exclude for --enabled / --disabled)
-    if config and (enabled or disabled):
-        entries = []
-        for job_id, job in wf.jobs.items():
-            if enabled and config.jobs.include and job_id not in config.jobs.include:
-                continue
-            if disabled and config.jobs.exclude and job_id not in config.jobs.exclude:
-                continue
-            if enabled and disabled:
-                if config.jobs.exclude and job_id in config.jobs.exclude:
-                    continue
-            entries.extend(job.matrix)
-    else:
-        entries = wf.all_matrix_entries()
+    # Collect all matrix entries; include/exclude are applied later by entry.name
+    entries = wf.all_matrix_entries()
 
     if platform != "all":
         target = _PLATFORM_MAP.get(platform)
@@ -238,10 +226,6 @@ def list_cmd(
         filter_desc.append(f"compiler={compiler}")
     if comp_version:
         filter_desc.append(f"version={comp_version}")
-    if enabled:
-        filter_desc.append("enabled")
-    if disabled:
-        filter_desc.append("disabled")
 
     title = f"Matrix Entries ({len(entries)})"
     if filter_desc:

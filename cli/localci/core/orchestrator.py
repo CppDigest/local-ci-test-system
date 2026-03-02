@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import signal
 import time
 import uuid
@@ -61,22 +62,27 @@ class OrchestratorConfig:
     dispatch_interval: float = 0.1
     default_secrets: Optional[dict[str, str]] = None
     default_env: Optional[dict[str, str]] = None
+    image_registry_path: Optional[Path] = None
 
     @classmethod
     def from_config(cls, config: "LocalCIConfig") -> OrchestratorConfig:
         rl = getattr(config.parallel, "resource_limit", None) or {}
         cpu = getattr(rl, "cpu_percent", 90) if hasattr(rl, "cpu_percent") else 90.0
         mem = getattr(rl, "memory_percent", 85) if hasattr(rl, "memory_percent") else 85.0
+        disk_gb = float(getattr(rl, "disk_min_free_gb", 10.0))
+        images = getattr(config, "images", None)
+        registry_path = getattr(images, "registry", None) if images else None
         return cls(
             max_parallel=getattr(config.parallel, "max_jobs", 8),
             cpu_threshold=float(cpu),
             memory_threshold=float(mem),
-            disk_min_free_gb=10.0,
+            disk_min_free_gb=disk_gb,
             job_timeout=getattr(config.execution, "timeout", 3600),
             keep_containers=getattr(config.execution, "keep_containers", False),
             stop_on_first_failure=getattr(
                 config.execution, "stop_on_first_failure", False
             ),
+            image_registry_path=registry_path,
         )
 
 
@@ -134,8 +140,8 @@ class ParallelExecutionManager:
         config: Optional[OrchestratorConfig] = None,
         logs_dir: Optional[Path] = None,
         workflow_patcher: Optional[
-            Callable[[Path, MatrixEntry, Optional[str]], Path]
-        ] = None,
+            Callable[..., Path]
+        ] = None,  # (workflow_path, entry, image_tag, job_id=..., container_mount_options=...) -> Path
         cache_config: Optional["CacheConfig"] = None,
         no_cache: bool = False,
         cache_dir_override: Optional[Path] = None,
@@ -303,6 +309,14 @@ class ParallelExecutionManager:
         try:
             self.queue.mark_preparing(job)
             image_tag = self._prepare_image(job)
+            if job.image_tag and image_tag is None:
+                return JobResult(
+                    job_id=job.job_id,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    status=JobStatus.ERROR,
+                    error_message=f"Image not available: {job.image_tag} (not in Docker cache and load from .tar failed or not attempted)",
+                )
             self.queue.mark_running(job)
             # Phase 2: resolve cache paths before patcher (patcher may inject mounts into workflow)
             resolved_cache_paths = None
@@ -337,19 +351,19 @@ class ParallelExecutionManager:
                 mount_parts: list[str] = []
                 if resolved_cache_paths.ccache_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.ccache_host}:{resolved_cache_paths.ccache_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.ccache_host))}:{shlex.quote(str(resolved_cache_paths.ccache_container))}"
                     )
                 if resolved_cache_paths.boost_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.boost_host}:{resolved_cache_paths.boost_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.boost_host))}:{shlex.quote(str(resolved_cache_paths.boost_container))}"
                     )
                 if resolved_cache_paths.cmake_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.cmake_host}:{resolved_cache_paths.cmake_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.cmake_host))}:{shlex.quote(str(resolved_cache_paths.cmake_container))}"
                     )
                 if resolved_cache_paths.b2_source_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.b2_source_host}:{resolved_cache_paths.b2_source_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.b2_source_host))}:{shlex.quote(str(resolved_cache_paths.b2_source_container))}"
                     )
                 if mount_parts:
                     container_mount_options = " ".join(mount_parts)
@@ -416,8 +430,28 @@ class ParallelExecutionManager:
         if self._docker.image_exists(job.image_tag):
             logger.debug("Image already loaded: %s", job.image_tag)
             return job.image_tag
-        logger.info("Image ready: %s", job.image_tag)
-        return job.image_tag
+        # Load from .tar if not in Docker cache (design: "Load image from tar file" step 1)
+        registry = self.config.image_registry_path
+        if registry and registry.is_dir():
+            # Convention: image tag "name:latest" -> registry/name.tar
+            base = job.image_tag.split(":")[0]
+            tar_path = registry / f"{base}.tar"
+            if tar_path.exists():
+                ok, msg = self._docker.load_image(tar_path)
+                if ok and self._docker.image_exists(job.image_tag):
+                    logger.info("Loaded image from %s: %s", tar_path, job.image_tag)
+                    return job.image_tag
+                if not ok:
+                    logger.warning("Failed to load image from %s: %s", tar_path, msg)
+            else:
+                logger.debug("No tar at %s for %s", tar_path, job.image_tag)
+        else:
+            logger.debug("No image registry path; image must be pre-loaded: %s", job.image_tag)
+        # Only return tag if image is now present (e.g. after load); else None so job fails clearly
+        if self._docker.image_exists(job.image_tag):
+            return job.image_tag
+        logger.warning("Image not available (not in cache and load from tar failed or not attempted): %s", job.image_tag)
+        return None
 
     def _on_job_done(self, job: QueuedJob, future: Future) -> None:
         try:

@@ -1,4 +1,4 @@
-# Ubuntu 25.04 (Noble Numbat) reached end-of-life 2026-01-15 and is no longer
+# Ubuntu 25.04 (Oracular Oriole) reached end-of-life 2026-01-15 and is no longer
 # receiving security updates. Kept for CI parity with capy workflow matrix
 # (container: ubuntu:25.04). Plan: migrate to ubuntu:24.04 LTS or ubuntu:26.04
 # when capy CI and image names are updated; target Q2 2026.

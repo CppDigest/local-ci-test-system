@@ -20,7 +20,7 @@ Phase 2 (Sprint 2 in the implementation priority order) focuses on **performance
 
 ## Architecture Context
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                      MCP / CLI                                    │
 └─────────────────────┬───────────────────────────────────────────┘
@@ -94,7 +94,7 @@ Phase 2 adds cache layers that are mounted or bind-mounted into containers (or u
 
 **Dependencies:** Issue 9 is listed in the preparation doc as dependency; in practice Issue 10 can proceed in parallel with Issue 9, both depending on Issue 5.
 
-**Integration:** Cache path bind-mounted; `BOOST_ROOT` set in job env. **Local CI patches the workflow** so the Clone Boost step runs only when `BOOST_ROOT` is empty; when `BOOST_ROOT` is set (cached Boost), the step is skipped and a "Use cached Boost (BOOST_ROOT)" step creates `boost-source` from the cache so the Patch step works. Workflow authors can also implement this manually (documented in USER_GUIDE).
+**Integration:** Cache path bind-mounted; `BOOST_ROOT` set in job env. **Current behavior:** the workflow patcher does not skip the Clone Boost step or insert a separate "Use cached Boost (BOOST_ROOT)" step; the Clone Boost step remains unconditional. The patcher replaces the Patch Boost step's `cp -rL boost-source boost-root` with cache-hit/miss logic when `LOCALCI_B2_SOURCE_DIR` is set. Conditional Clone Boost skip and a "Use cached Boost" step may be added in a future update. Workflow authors can implement BOOST_ROOT-based skip manually (see USER_GUIDE).
 
 **B2 source + build artifacts cache (`b2-source`):** When `cache.boost.build_dir` is true (default), Local CI caches the **entire per-job `boost-root`** directory (e.g. `~/.localci/cache/b2-source/<job_matrix_key>`) and bind-mounts it at `/tmp/localci-cache/b2-source`, setting `LOCALCI_B2_SOURCE_DIR`. The workflow patcher replaces the `cp -rL boost-source boost-root` in the Patch Boost step with an incremental approach: when the cache exists, `rsync` updates only changed Boost source files from `$BOOST_ROOT`, preserving `bin.v2/` (b2 artifacts) and `libs/capy`, then symlinks `boost-root` to the cache dir; on the first run it falls back to `cp -rL` and seeds the cache for next time. This means b2 sees stable timestamps on unchanged files and its `bin.v2/` object files persist across runs, so only the modified files and their dependees are rebuilt (&lt;10s target). Clear with `localci cache clear --target b2-source`.
 
@@ -236,11 +236,11 @@ Issues 9 and 10 can be parallelized; Issue 11 can follow or overlap with Issue 1
 1. ~~Create GitHub issues 9, 10, 11~~ (optional; implementation complete).
 2. Measure full Linux CI and incremental build times before/after; tune cache sizes and invalidation.
 3. ~~ccache hit/miss reporting~~ — Done: stats after run and `localci cache stats`.
-4. Workflow patch: Local CI patches the workflow (a) Clone Boost skipped when `BOOST_ROOT` set + "Use cached Boost" step added; (b) `cp -rL boost-source boost-root` replaced with persistent per-job `boost-root` from `b2-source` cache (rsync updates only changed files, preserves `bin.v2/`); cmake-workflow should use `LOCALCI_CMAKE_CACHE_DIR` to skip reconfigure.
+4. Workflow patch: Local CI patches the workflow (a) when `LOCALCI_B2_SOURCE_DIR` is set, `cp -rL boost-source boost-root` is replaced with persistent per-job `boost-root` from `b2-source` cache (cache-hit: symlink/rsync; cache-miss: cp -rL then seed cache); Clone Boost remains unconditional and no "Use cached Boost" step is inserted; (b) cmake-workflow should use `LOCALCI_CMAKE_CACHE_DIR` to skip reconfigure.
 
 ---
 
 ## Reference
 
-- **Preparation document:** `2026-02/2026-02-06/brad/Local CI sytem for capy preparation.md` — Child Issues Breakdown (Phase 3: Caching and Optimization = Issues 9, 10, 11), Implementation Priority Order (Sprint 2: Performance).
+- **Preparation document:** `2026-02/2026-02-06/brad/Local CI system for capy preparation.md` — Child Issues Breakdown (Phase 3: Caching and Optimization = Issues 9, 10, 11), Implementation Priority Order (Sprint 2: Performance).
 - **Phase 1 summary:** `2026-02/2026-02-06/brad/Local CI Phase 1 - Core Infrastructure.md` — Foundation that Phase 2 builds on.

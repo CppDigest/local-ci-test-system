@@ -77,8 +77,11 @@ def _git_clone(dest: Path, branch: str, shallow: bool, remote_url: str) -> None:
 def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> None:
     """Fetch origin and reset working tree to origin/<branch>."""
     try:
+        fetch_args = ["git", "-C", str(dest), "fetch", "origin", branch]
+        if shallow:
+            fetch_args.extend(["--depth", "1"])
         subprocess.run(
-            ["git", "-C", str(dest), "fetch", "origin", branch],
+            fetch_args,
             check=True,
             capture_output=True,
             text=True,

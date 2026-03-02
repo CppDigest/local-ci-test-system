@@ -82,6 +82,7 @@ def images_list(ctx: click.Context, output_format: str, registry_path: Path | No
     except Exception as exc:  # noqa: BLE001
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     if output_format == "json":
         click.echo(json.dumps([e.to_dict() for e in registry.entries], indent=2))
@@ -123,11 +124,13 @@ def images_info(ctx: click.Context, image: str, registry_path: Path | None) -> N
     except Exception as exc:  # noqa: BLE001
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     match = registry.find_by_name(image)
     if not match:
         print_warning(f"Image not found in registry: {image}")
         ctx.exit(1)
+        return
 
     click.echo(yaml.safe_dump(match.to_dict(), sort_keys=False))
 
@@ -158,6 +161,7 @@ def images_build(
     if not IMAGES_DIR.exists():
         print_error(f"Images directory not found: {IMAGES_DIR}")
         ctx.exit(1)
+        return
 
     build_all_script = IMAGES_DIR / "build-all.sh"
     build_one_script = IMAGES_DIR / "build-one.sh"
@@ -168,6 +172,7 @@ def images_build(
         if result.returncode != 0:
             print_error(result.stderr.strip() or "Build failed.")
             ctx.exit(result.returncode)
+            return
         print_success("Built all images.")
         return
 
@@ -178,6 +183,7 @@ def images_build(
             if result.returncode != 0:
                 print_error(result.stderr.strip() or f"Build failed for {image}.")
                 ctx.exit(result.returncode)
+                return
             print_success(f"Built image: {image}")
         return
 
@@ -216,6 +222,7 @@ def images_clean(
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to list Docker images.")
         ctx.exit(result.returncode)
+        return
 
     targets = [
         line.strip()
@@ -236,6 +243,7 @@ def images_clean(
     if rm.returncode != 0:
         print_error(rm.stderr.strip() or "Failed to remove one or more images.")
         ctx.exit(rm.returncode)
+        return
     print_success(f"Removed {len(targets)} image(s).")
 
 
@@ -253,6 +261,7 @@ def images_import(ctx: click.Context, tar_file: str) -> None:
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to import image.")
         ctx.exit(result.returncode)
+        return
     print_success("Imported image.")
     if result.stdout.strip():
         print_info(result.stdout.strip())
@@ -275,4 +284,5 @@ def images_export(ctx: click.Context, image: str, output_path: str) -> None:
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to export image.")
         ctx.exit(result.returncode)
+        return
     print_success(f"Exported image {image} to {out}")

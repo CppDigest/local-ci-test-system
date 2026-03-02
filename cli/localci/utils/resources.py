@@ -138,7 +138,7 @@ class ResourceMonitor:
             )
             if result.returncode == 0 and result.stdout.strip():
                 return len(
-                    [l for l in result.stdout.strip().split("\n") if l]
+                    [line for line in result.stdout.strip().split("\n") if line]
                 )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
