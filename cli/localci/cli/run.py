@@ -226,6 +226,16 @@ def run(
     selected_set = {(jid, e.index) for jid, e in selected}
     job_filter_list = list({jid for jid, _ in selected})
     plat_filter = plat_map.get(platform) if platform else None
+    # CLI --matrix key=value (repeatable) → single include filter dict; overrides config when set
+    cli_matrix_include: list[dict] | None = None
+    if matrix_filters:
+        cli_matrix_include = [{}]
+        for s in matrix_filters:
+            if "=" in s:
+                k, v = s.split("=", 1)
+                cli_matrix_include[0][k.strip()] = v.strip()
+        if not cli_matrix_include[0]:
+            cli_matrix_include = None
     matrix_include = (
         cli_matrix_include
         if cli_matrix_include
