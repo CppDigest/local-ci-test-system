@@ -136,10 +136,12 @@ def list_cmd(
             "Use --workflow or create a .localci.yml config."
         )
         ctx.exit(1)
+        return
 
     if not wf_path.exists():
         print_error(f"Workflow file not found: {wf_path}")
         ctx.exit(1)
+        return
 
     # Parse
     try:
@@ -148,6 +150,7 @@ def list_cmd(
     except (WorkflowError, FileNotFoundError) as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # Collect all matrix entries; include/exclude are applied later by entry.name
     entries = wf.all_matrix_entries()

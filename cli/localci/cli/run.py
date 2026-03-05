@@ -151,6 +151,7 @@ def run(
     except Exception as exc:
         print_error(f"Failed to parse workflow: {exc}")
         ctx.exit(1)
+        return
 
     # Collect (job_id, entry) pairs
     all_pairs: list[tuple[str, MatrixEntry]] = []
@@ -254,12 +255,14 @@ def run(
     except ActNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # ── 6. Execute via orchestrator ────────────────────────────────
     orch_config = OrchestratorConfig(
@@ -328,6 +331,7 @@ def run(
 
     if not summary.all_passed:
         ctx.exit(1)
+        return
 
 
 # ─── Helpers ───────────────────────────────────────────────────────
