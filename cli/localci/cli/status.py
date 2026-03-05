@@ -31,7 +31,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow mode (live updates).",
+    help="Follow mode / live polling (not yet implemented; shows current state only).",
 )
 @click.option(
     "--format",
@@ -49,7 +49,7 @@ def status(
 ) -> None:
     """Show execution progress."""
     if follow:
-        print_warning("--follow is not yet implemented; showing current state only.")
+        print_warning("--follow is not yet implemented (no live polling); showing current state only.")
 
     cfg = ctx.obj["config"]
     logs_dir: Path = cfg.logging.directory

@@ -145,11 +145,13 @@ def list_cmd(
             "No workflow file specified. "
             "Use --workflow or create a .localci.yml config."
         )
-        raise SystemExit(1)
+        ctx.exit(1)
+        return
 
     if not wf_path.exists():
         print_error(f"Workflow file not found: {wf_path}")
-        raise SystemExit(1)
+        ctx.exit(1)
+        return
 
     # Parse
     try:
@@ -157,7 +159,8 @@ def list_cmd(
         wf = analyzer.analyze(wf_path)
     except (WorkflowError, FileNotFoundError) as exc:
         print_error(str(exc))
-        raise SystemExit(1) from exc
+        ctx.exit(1)
+        return
 
     # Collect entries and apply filters
     entries = wf.all_matrix_entries()

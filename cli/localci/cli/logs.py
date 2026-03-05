@@ -30,7 +30,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow logs in real-time.",
+    help="Follow logs in real-time / live tail (not yet implemented; shows snapshot only).",
 )
 @click.option(
     "--tail",
@@ -68,7 +68,7 @@ def logs(
     JOB is a job index (e.g. 5) or name (e.g. "GCC 15").
     """
     if follow:
-        print_warning("--follow is not yet implemented; showing log snapshot only.")
+        print_warning("--follow is not yet implemented (no live tail); showing log snapshot only.")
     if timestamps:
         print_warning("--timestamps is not yet implemented; ignoring.")
 

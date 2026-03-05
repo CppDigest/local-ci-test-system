@@ -146,9 +146,11 @@ def analyze(
     except WorkflowError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
     except FileNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # ── JSON output ──────────────────────────────────────────────
     if output_format == "json":

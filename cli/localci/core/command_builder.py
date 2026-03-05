@@ -53,6 +53,7 @@ class ActCommandBuilder:
         repo_full_name: str = "cppalliance/capy",
         default_env: Optional[dict[str, str]] = None,
         default_secrets: Optional[dict[str, str]] = None,
+        offline: bool = False,
     ) -> None:
         self.workflow_file = workflow_file
         self.project_dir = project_dir
@@ -60,6 +61,7 @@ class ActCommandBuilder:
         self.repo_full_name = repo_full_name
         self.default_env = default_env or {}
         self.default_secrets = default_secrets or {}
+        self.offline = offline
 
     # -----------------------------------------------------------------
     # Public API
@@ -72,6 +74,7 @@ class ActCommandBuilder:
         dryrun: bool = False,
         verbose: bool = False,
         extra_env: Optional[dict[str, str]] = None,
+        workflow_file: Optional[Path] = None,
     ) -> ActCommand:
         """Build an :class:`ActCommand` for a specific matrix entry.
 
@@ -87,12 +90,15 @@ class ActCommandBuilder:
             Enable debug output.
         extra_env:
             Additional environment variables.
+        workflow_file:
+            Override workflow file path (e.g. patched workflow with container image).
 
         Returns
         -------
         ActCommand
             Fully configured command ready to execute.
         """
+        wf_path = workflow_file if workflow_file is not None else self.workflow_file
         # Matrix filters
         matrix_filters = self._build_matrix_filters(entry)
 
@@ -112,21 +118,25 @@ class ActCommandBuilder:
         secrets = {**self.default_secrets}
         secrets.setdefault("GITHUB_TOKEN", "local-ci-token")
 
-        # Architecture
+        # Architecture: request linux/386 only when using a generic image
+        # (e.g. ubuntu:24.04). Our capy x86 image is amd64 with multilib, so
+        # we must not request 386 when using it or the daemon will reject.
         container_arch: Optional[str] = None
-        if entry.architecture == "x86":
+        if entry.architecture == "x86" and (
+            not image_tag or not str(image_tag).startswith("capy-")
+        ):
             container_arch = "linux/386"
 
         # Event file
         event_file = self._create_event_file()
 
         return ActCommand(
-            workflow_file=self.workflow_file,
+            workflow_file=wf_path,
             job_id=self.job_id,
             matrix_filters=matrix_filters,
             runner_mappings=runner_mappings,
             pull=False,
-            offline=True,
+            offline=self.offline,
             privileged=True,
             rm=True,
             dryrun=dryrun,

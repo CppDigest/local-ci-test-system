@@ -1,0 +1,16 @@
+FROM capy-ubuntu-25.04-gcc15:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libasan8 \
+    libubsan1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ASAN_OPTIONS=detect_leaks=1:detect_stack_use_after_return=1
+ENV UBSAN_OPTIONS=print_stacktrace=1
+
+LABEL org.localci.image.kind="project"
+LABEL org.localci.compiler="gcc-15"
+LABEL org.localci.variant="asan+ubsan"

@@ -1,0 +1,6 @@
+# IDEs
+.idea/
+
+# image 
+*.tar
+images/capy/dist/

@@ -1,0 +1,75 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    ca-certificates \
+    curl \
+    wget \
+    cmake \
+    ninja-build \
+    ccache \
+    pkg-config \
+    python3 \
+    python3-pip \
+    libssl-dev \
+    zlib1g-dev \
+    gcc-12 \
+    g++-12 \
+    libstdc++-12-dev \
+    libasan8 \
+    libubsan1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# GitHub Actions use modern JS (optional chaining etc.); Ubuntu 22.04 default nodejs is 12.x.
+# Install Node.js 20 LTS from NodeSource so actions run without SyntaxError.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update \
+    && found=0 \
+    && for pkg in \
+        b2 \
+        boost-build \
+        libboost-tools-dev \
+        libboost1.86-tools-dev \
+        libboost1.85-tools-dev \
+        libboost1.83-tools-dev \
+        libboost1.74-tools-dev; do \
+        if apt-get install -y --no-install-recommends "${pkg}"; then \
+          found=1; \
+          break; \
+        fi; \
+      done \
+    && test "${found}" = "1" \
+    && if ! command -v b2 >/dev/null 2>&1 && command -v bjam >/dev/null 2>&1; then \
+        ln -sf "$(command -v bjam)" /usr/local/bin/b2; \
+      fi \
+    && command -v b2 >/dev/null 2>&1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 120 \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 120
+
+# Keep a shallow Boost superproject clone for workflow reuse.
+RUN git clone --depth=1 --branch=develop https://github.com/boostorg/boost.git /opt/boost-source
+
+RUN mkdir -p /cache/ccache
+
+ENV CCACHE_DIR=/cache/ccache
+ENV CCACHE_MAXSIZE=2G
+ENV BOOST_ROOT=/opt/boost-source
+ENV CC=gcc-12
+ENV CXX=g++-12
+
+WORKDIR /workspace
+
+LABEL org.localci.project="capy"
+LABEL org.localci.image.kind="project"
+LABEL org.localci.os="ubuntu:22.04"
+LABEL org.localci.compiler="gcc-12"

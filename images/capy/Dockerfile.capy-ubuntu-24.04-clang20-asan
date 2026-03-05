@@ -1,0 +1,17 @@
+FROM capy-ubuntu-24.04-clang20:latest
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Clang needs its own compiler-rt static libs for ASAN/UBSAN (e.g. libclang_rt.asan_static.a).
+# libasan8/libubsan1 are GCC runtimes and are not used when linking with clang++ -fsanitize=...
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libclang-rt-20-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ASAN_OPTIONS=detect_leaks=1:detect_stack_use_after_return=1
+ENV UBSAN_OPTIONS=print_stacktrace=1
+
+LABEL org.localci.image.kind="project"
+LABEL org.localci.compiler="clang-20"
+LABEL org.localci.variant="asan+ubsan"

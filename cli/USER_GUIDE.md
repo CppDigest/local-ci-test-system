@@ -17,6 +17,7 @@
   - [localci status](#localci-status)
   - [localci logs](#localci-logs)
   - [localci images](#localci-images)
+  - [Building Docker images (images/ scripts)](#building-docker-images-images-scripts)
   - [localci config](#localci-config)
 - [Workflows](#workflows)
   - [First-Time Setup](#first-time-setup)
@@ -52,7 +53,7 @@ Key features:
 | Python 3.11+ | Runtime | [python.org](https://www.python.org/downloads/) |
 | Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
-| act | Local GitHub Actions | `choco install act-cli` / `brew install act` |
+| act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` |
 
 ### Install for usage
 
@@ -372,10 +373,13 @@ localci run [OPTIONS]
 | `--parallel` | Max concurrent jobs (overrides config) |
 | `--timeout` | Job timeout in seconds (overrides config) |
 | `--dry-run` | Preview the execution plan without running anything |
+| `--github-token`, `-t` | GitHub token for downloading external actions |
+| `--offline` | Run in offline mode (requires pre-cached actions) |
 | `--no-cache` | Disable build caching (ccache/sccache) |
 | `--rebuild-image` | Force Docker image rebuild |
 | `--keep-containers` | Don't remove containers after execution |
 | `--interactive`, `-i` | Interactively select which jobs to run |
+| `--verbose`, `-v` | Show verbose act output |
 
 **Examples:**
 
@@ -407,6 +411,47 @@ localci run --job 5 --keep-containers
 # Force image rebuild
 localci run --job 5 --rebuild-image
 ```
+
+#### GitHub Authentication
+
+If your workflow uses external GitHub Actions (composite actions from other repositories), `act` needs a GitHub token to download them. Without authentication, you'll see errors like:
+
+```text
+authentication required: Invalid username or token
+```
+
+**Solution 1: Environment Variable (Recommended)**
+
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+localci run --platform linux
+```
+
+**Solution 2: CLI Flag**
+
+```bash
+localci run --platform linux --github-token ghp_your_token_here
+```
+
+**Solution 3: Offline Mode**
+
+If actions are already cached from a previous run:
+
+```bash
+localci run --platform linux --offline
+```
+
+**How to Get a GitHub Token:**
+
+1. Go to https://github.com/settings/tokens
+2. Click "Generate new token" → "Generate new token (classic)"
+3. Select scopes:
+   - `repo` (for private repositories)
+   - `public_repo` (for public repositories only)
+4. Copy the token (starts with `ghp_`)
+5. Set it as an environment variable or pass via `--github-token`
+
+**Note**: The token is only used by `act` to download external actions. It's never sent to remote servers or stored permanently.
 
 #### Understanding --dry-run
 
@@ -565,6 +610,45 @@ localci images import ./my-image.tar
 ```bash
 # Export an image to a tar file
 localci images export capy-ubuntu-25.04-gcc15 -o image.tar
+```
+
+#### Building Docker images (images/ scripts)
+
+You can build the project’s Docker images directly with the scripts under
+`images/capy/`. Use this when you are changing Dockerfiles, building without
+localci, or exporting images to `.tar` files for transfer.
+
+From the **repository root**:
+
+**Build all images** (in dependency order):
+
+```bash
+./images/capy/build-all.sh
+```
+
+Optional: export each image to `images/capy/dist/<image-name>.tar`:
+
+```bash
+./images/capy/build-all.sh --save
+```
+
+**Build a single image** by name:
+
+```bash
+./images/capy/build-one.sh capy-ubuntu-24.04-clang20
+./images/capy/build-one.sh capy-ubuntu-22.04-gcc12 --save   # also save to .tar
+```
+
+Supported image names: `capy-ubuntu-24.04-base`, `capy-ubuntu-25.04-base`,
+`capy-ubuntu-22.04-gcc12`, `capy-ubuntu-24.04-gcc13-cov`, `capy-ubuntu-24.04-clang17`,
+`capy-ubuntu-24.04-clang20`, `capy-ubuntu-24.04-clang20-asan`, `capy-ubuntu-24.04-clang20-x86`,
+`capy-ubuntu-25.04-gcc15`, `capy-ubuntu-25.04-gcc15-asan`. Run
+`./images/capy/build-one.sh` with no arguments to print the list.
+
+**Validate an image** (tools, b2, node, compiler):
+
+```bash
+./images/capy/test-image.sh capy-ubuntu-24.04-clang20:latest
 ```
 
 ---

@@ -5,14 +5,43 @@ Manage Docker images: list, inspect, build, clean, import, and export.
 
 from __future__ import annotations
 
-import click
+import json
+import subprocess
+from pathlib import Path
+from typing import Any
 
+import click
+import yaml
+
+from localci.utils.docker import DockerManager
 from localci.utils.output import (
     console,
+    make_table,
+    print_error,
     print_info,
-    print_not_implemented,
     print_success,
+    print_warning,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+IMAGES_DIR = REPO_ROOT / "images" / "capy"
+REGISTRY_FILE = REPO_ROOT / "image-registry.yml"
+
+
+def _load_registry() -> list[dict[str, Any]]:
+    if not REGISTRY_FILE.exists():
+        raise FileNotFoundError(f"Registry file not found: {REGISTRY_FILE}")
+    data = yaml.safe_load(REGISTRY_FILE.read_text(encoding="utf-8")) or {}
+    return data.get("images", [])
+
+
+def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
 @click.group()
@@ -38,8 +67,28 @@ def images(ctx: click.Context) -> None:
 @click.pass_context
 def images_list(ctx: click.Context, output_format: str) -> None:
     """List available images."""
-    # TODO: Replace with ImageRegistry from Issue 3.
-    print_not_implemented("images list (image registry backend)")
+    try:
+        registry_images = _load_registry()
+    except Exception as exc:  # noqa: BLE001
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+
+    if output_format == "json":
+        click.echo(json.dumps(registry_images, indent=2))
+        return
+
+    table = make_table("Name", "Tag", "OS", "Arch", "Variants", title="Image Registry")
+    for img in registry_images:
+        variants = ", ".join(img.get("variants", [])) or "-"
+        table.add_row(
+            img.get("name", "-"),
+            img.get("docker_tag", "-"),
+            img.get("os", "-"),
+            str(img.get("architecture", "-")),
+            variants,
+        )
+    console.print(table)
 
 
 # ---------------------------------------------------------------------------
@@ -52,9 +101,20 @@ def images_list(ctx: click.Context, output_format: str) -> None:
 @click.pass_context
 def images_info(ctx: click.Context, image: str) -> None:
     """Show detailed information about an image."""
-    # TODO: Replace with ImageRegistry from Issue 3.
-    print_not_implemented("images info (image registry backend)")
-    print_info(f"Would show details for image: {image}")
+    try:
+        registry_images = _load_registry()
+    except Exception as exc:  # noqa: BLE001
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+
+    match = next((i for i in registry_images if i.get("name") == image), None)
+    if not match:
+        print_warning(f"Image not found in registry: {image}")
+        ctx.exit(1)
+        return
+
+    click.echo(yaml.safe_dump(match, sort_keys=False))
 
 
 # ---------------------------------------------------------------------------
@@ -77,14 +137,39 @@ def images_build(
 
     Specify one or more IMAGE_NAMES, or use --all to build every missing image.
     """
-    # TODO: Replace with Docker Image Management from Issue 4.
-    print_not_implemented("images build (docker image management backend)")
+    if force:
+        print_warning("--force is not yet implemented; proceeding without force logic.")
+
+    if not IMAGES_DIR.exists():
+        print_error(f"Images directory not found: {IMAGES_DIR}")
+        ctx.exit(1)
+        return
+
+    build_all_script = IMAGES_DIR / "build-all.sh"
+    build_one_script = IMAGES_DIR / "build-one.sh"
+
     if build_all:
-        print_info("Would build all missing images")
-    elif image_names:
-        print_info(f"Would build images: {', '.join(image_names)}")
-    else:
-        print_info("No images specified. Use --all or provide image names.")
+        cmd = ["bash", str(build_all_script), "--save"]
+        result = _run(cmd)
+        if result.returncode != 0:
+            print_error(result.stderr.strip() or "Build failed.")
+            ctx.exit(result.returncode)
+            return
+        print_success("Built all images.")
+        return
+
+    if image_names:
+        for image in image_names:
+            cmd = ["bash", str(build_one_script), image, "--save"]
+            result = _run(cmd)
+            if result.returncode != 0:
+                print_error(result.stderr.strip() or f"Build failed for {image}.")
+                ctx.exit(result.returncode)
+                return
+            print_success(f"Built image: {image}")
+        return
+
+    print_info("No images specified. Use --all or provide image names.")
 
 
 # ---------------------------------------------------------------------------
@@ -93,21 +178,53 @@ def images_build(
 
 
 @images.command("clean")
-@click.option("--older-than", type=str, default=None, help="Remove images older than (e.g. 30d).")
-@click.option("--unused", is_flag=True, help="Remove unused images.")
 @click.option("--all", "clean_all", is_flag=True, help="Remove all localci images.")
 @click.option("--dry-run", is_flag=True, help="Preview without removing.")
 @click.pass_context
 def images_clean(
     ctx: click.Context,
-    older_than: str | None,
-    unused: bool,
     clean_all: bool,
     dry_run: bool,
 ) -> None:
     """Clean up Docker images."""
-    # TODO: Replace with Docker Image Management from Issue 4.
-    print_not_implemented("images clean (docker image management backend)")
+    if not clean_all:
+        print_info("Nothing to clean. Use --all to remove localci images.")
+        return
+
+    try:
+        dm = DockerManager()
+    except RuntimeError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+
+    result = _run(dm.build_cmd("image", "ls", "--format", "{{.Repository}}:{{.Tag}}"))
+    if result.returncode != 0:
+        print_error(result.stderr.strip() or "Failed to list Docker images.")
+        ctx.exit(result.returncode)
+        return
+
+    targets = [
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip().startswith("capy-ubuntu-")
+    ]
+    if not targets:
+        print_info("No localci capy images found.")
+        return
+
+    if dry_run:
+        print_info("Dry-run: would remove the following images:")
+        for t in targets:
+            console.print(f"  - {t}")
+        return
+
+    rm = _run(dm.build_cmd("rmi", "-f", *targets))
+    if rm.returncode != 0:
+        print_error(rm.stderr.strip() or "Failed to remove one or more images.")
+        ctx.exit(rm.returncode)
+        return
+    print_success(f"Removed {len(targets)} image(s).")
 
 
 # ---------------------------------------------------------------------------
@@ -120,9 +237,20 @@ def images_clean(
 @click.pass_context
 def images_import(ctx: click.Context, tar_file: str) -> None:
     """Import a Docker image from a tar file."""
-    # TODO: Replace with Docker Image Management from Issue 4.
-    print_not_implemented("images import (docker image management backend)")
-    print_info(f"Would import image from: {tar_file}")
+    try:
+        dm = DockerManager()
+    except RuntimeError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+    result = _run(dm.build_cmd("load", "-i", tar_file))
+    if result.returncode != 0:
+        print_error(result.stderr.strip() or "Failed to import image.")
+        ctx.exit(result.returncode)
+        return
+    print_success("Imported image.")
+    if result.stdout.strip():
+        print_info(result.stdout.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +264,17 @@ def images_import(ctx: click.Context, tar_file: str) -> None:
 @click.pass_context
 def images_export(ctx: click.Context, image: str, output_path: str) -> None:
     """Export a Docker image to a tar file."""
-    # TODO: Replace with Docker Image Management from Issue 4.
-    print_not_implemented("images export (docker image management backend)")
-    print_info(f"Would export image {image} to {output_path}")
+    try:
+        dm = DockerManager()
+    except RuntimeError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    result = _run(dm.build_cmd("save", "-o", str(out), image))
+    if result.returncode != 0:
+        print_error(result.stderr.strip() or "Failed to export image.")
+        ctx.exit(result.returncode)
+        return
+    print_success(f"Exported image {image} to {out}")
