@@ -7,6 +7,7 @@ Uses Pydantic v2 for type-safe validation.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -100,6 +101,8 @@ class CcacheConfig(BaseModel):
 
     enabled: bool = True
     max_size: str = "5G"
+    compress: bool = True  # CCACHE_COMPRESS
+    dir: Optional[Path] = None  # default: cache.directory / "ccache"
 
 
 class BoostCacheConfig(BaseModel):
@@ -107,6 +110,20 @@ class BoostCacheConfig(BaseModel):
 
     enabled: bool = True
     branch: str = "develop"
+    dir: Optional[Path] = None  # default: cache.directory / "boost"
+    shallow: bool = True
+    remote: Optional[str] = None  # default: https://github.com/boostorg/boost.git
+    # When True, cache b2 build artifacts (bin.v2) per job so b2 does incremental builds
+    build_dir: bool = True
+
+
+class CmakeCacheConfig(BaseModel):
+    """CMake configuration cache settings (per job/matrix)."""
+
+    enabled: bool = True
+    dir: Optional[Path] = None  # base dir; per-job path is dir / <job_matrix_key>[_<input_digest>]
+    # Optional: paths/globs relative to project root included in change detection (default: CMakeLists.txt, cmake/*.cmake)
+    inputs: Optional[list[str]] = None
 
 
 class CacheConfig(BaseModel):
@@ -116,6 +133,7 @@ class CacheConfig(BaseModel):
     directory: Path = Field(default_factory=lambda: Path.home() / ".localci" / "cache")
     ccache: CcacheConfig = Field(default_factory=CcacheConfig)
     boost: BoostCacheConfig = Field(default_factory=BoostCacheConfig)
+    cmake: CmakeCacheConfig = Field(default_factory=CmakeCacheConfig)
 
     @field_validator("directory", mode="after")
     @classmethod
@@ -172,6 +190,108 @@ class LocalCIConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+
+
+# ---------------------------------------------------------------------------
+# Cache path resolution (Phase 2)
+# ---------------------------------------------------------------------------
+
+# Container paths used when bind-mounting host cache dirs (act --container-options -v ...)
+LOCALCI_CACHE_CONTAINER_ROOT = "/tmp/localci-cache"
+
+
+@dataclass
+class ResolvedCachePaths:
+    """Resolved host paths and container paths for Phase 2 caches."""
+
+    ccache_host: Optional[Path] = None
+    boost_host: Optional[Path] = None
+    cmake_host: Optional[Path] = None  # per-job: cache_base / job_id / matrix_key
+    b2_source_host: Optional[Path] = None  # per-job: persistent boost-root (source + bin.v2 artifacts)
+
+    @property
+    def ccache_container(self) -> str:
+        return f"{LOCALCI_CACHE_CONTAINER_ROOT}/ccache"
+
+    @property
+    def boost_container(self) -> str:
+        return f"{LOCALCI_CACHE_CONTAINER_ROOT}/boost"
+
+    @property
+    def cmake_container(self) -> str:
+        return f"{LOCALCI_CACHE_CONTAINER_ROOT}/cmake"
+
+    @property
+    def b2_source_container(self) -> str:
+        return f"{LOCALCI_CACHE_CONTAINER_ROOT}/b2-source"
+
+    def host_dirs_to_ensure(self) -> list[Path]:
+        """Host directories that must exist before bind-mounting."""
+        out: list[Path] = []
+        if self.ccache_host is not None:
+            out.append(self.ccache_host)
+        if self.boost_host is not None:
+            out.append(self.boost_host)
+        if self.cmake_host is not None:
+            out.append(self.cmake_host)
+        if self.b2_source_host is not None:
+            out.append(self.b2_source_host)
+        return out
+
+
+def resolve_cache_paths(
+    cache_config: CacheConfig,
+    no_cache: bool,
+    cache_dir_override: Optional[Path] = None,
+    job_id: Optional[str] = None,
+    queue_key: Optional[str] = None,
+    cmake_input_digest: Optional[str] = None,
+) -> Optional[ResolvedCachePaths]:
+    """Resolve host cache paths for use with act bind mounts.
+
+    Returns None if caching is disabled (no_cache, or cache.enabled or
+    per-cache enabled flags false). Otherwise returns resolved paths;
+    paths are expanded (expanduser) and resolved to absolute.
+
+    When *cmake_input_digest* is provided and CMake cache is enabled, the
+    CMake cache path is keyed by job/matrix and digest so that different
+    inputs (CMakeLists.txt, toolchain, compiler, BOOST_ROOT) get different
+    directories (Issue 11 change detection).
+    """
+    if no_cache or not cache_config.enabled:
+        return None
+    root = cache_dir_override or cache_config.directory
+    root = Path(root).expanduser().resolve()
+
+    r = ResolvedCachePaths()
+    if cache_config.ccache.enabled:
+        d = cache_config.ccache.dir or root / "ccache"
+        r.ccache_host = Path(d).expanduser().resolve()
+    if cache_config.boost.enabled:
+        d = cache_config.boost.dir or root / "boost"
+        r.boost_host = Path(d).expanduser().resolve()
+        if getattr(cache_config.boost, "build_dir", True) and job_id and queue_key:
+            b2_base = root / "b2-source"
+            safe_key = queue_key.replace(":", "-")
+            r.b2_source_host = Path(b2_base).expanduser().resolve() / safe_key
+    if cache_config.cmake.enabled and job_id and queue_key:
+        base = cache_config.cmake.dir or root / "cmake"
+        base = Path(base).expanduser().resolve()
+        safe_key = queue_key.replace(":", "-")
+        if cmake_input_digest:
+            subdir = f"{safe_key}_{cmake_input_digest}"
+        else:
+            subdir = safe_key
+        r.cmake_host = base / subdir
+
+    if (
+        r.ccache_host is None
+        and r.boost_host is None
+        and r.cmake_host is None
+        and r.b2_source_host is None
+    ):
+        return None
+    return r
 
 
 # ---------------------------------------------------------------------------

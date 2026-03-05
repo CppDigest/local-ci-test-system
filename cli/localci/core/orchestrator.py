@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import signal
 import time
 import uuid
@@ -15,6 +16,8 @@ from threading import Event as ThreadEvent
 from typing import TYPE_CHECKING, Callable, Optional
 
 from localci.core.command_builder import ActCommandBuilder
+from localci.core.config import resolve_cache_paths
+from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.workflow import MatrixEntry
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
@@ -23,7 +26,7 @@ from localci.utils.docker import DockerManager
 from localci.utils.resources import ResourceMonitor
 
 if TYPE_CHECKING:
-    from localci.core.config import LocalCIConfig
+    from localci.core.config import CacheConfig, LocalCIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +140,11 @@ class ParallelExecutionManager:
         config: Optional[OrchestratorConfig] = None,
         logs_dir: Optional[Path] = None,
         workflow_patcher: Optional[
-            Callable[[Path, MatrixEntry, Optional[str]], Path]
-        ] = None,
+            Callable[..., Path]
+        ] = None,  # (workflow_path, entry, image_tag, job_id=..., container_mount_options=...) -> Path
+        cache_config: Optional["CacheConfig"] = None,
+        no_cache: bool = False,
+        cache_dir_override: Optional[Path] = None,
     ):
         self.queue = queue
         self.workflow_file = Path(workflow_file)
@@ -147,6 +153,13 @@ class ParallelExecutionManager:
         self.logs_dir = Path(logs_dir or Path.home() / ".localci" / "logs").expanduser()
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         self._workflow_patcher = workflow_patcher
+        self._cache_config = cache_config
+        self._no_cache = no_cache
+        self._cache_dir_override = (
+            Path(cache_dir_override).expanduser().resolve()
+            if cache_dir_override is not None
+            else None
+        )
 
         self._executor = JobExecutor(logs_dir=self.logs_dir)
         self._docker = DockerManager()
@@ -305,11 +318,66 @@ class ParallelExecutionManager:
                     error_message=f"Image not available: {job.image_tag} (not in Docker cache and load from .tar failed or not attempted)",
                 )
             self.queue.mark_running(job)
+            # Phase 2: resolve cache paths before patcher (patcher may inject mounts into workflow)
+            resolved_cache_paths = None
+            container_mount_options: Optional[str] = None
+            if self._cache_config is not None:
+                cmake_digest = None
+                if (
+                    not self._no_cache
+                    and self._cache_config.enabled
+                    and self._cache_config.cmake.enabled
+                ):
+                    cmake_digest = compute_cmake_input_digest(
+                        self.project_dir,
+                        job.matrix_entry,
+                        self._cache_config.cmake,
+                        boost_enabled=(
+                            self._cache_config.boost.enabled
+                        ),
+                    )
+                resolved_cache_paths = resolve_cache_paths(
+                    self._cache_config,
+                    self._no_cache,
+                    self._cache_dir_override,
+                    job.job_id,
+                    job.queue_key,
+                    cmake_input_digest=cmake_digest,
+                )
+            if resolved_cache_paths is not None:
+                for d in resolved_cache_paths.host_dirs_to_ensure():
+                    d.mkdir(parents=True, exist_ok=True)
+                # Build -v options so patcher can inject into job container (act does not apply --container-options to job container when workflow has container:)
+                mount_parts: list[str] = []
+                if resolved_cache_paths.ccache_host is not None:
+                    mount_parts.append(
+                        f"-v {shlex.quote(str(resolved_cache_paths.ccache_host))}:{shlex.quote(str(resolved_cache_paths.ccache_container))}"
+                    )
+                if resolved_cache_paths.boost_host is not None:
+                    mount_parts.append(
+                        f"-v {shlex.quote(str(resolved_cache_paths.boost_host))}:{shlex.quote(str(resolved_cache_paths.boost_container))}"
+                    )
+                if resolved_cache_paths.cmake_host is not None:
+                    mount_parts.append(
+                        f"-v {shlex.quote(str(resolved_cache_paths.cmake_host))}:{shlex.quote(str(resolved_cache_paths.cmake_container))}"
+                    )
+                if resolved_cache_paths.b2_source_host is not None:
+                    mount_parts.append(
+                        f"-v {shlex.quote(str(resolved_cache_paths.b2_source_host))}:{shlex.quote(str(resolved_cache_paths.b2_source_container))}"
+                    )
+                if mount_parts:
+                    container_mount_options = " ".join(mount_parts)
+
             workflow_file = self.workflow_file
             if self._workflow_patcher is not None:
                 workflow_file = self._workflow_patcher(
-                    self.workflow_file, job.matrix_entry, image_tag
+                    self.workflow_file,
+                    job.matrix_entry,
+                    image_tag,
+                    job_id=job.job_id,
+                    container_mount_options=container_mount_options,
                 )
+
             # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
             # (causes "remove ... no such file or directory" when one job cleans cache)
             act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
@@ -327,6 +395,8 @@ class ParallelExecutionManager:
                 image_tag=image_tag,
                 workflow_file=workflow_file,
                 action_cache_path=act_cache_dir,
+                resolved_cache_paths=resolved_cache_paths,
+                cache_config=self._cache_config,
             )
             result = self._executor.run(
                 cmd,

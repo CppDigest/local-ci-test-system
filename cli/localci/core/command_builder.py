@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import json
 import logging
+import shlex
 import tempfile
 from pathlib import Path
 from typing import Optional
 
+from localci.core.config import CacheConfig, ResolvedCachePaths
 from localci.core.executor import ActCommand
 from localci.core.workflow import MatrixEntry
 
@@ -76,6 +78,8 @@ class ActCommandBuilder:
         extra_env: Optional[dict[str, str]] = None,
         workflow_file: Optional[Path] = None,
         action_cache_path: Optional[Path] = None,
+        resolved_cache_paths: Optional[ResolvedCachePaths] = None,
+        cache_config: Optional[CacheConfig] = None,
     ) -> ActCommand:
         """Build an :class:`ActCommand` for a specific matrix entry.
 
@@ -95,6 +99,10 @@ class ActCommandBuilder:
             Override workflow file path (e.g. patched workflow with container image).
         action_cache_path:
             Per-job act action cache directory (avoids parallel races in shared cache).
+        resolved_cache_paths:
+            Phase 2: resolved host cache paths for ccache/boost/cmake bind mounts.
+        cache_config:
+            Phase 2: cache config (for CCACHE_MAXSIZE etc.).
 
         Returns
         -------
@@ -116,6 +124,50 @@ class ActCommandBuilder:
             env["CXX"] = entry.compiler.cxx
         if extra_env:
             env.update(extra_env)
+
+        # Phase 2: cache bind mounts and env
+        container_options: Optional[str] = None
+        if resolved_cache_paths is not None:
+            mount_parts: list[str] = []
+            if resolved_cache_paths.ccache_host is not None:
+                mount_parts.append(
+                    f"-v {shlex.quote(str(resolved_cache_paths.ccache_host))}:{shlex.quote(str(resolved_cache_paths.ccache_container))}"
+                )
+            if resolved_cache_paths.boost_host is not None:
+                mount_parts.append(
+                    f"-v {shlex.quote(str(resolved_cache_paths.boost_host))}:{shlex.quote(str(resolved_cache_paths.boost_container))}"
+                )
+            if resolved_cache_paths.cmake_host is not None:
+                mount_parts.append(
+                    f"-v {shlex.quote(str(resolved_cache_paths.cmake_host))}:{shlex.quote(str(resolved_cache_paths.cmake_container))}"
+                )
+            if resolved_cache_paths.b2_source_host is not None:
+                mount_parts.append(
+                    f"-v {shlex.quote(str(resolved_cache_paths.b2_source_host))}:{shlex.quote(str(resolved_cache_paths.b2_source_container))}"
+                )
+            if mount_parts:
+                container_options = " ".join(mount_parts)
+            if resolved_cache_paths.ccache_host is not None:
+                env["CCACHE_DIR"] = resolved_cache_paths.ccache_container
+                if cache_config and cache_config.ccache.enabled:
+                    env["CCACHE_MAXSIZE"] = cache_config.ccache.max_size
+                    env["CCACHE_COMPRESS"] = "1" if cache_config.ccache.compress else "0"
+                    # Same approach as Boost-hands-on-exp: wrap compiler with ccache so
+                    # b2 and other build steps use ccache when they invoke CC/CXX.
+                    if env.get("CC"):
+                        env["CC"] = f"ccache {env['CC']}"
+                    else:
+                        env["CC"] = "ccache gcc"
+                    if env.get("CXX"):
+                        env["CXX"] = f"ccache {env['CXX']}"
+                    else:
+                        env["CXX"] = "ccache g++"
+            if resolved_cache_paths.boost_host is not None:
+                env["BOOST_ROOT"] = resolved_cache_paths.boost_container
+            if resolved_cache_paths.cmake_host is not None:
+                env["LOCALCI_CMAKE_CACHE_DIR"] = resolved_cache_paths.cmake_container
+            if resolved_cache_paths.b2_source_host is not None:
+                env["LOCALCI_B2_SOURCE_DIR"] = resolved_cache_paths.b2_source_container
 
         # Secrets
         secrets = {**self.default_secrets}
@@ -149,6 +201,7 @@ class ActCommandBuilder:
             event_file=event_file,
             container_architecture=container_arch,
             action_cache_path=action_cache_path,
+            container_options=container_options,
             workdir=self.project_dir,
         )
 

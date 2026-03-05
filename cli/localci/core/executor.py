@@ -150,6 +150,9 @@ class ActCommand:
     # Action cache (per-job path to avoid parallel races in ~/.cache/act)
     action_cache_path: Optional[Path] = None
 
+    # Phase 2: bind mounts for ccache/boost/cmake (act --container-options "-v ...")
+    container_options: Optional[str] = None
+
     # Working directory
     workdir: Optional[Path] = None
 
@@ -221,6 +224,10 @@ class ActCommand:
         # Per-job action cache (avoids parallel jobs corrupting shared ~/.cache/act)
         if self.action_cache_path:
             cmd.extend(["--action-cache-path", str(self.action_cache_path)])
+
+        # Phase 2: bind mounts for build/boost/cmake caches
+        if self.container_options:
+            cmd.extend(["--container-options", self.container_options])
 
         return cmd
 

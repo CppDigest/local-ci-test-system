@@ -1,6 +1,7 @@
 """``localci images`` command group.
 
 Manage Docker images: list, inspect, build, clean, import, and export.
+Uses the image registry (image-registry.yml) and two-mark matching from core.registry.
 """
 
 from __future__ import annotations
@@ -8,11 +9,11 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
 
 import click
 import yaml
 
+from localci.core.registry import ImageRegistry
 from localci.utils.docker import DockerManager
 from localci.utils.output import (
     console,
@@ -28,11 +29,13 @@ IMAGES_DIR = REPO_ROOT / "images" / "capy"
 REGISTRY_FILE = REPO_ROOT / "image-registry.yml"
 
 
-def _load_registry() -> list[dict[str, Any]]:
-    if not REGISTRY_FILE.exists():
-        raise FileNotFoundError(f"Registry file not found: {REGISTRY_FILE}")
-    data = yaml.safe_load(REGISTRY_FILE.read_text(encoding="utf-8")) or {}
-    return data.get("images", [])
+def _get_registry(registry_path: Path | None = None) -> ImageRegistry:
+    path = registry_path or REGISTRY_FILE
+    if not path.exists():
+        raise FileNotFoundError(f"Registry file not found: {path}")
+    registry = ImageRegistry(path)
+    registry.load()
+    return registry
 
 
 def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
@@ -64,28 +67,36 @@ def images(ctx: click.Context) -> None:
     default="table",
     help="Output format.",
 )
+@click.option(
+    "--registry",
+    "-r",
+    "registry_path",
+    type=click.Path(path_type=Path, exists=True),
+    default=None,
+    help="Path to image-registry.yml.",
+)
 @click.pass_context
-def images_list(ctx: click.Context, output_format: str) -> None:
+def images_list(ctx: click.Context, output_format: str, registry_path: Path | None) -> None:
     """List available images."""
     try:
-        registry_images = _load_registry()
+        registry = _get_registry(registry_path)
     except Exception as exc:  # noqa: BLE001
         print_error(str(exc))
         ctx.exit(1)
         return
 
     if output_format == "json":
-        click.echo(json.dumps(registry_images, indent=2))
+        click.echo(json.dumps([e.to_dict() for e in registry.entries], indent=2))
         return
 
     table = make_table("Name", "Tag", "OS", "Arch", "Variants", title="Image Registry")
-    for img in registry_images:
-        variants = ", ".join(img.get("variants", [])) or "-"
+    for e in registry.entries:
+        variants = ", ".join(e.variants) if e.variants else "-"
         table.add_row(
-            img.get("name", "-"),
-            img.get("docker_tag", "-"),
-            img.get("os", "-"),
-            str(img.get("architecture", "-")),
+            e.name,
+            e.docker_tag,
+            e.os,
+            e.architecture,
             variants,
         )
     console.print(table)
@@ -98,23 +109,31 @@ def images_list(ctx: click.Context, output_format: str) -> None:
 
 @images.command("info")
 @click.argument("image")
+@click.option(
+    "--registry",
+    "-r",
+    "registry_path",
+    type=click.Path(path_type=Path, exists=True),
+    default=None,
+    help="Path to image-registry.yml.",
+)
 @click.pass_context
-def images_info(ctx: click.Context, image: str) -> None:
+def images_info(ctx: click.Context, image: str, registry_path: Path | None) -> None:
     """Show detailed information about an image."""
     try:
-        registry_images = _load_registry()
+        registry = _get_registry(registry_path)
     except Exception as exc:  # noqa: BLE001
         print_error(str(exc))
         ctx.exit(1)
         return
 
-    match = next((i for i in registry_images if i.get("name") == image), None)
+    match = registry.find_by_name(image)
     if not match:
         print_warning(f"Image not found in registry: {image}")
         ctx.exit(1)
         return
 
-    click.echo(yaml.safe_dump(match, sort_keys=False))
+    click.echo(yaml.safe_dump(match.to_dict(), sort_keys=False))
 
 
 # ---------------------------------------------------------------------------

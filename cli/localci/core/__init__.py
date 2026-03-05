@@ -30,6 +30,14 @@ from localci.core.queue import (  # noqa: F401
     PriorityRule,
 )
 from localci.core.queue_builder import QueueBuilder  # noqa: F401
+from localci.core.registry import (  # noqa: F401
+    ImageRegistry,
+    MatchResult,
+    RegistryEntry,
+    essential_marks,
+    extra_marks,
+    select_image,
+)
 from localci.core.orchestrator import (  # noqa: F401
     ExecutionRun,
     OrchestratorConfig,
