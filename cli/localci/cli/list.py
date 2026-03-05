@@ -162,7 +162,7 @@ def list_cmd(
         ctx.exit(1)
         return
 
-    # Collect entries and apply filters
+    # Collect all matrix entries; include/exclude are applied later by entry.name
     entries = wf.all_matrix_entries()
 
     if platform != "all":
@@ -234,16 +234,16 @@ def list_cmd(
 
     # ── Table output (default) ───────────────────────────────────
     filter_desc = []
+    if enabled:
+        filter_desc.append("enabled")
+    if disabled:
+        filter_desc.append("disabled")
     if platform != "all":
         filter_desc.append(f"platform={platform}")
     if compiler:
         filter_desc.append(f"compiler={compiler}")
     if comp_version:
         filter_desc.append(f"version={comp_version}")
-    if enabled:
-        filter_desc.append("enabled")
-    if disabled:
-        filter_desc.append("disabled")
 
     title = f"Matrix Entries ({len(entries)})"
     if filter_desc:

@@ -147,9 +147,12 @@ class ActCommand:
     # Container
     container_architecture: Optional[str] = None
 
+    # Action cache (per-job path to avoid parallel races in ~/.cache/act)
+    action_cache_path: Optional[Path] = None
+
     # Working directory
     workdir: Optional[Path] = None
-    
+
     # Binary name (set by executor)
     act_binary: str = "act"
 
@@ -214,6 +217,10 @@ class ActCommand:
         # Container architecture
         if self.container_architecture:
             cmd.extend(["--container-architecture", self.container_architecture])
+
+        # Per-job action cache (avoids parallel jobs corrupting shared ~/.cache/act)
+        if self.action_cache_path:
+            cmd.extend(["--action-cache-path", str(self.action_cache_path)])
 
         return cmd
 

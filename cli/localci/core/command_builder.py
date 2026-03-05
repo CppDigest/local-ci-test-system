@@ -75,6 +75,7 @@ class ActCommandBuilder:
         verbose: bool = False,
         extra_env: Optional[dict[str, str]] = None,
         workflow_file: Optional[Path] = None,
+        action_cache_path: Optional[Path] = None,
     ) -> ActCommand:
         """Build an :class:`ActCommand` for a specific matrix entry.
 
@@ -92,6 +93,8 @@ class ActCommandBuilder:
             Additional environment variables.
         workflow_file:
             Override workflow file path (e.g. patched workflow with container image).
+        action_cache_path:
+            Per-job act action cache directory (avoids parallel races in shared cache).
 
         Returns
         -------
@@ -145,6 +148,7 @@ class ActCommandBuilder:
             secrets=secrets,
             event_file=event_file,
             container_architecture=container_arch,
+            action_cache_path=action_cache_path,
             workdir=self.project_dir,
         )
 
