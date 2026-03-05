@@ -14,6 +14,7 @@ import click
 import yaml
 
 from localci.core.registry import ImageRegistry
+from localci.utils.docker import DockerManager
 from localci.utils.output import (
     console,
     make_table,
@@ -196,29 +197,27 @@ def images_build(
 
 
 @images.command("clean")
-@click.option("--older-than", type=str, default=None, help="Remove images older than (e.g. 30d).")
-@click.option("--unused", is_flag=True, help="Remove unused images.")
 @click.option("--all", "clean_all", is_flag=True, help="Remove all localci images.")
 @click.option("--dry-run", is_flag=True, help="Preview without removing.")
 @click.pass_context
 def images_clean(
     ctx: click.Context,
-    older_than: str | None,
-    unused: bool,
     clean_all: bool,
     dry_run: bool,
 ) -> None:
     """Clean up Docker images."""
-    if older_than:
-        print_warning("--older-than is not yet implemented; ignoring.")
-    if unused:
-        print_warning("--unused is not yet implemented; ignoring.")
-
     if not clean_all:
         print_info("Nothing to clean. Use --all to remove localci images.")
         return
 
-    result = _run(["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}"])
+    try:
+        dm = DockerManager()
+    except RuntimeError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+
+    result = _run(dm.build_cmd("image", "ls", "--format", "{{.Repository}}:{{.Tag}}"))
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to list Docker images.")
         ctx.exit(result.returncode)
@@ -239,7 +238,7 @@ def images_clean(
             console.print(f"  - {t}")
         return
 
-    rm = _run(["docker", "rmi", "-f", *targets])
+    rm = _run(dm.build_cmd("rmi", "-f", *targets))
     if rm.returncode != 0:
         print_error(rm.stderr.strip() or "Failed to remove one or more images.")
         ctx.exit(rm.returncode)
@@ -257,7 +256,13 @@ def images_clean(
 @click.pass_context
 def images_import(ctx: click.Context, tar_file: str) -> None:
     """Import a Docker image from a tar file."""
-    result = _run(["docker", "load", "-i", tar_file])
+    try:
+        dm = DockerManager()
+    except RuntimeError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+    result = _run(dm.build_cmd("load", "-i", tar_file))
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to import image.")
         ctx.exit(result.returncode)
@@ -278,9 +283,15 @@ def images_import(ctx: click.Context, tar_file: str) -> None:
 @click.pass_context
 def images_export(ctx: click.Context, image: str, output_path: str) -> None:
     """Export a Docker image to a tar file."""
+    try:
+        dm = DockerManager()
+    except RuntimeError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    result = _run(["docker", "save", "-o", str(out), image])
+    result = _run(dm.build_cmd("save", "-o", str(out), image))
     if result.returncode != 0:
         print_error(result.stderr.strip() or "Failed to export image.")
         ctx.exit(result.returncode)

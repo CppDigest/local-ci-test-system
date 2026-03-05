@@ -7,6 +7,7 @@ and downstream consumers can work with plain data structures.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
@@ -16,6 +17,8 @@ from localci.core.workflow import (
     Platform,
     Workflow,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 # =====================================================================
@@ -33,7 +36,10 @@ class WorkflowEncoder(json.JSONEncoder):
             return str(obj)
         if hasattr(obj, "__dataclass_fields__"):
             return asdict(obj)
-        # Fallback: convert to string rather than raising TypeError
+        _logger.debug(
+            "WorkflowEncoder: falling back to str() for %s",
+            type(obj).__name__,
+        )
         return str(obj)
 
 

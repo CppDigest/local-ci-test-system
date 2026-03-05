@@ -50,6 +50,16 @@ _PLATFORM_COLOR = {
     Platform.MACOS: "yellow",
 }
 
+_MATRIX_TABLE_COLUMNS = (
+    "#",
+    "Name",
+    "Platform",
+    "Compiler",
+    "Container",
+    "Build",
+    "Variants",
+)
+
 
 def _entry_matches_list(entry_name: str, names: list[str]) -> bool:
     """True if *entry_name* matches any string in *names* (case-insensitive).
@@ -136,10 +146,12 @@ def list_cmd(
             "Use --workflow or create a .localci.yml config."
         )
         ctx.exit(1)
+        return
 
     if not wf_path.exists():
         print_error(f"Workflow file not found: {wf_path}")
         ctx.exit(1)
+        return
 
     # Parse
     try:
@@ -148,6 +160,7 @@ def list_cmd(
     except (WorkflowError, FileNotFoundError) as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # Collect all matrix entries; include/exclude are applied later by entry.name
     entries = wf.all_matrix_entries()
@@ -159,14 +172,19 @@ def list_cmd(
 
     if compiler:
         target_family = _COMPILER_MAP.get(compiler.lower())
-        if target_family:
-            entries = [e for e in entries if e.compiler.family == target_family]
+        if target_family is None:
+            print_error(f"Unknown compiler: {compiler!r}. Valid: {', '.join(sorted(_COMPILER_MAP))}.")
+            ctx.exit(1)
+        entries = [e for e in entries if e.compiler.family == target_family]
 
     if comp_version:
         entries = [e for e in entries if e.compiler.version == comp_version]
 
     # Filter by config.jobs.include / config.jobs.exclude (--enabled / --disabled)
     if enabled or disabled:
+        if enabled and disabled:
+            print_error("Cannot use both --enabled and --disabled; choose one.")
+            ctx.exit(1)
         if config:
             include_names = config.jobs.include or []
             exclude_names = config.jobs.exclude or []
@@ -237,9 +255,7 @@ def list_cmd(
         print_info("No entries match the given filters.")
         return
 
-    table = make_table(
-        "#", "Name", "Platform", "Compiler", "Container", "Build", "Variants",
-    )
+    table = make_table(*_MATRIX_TABLE_COLUMNS)
 
     for entry in entries:
         color = _PLATFORM_COLOR.get(entry.platform, "white")

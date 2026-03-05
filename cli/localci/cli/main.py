@@ -61,9 +61,11 @@ def cli(
     except FileNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
     except Exception as exc:  # noqa: BLE001
         print_error(f"Failed to load config: {exc}")
         ctx.exit(1)
+        return
 
     # Stash shared state for sub-commands.
     ctx.obj["config"] = cfg

@@ -6,14 +6,14 @@ jobs, matrix configurations, dependencies, and platform breakdown.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import click
 import yaml
 
+from localci.cli.list import _MATRIX_TABLE_COLUMNS, _PLATFORM_COLOR
 from localci.core.serialization import workflow_summary, workflow_to_json
-from localci.core.workflow import Platform, WorkflowAnalyzer, WorkflowError
+from localci.core.workflow import Platform, Workflow, WorkflowAnalyzer, WorkflowError
 from localci.utils.output import (
     console,
     make_table,
@@ -29,7 +29,7 @@ from localci.utils.output import (
 # =====================================================================
 
 
-def _print_workflow_header(wf) -> None:
+def _print_workflow_header(wf: Workflow) -> None:
     """Print workflow overview."""
     console.print()
     print_key_value("Workflow", wf.name)
@@ -56,25 +56,19 @@ def _print_jobs_table(wf) -> None:
     console.print()
 
 
-def _print_matrix_table(wf) -> None:
+def _print_matrix_table(wf: Workflow) -> None:
     """Print all matrix configurations."""
     entries = wf.all_matrix_entries()
     if not entries:
         return
 
     table = make_table(
-        "#", "Name", "Platform", "Compiler", "Container", "Build", "Variants",
+        *_MATRIX_TABLE_COLUMNS,
         title=f"Matrix Configurations ({len(entries)})",
     )
 
-    platform_color = {
-        Platform.LINUX: "green",
-        Platform.WINDOWS: "blue",
-        Platform.MACOS: "yellow",
-    }
-
     for entry in entries:
-        color = platform_color.get(entry.platform, "white")
+        color = _PLATFORM_COLOR.get(entry.platform, "white")
         table.add_row(
             str(entry.index),
             entry.name,
@@ -152,9 +146,11 @@ def analyze(
     except WorkflowError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
     except FileNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # ── JSON output ──────────────────────────────────────────────
     if output_format == "json":

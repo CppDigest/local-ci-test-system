@@ -1,24 +1,21 @@
-"""Wrapper for yq (mikefarah/yq) YAML processor with PyYAML fallback.
+"""Wrapper for yq (mikefarah/yq) YAML processor.
 
-Provides structured queries against GitHub Actions YAML files.
+Provides structured queries against GitHub Actions YAML files using
+``yq`` as the primary parser (as required by the Design Guide).  When
+``yq`` is not installed, a PyYAML fallback handles simple dot-path
+expressions so that development and testing can proceed.
 
-**Linux**: ``yq`` is the primary YAML parser (as specified in the Design
-Guide).  PyYAML is used as a fallback when ``yq`` is not installed.
-
-**Other platforms** (Windows, macOS): ``yq`` is preferred when available,
-otherwise PyYAML is used.
-
-The low-level :meth:`query` method always requires the ``yq`` binary
-regardless of platform.
+All high-level helpers delegate to :meth:`query`, which dispatches to
+``yq`` (subprocess) or the built-in Python evaluator automatically.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -42,17 +39,15 @@ class YqError(Exception):
 
 
 class YqNotFoundError(Exception):
-    """yq is not installed (raised only by :meth:`query`)."""
+    """yq is not installed."""
 
     def __init__(self) -> None:
         super().__init__(
             "yq is not installed.\n"
             "Install with:\n"
             "  Windows:  choco install yq\n"
-            "  Linux:    sudo snap install yq\n"
-            "  macOS:    brew install yq\n"
-            "\n"
-            "Note: yq is optional -- all built-in commands work without it."
+            "  Linux:    sudo snap install yq  OR  sudo apt-get install yq\n"
+            "  macOS:    brew install yq"
         )
 
 
@@ -62,17 +57,13 @@ class YqNotFoundError(Exception):
 
 
 class YqWrapper:
-    """YAML query wrapper.
+    """YAML query wrapper -- ``yq`` primary, PyYAML fallback.
 
-    On **Linux**, ``yq`` is the primary parser for all YAML loading (as
-    specified by the Design Guide).  PyYAML is used as a fallback when
-    ``yq`` is not installed or when a ``yq`` invocation fails.
-
-    On **other platforms**, ``yq`` is preferred when available, with
-    PyYAML as the automatic fallback.
-
-    The low-level :meth:`query` method always requires the ``yq`` binary
-    regardless of platform.
+    The Design Guide specifies ``yq`` as the YAML parser.  This wrapper
+    uses the ``yq`` binary for **all** queries when it is available.
+    When ``yq`` is absent a PyYAML-based fallback handles the simple
+    dot-path expressions used by the built-in high-level helpers, and
+    logs a warning so the user knows to install ``yq``.
     """
 
     def __init__(self) -> None:
@@ -133,114 +124,38 @@ class YqWrapper:
 
     @property
     def has_yq(self) -> bool:
-        """``True`` when the ``yq`` binary is available on ``PATH``."""
+        """``True`` when the ``yq`` binary is on ``PATH``."""
         return self._yq_path is not None
 
-    @property
-    def is_linux(self) -> bool:
-        """``True`` when running on a Linux system."""
-        return self._is_linux
-
     # -----------------------------------------------------------------
-    # Low-level helpers
-    # -----------------------------------------------------------------
-
-    def _load(self, file: Path) -> dict:
-        """Load and cache a YAML file.
-
-        On Linux, uses ``yq`` as the primary parser (per Design Guide),
-        falling back to PyYAML if ``yq`` is unavailable or fails.
-        On other platforms, uses ``yq`` when available, PyYAML otherwise.
-
-        The result is cached so that repeated queries against the same
-        file do not re-parse.
-        """
-        resolved = file.resolve()
-        if resolved not in self._file_cache:
-            if not file.exists():
-                raise FileNotFoundError(f"Workflow file not found: {file}")
-
-            data = None
-
-            # Prefer yq when available (required on Linux per Design Guide)
-            if self._yq_path:
-                try:
-                    data = self._load_via_yq(file)
-                    logger.debug("Loaded %s via yq", file)
-                except Exception as exc:
-                    if self._is_linux:
-                        logger.warning(
-                            "yq failed for %s (%s), falling back to PyYAML",
-                            file, exc,
-                        )
-                    else:
-                        logger.debug(
-                            "yq failed for %s (%s), falling back to PyYAML",
-                            file, exc,
-                        )
-                    data = None
-
-            # Fallback to PyYAML
-            if data is None:
-                data = self._load_via_pyyaml(file)
-                logger.debug("Loaded %s via PyYAML", file)
-
-            self._file_cache[resolved] = data
-        return self._file_cache[resolved]
-
-    def _load_via_yq(self, file: Path) -> dict:
-        """Load a YAML file by running ``yq -o json '.' <file>``.
-
-        Returns the entire file content as a Python dict.
-        """
-        result = subprocess.run(
-            [self._yq_path, "-o", "json", ".", str(file)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-
-        if result.returncode != 0:
-            raise YqError(".", result.stderr.strip())
-
-        output = result.stdout.strip()
-        if not output or output == "null":
-            return {}
-
-        data = json.loads(output)
-        return data if isinstance(data, dict) else {}
-
-    def _load_via_pyyaml(self, file: Path) -> dict:
-        """Load a YAML file using PyYAML (fallback)."""
-        with open(file, "r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
-        return data if isinstance(data, dict) else {}
-
-    def clear_cache(self) -> None:
-        """Clear the file cache (useful between test runs)."""
-        self._file_cache.clear()
-
-    # -----------------------------------------------------------------
-    # Low-level yq query (requires yq binary)
+    # Core query method
     # -----------------------------------------------------------------
 
     def query(self, file: Path, expression: str) -> Any:
-        """Execute a raw yq expression against *file*.
+        """Execute a yq expression against *file*.
 
-        Requires the ``yq`` binary.  Raises :exc:`YqNotFoundError` when
-        ``yq`` is not installed.
+        Uses the ``yq`` binary when available; otherwise falls back to
+        a simple Python-based expression evaluator (supports dot-path
+        navigation, ``| keys``, and ``| length``).
 
         Returns
         -------
         dict | list | str | int | bool | None
-            Parsed JSON output.
+            Parsed result.
         """
-        if not self._yq_path:
-            raise YqNotFoundError()
-
         if not file.exists():
             raise FileNotFoundError(f"Workflow file not found: {file}")
 
+        if self._yq_path:
+            return self._query_yq(file, expression)
+        return self._query_python(file, expression)
+
+    # -----------------------------------------------------------------
+    # yq subprocess backend
+    # -----------------------------------------------------------------
+
+    def _query_yq(self, file: Path, expression: str) -> Any:
+        """Execute *expression* via ``yq -o json``."""
         result = subprocess.run(
             [self._yq_path, "-o", "json", expression, str(file)],
             capture_output=True,
@@ -258,34 +173,141 @@ class YqWrapper:
         try:
             return json.loads(output)
         except json.JSONDecodeError:
+            # yq may return unquoted strings
             return output
 
+    # -----------------------------------------------------------------
+    # PyYAML fallback backend
+    # -----------------------------------------------------------------
+
+    def _load_yaml(self, file: Path) -> dict:
+        """Load *file* via PyYAML (result is cached).
+
+        Caller must ensure file exists (e.g. query() checks before calling).
+        """
+        resolved = file.resolve()
+        if resolved not in self._file_cache:
+            with open(file, "r", encoding="utf-8") as fh:
+                data = yaml.safe_load(fh)
+            if not isinstance(data, dict):
+                logger.warning(
+                    "YAML root is not a dict (got %s) in %s; treating as empty.",
+                    type(data).__name__,
+                    file,
+                )
+                data = {}
+            self._file_cache[resolved] = data
+        return self._file_cache[resolved]
+
+    def _query_python(self, file: Path, expression: str) -> Any:
+        """Evaluate *expression* against PyYAML-loaded data.
+
+        Supports:
+        - Dot-path navigation: ``.name``, ``.jobs.build.strategy``
+        - Array indexing: ``.jobs.build.strategy.matrix.include[0]``
+        - Pipe ``keys``: ``.jobs | keys``
+        - Pipe ``length``: ``.jobs.build.steps | length``
+
+        Complex yq expressions (``select``, ``test``, etc.) are not
+        supported and return ``None`` with a logged warning.
+        """
+        data = self._load_yaml(file)
+
+        # Split on top-level pipe (not inside brackets/quotes)
+        pipe_parts = [p.strip() for p in expression.split(" | ")]
+        path_expr = pipe_parts[0]
+        pipe_ops = pipe_parts[1:]
+
+        result = self._navigate(data, path_expr)
+
+        for op in pipe_ops:
+            if op == "keys":
+                result = list(result.keys()) if isinstance(result, dict) else []
+            elif op == "length":
+                result = len(result) if result else 0
+            else:
+                logger.warning(
+                    "Complex yq expression not supported in fallback mode: %s "
+                    "(install yq for full support)",
+                    expression,
+                )
+                return None
+
+        return result
+
+    @staticmethod
+    def _navigate(data: Any, path: str) -> Any:
+        """Navigate a dot-separated path through nested dicts/lists."""
+        if not path or path == ".":
+            return data
+
+        path = path.lstrip(".")
+        if not path:
+            return data
+
+        current = data
+        segments = path.split(".")
+
+        for segment in segments:
+            if current is None:
+                return None
+
+            # Array index: e.g. include[0]
+            match = re.match(r"^(.+)\[(\d+)]$", segment)
+            if match:
+                key, idx = match.group(1), int(match.group(2))
+                current = current.get(key) if isinstance(current, dict) else None
+                if isinstance(current, list) and 0 <= idx < len(current):
+                    current = current[idx]
+                else:
+                    return None
+                continue
+
+            if isinstance(current, dict):
+                # PyYAML parses bare `on:` as boolean True
+                if segment == "on" and segment not in current and True in current:
+                    current = current[True]
+                else:
+                    current = current.get(segment)
+            else:
+                return None
+
+        return current
+
+    def clear_cache(self) -> None:
+        """Clear the PyYAML file cache."""
+        self._file_cache.clear()
+
+    # -----------------------------------------------------------------
+    # Misc
+    # -----------------------------------------------------------------
+
     def version(self) -> Optional[str]:
-        """Return the ``yq --version`` string, or *None* if yq is absent."""
+        """Return ``yq --version`` string, or *None* if yq is absent."""
         if not self._yq_path:
             return None
-        result = subprocess.run(
-            [self._yq_path, "--version"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.stdout.strip()
+        try:
+            result = subprocess.run(
+                [self._yq_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result.stdout.strip() if result.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
 
     # =================================================================
-    # High-level helpers (use yq on Linux, PyYAML fallback elsewhere)
+    # High-level helpers -- all delegate to self.query()
     # =================================================================
 
     def workflow_name(self, file: Path) -> str:
         """Extract workflow name."""
-        data = self._load(file)
-        return data.get("name") or file.stem
+        return self.query(file, ".name") or file.stem
 
     def events(self, file: Path) -> list[str]:
         """Extract trigger events."""
-        data = self._load(file)
-        # PyYAML parses bare ``on:`` as the boolean key ``True``
-        on = data.get("on") or data.get(True, {})
+        on = self.query(file, ".on")
         if isinstance(on, dict):
             return list(on.keys())
         if isinstance(on, list):
@@ -296,42 +318,35 @@ class YqWrapper:
 
     def event_branches(self, file: Path, event: str) -> list[str]:
         """Extract branches for *event*."""
-        data = self._load(file)
-        on = data.get("on") or data.get(True, {})
-        if isinstance(on, dict):
-            evt = on.get(event, {})
-            if isinstance(evt, dict):
-                branches = evt.get("branches", [])
-                return branches if isinstance(branches, list) else []
+        branches = self.query(file, f".on.{event}.branches")
+        if isinstance(branches, list):
+            return branches
         return []
 
     def global_env(self, file: Path) -> dict[str, str]:
         """Extract global environment variables."""
-        data = self._load(file)
-        env = data.get("env", {})
-        return {str(k): str(v) for k, v in env.items()} if isinstance(env, dict) else {}
+        env = self.query(file, ".env")
+        if isinstance(env, dict):
+            return {str(k): str(v) for k, v in env.items()}
+        return {}
 
     def concurrency(self, file: Path) -> Optional[dict]:
         """Extract concurrency configuration."""
-        data = self._load(file)
-        return data.get("concurrency")
+        return self.query(file, ".concurrency")
 
     def job_names(self, file: Path) -> list[str]:
         """Extract all job IDs."""
-        data = self._load(file)
-        jobs = data.get("jobs", {})
-        return list(jobs.keys()) if isinstance(jobs, dict) else []
+        result = self.query(file, ".jobs | keys")
+        return result if isinstance(result, list) else []
 
     def job_data(self, file: Path, job_id: str) -> dict:
         """Extract full job data dict for *job_id*."""
-        data = self._load(file)
-        jobs = data.get("jobs", {})
-        return jobs.get(job_id, {})
+        result = self.query(file, f".jobs.{job_id}")
+        return result if isinstance(result, dict) else {}
 
     def job_needs(self, file: Path, job_id: str) -> list[str]:
         """Extract job dependencies."""
-        jd = self.job_data(file, job_id)
-        needs = jd.get("needs")
+        needs = self.query(file, f".jobs.{job_id}.needs")
         if isinstance(needs, list):
             return [str(n) for n in needs]
         if isinstance(needs, str):
@@ -340,78 +355,76 @@ class YqWrapper:
 
     def job_condition(self, file: Path, job_id: str) -> Optional[str]:
         """Extract job ``if`` condition."""
-        return self.job_data(file, job_id).get("if")
+        return self.query(file, f".jobs.{job_id}.if")
 
     def job_runs_on(self, file: Path, job_id: str) -> str:
         """Extract job ``runs-on``."""
-        return self.job_data(file, job_id).get("runs-on", "ubuntu-latest")
+        return self.query(file, f'.jobs.{job_id}.runs-on') or "ubuntu-latest"
 
     def job_container(self, file: Path, job_id: str) -> Optional[dict]:
         """Extract job container configuration."""
-        container = self.job_data(file, job_id).get("container")
+        container = self.query(file, f".jobs.{job_id}.container")
         if isinstance(container, str):
             return {"image": container}
         return container
 
     def job_timeout(self, file: Path, job_id: str) -> int:
         """Extract job timeout in minutes."""
-        return self.job_data(file, job_id).get("timeout-minutes", 60)
+        return self.query(file, f".jobs.{job_id}.timeout-minutes") or 60
 
     def job_defaults(self, file: Path, job_id: str) -> Optional[dict]:
         """Extract job defaults."""
-        return self.job_data(file, job_id).get("defaults")
+        return self.query(file, f".jobs.{job_id}.defaults")
 
     def job_env(self, file: Path, job_id: str) -> dict[str, str]:
         """Extract job environment variables."""
-        env = self.job_data(file, job_id).get("env", {})
-        return {str(k): str(v) for k, v in env.items()} if isinstance(env, dict) else {}
+        env = self.query(file, f".jobs.{job_id}.env")
+        if isinstance(env, dict):
+            return {str(k): str(v) for k, v in env.items()}
+        return {}
 
     def matrix_strategy(self, file: Path, job_id: str) -> Optional[dict]:
         """Extract matrix strategy."""
-        return self.job_data(file, job_id).get("strategy")
+        return self.query(file, f".jobs.{job_id}.strategy")
 
     def matrix_include(self, file: Path, job_id: str) -> list[dict]:
         """Extract matrix include entries."""
-        strategy = self.matrix_strategy(file, job_id)
-        if strategy and isinstance(strategy, dict):
-            matrix = strategy.get("matrix", {})
-            if isinstance(matrix, dict):
-                return matrix.get("include", [])
-        return []
+        result = self.query(file, f".jobs.{job_id}.strategy.matrix.include")
+        return result if isinstance(result, list) else []
 
     def matrix_entry(self, file: Path, job_id: str, index: int) -> dict:
         """Extract specific matrix entry by *index*."""
-        entries = self.matrix_include(file, job_id)
-        if 0 <= index < len(entries):
-            return entries[index]
-        return {}
+        result = self.query(
+            file, f".jobs.{job_id}.strategy.matrix.include[{index}]"
+        )
+        return result if isinstance(result, dict) else {}
 
     def matrix_count(self, file: Path, job_id: str) -> int:
         """Count matrix entries."""
-        return len(self.matrix_include(file, job_id))
+        result = self.query(
+            file, f".jobs.{job_id}.strategy.matrix.include | length"
+        )
+        return result if isinstance(result, int) else 0
 
     def matrix_filter_by_field(
-        self, file: Path, job_id: str, field: str, value: str
+        self, file: Path, job_id: str, field_name: str, value: str
     ) -> list[dict]:
         """Filter matrix entries by a field value."""
-        return [
-            e
-            for e in self.matrix_include(file, job_id)
-            if str(e.get(field, "")) == value
-        ]
+        # For yq we can use select(); for fallback, use Python filtering
+        entries = self.matrix_include(file, job_id)
+        return [e for e in entries if str(e.get(field_name, "")) == value]
 
     def steps(self, file: Path, job_id: str) -> list[dict]:
         """Extract job steps."""
-        return self.job_data(file, job_id).get("steps", [])
+        result = self.query(file, f".jobs.{job_id}.steps")
+        return result if isinstance(result, list) else []
 
     def step_count(self, file: Path, job_id: str) -> int:
         """Count steps in a job."""
-        return len(self.steps(file, job_id))
+        result = self.query(file, f".jobs.{job_id}.steps | length")
+        return result if isinstance(result, int) else 0
 
     def actions_used(self, file: Path, job_id: str) -> list[str]:
         """Extract all action references in a job."""
-        return [
-            s["uses"]
-            for s in self.steps(file, job_id)
-            if "uses" in s
-        ]
+        step_list = self.steps(file, job_id)
+        return [s["uses"] for s in step_list if "uses" in s]

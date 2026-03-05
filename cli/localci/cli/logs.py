@@ -30,7 +30,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow logs in real-time (not yet implemented; shows snapshot only).",
+    help="Follow logs in real-time / live tail (not yet implemented; shows snapshot only).",
 )
 @click.option(
     "--tail",
@@ -68,7 +68,7 @@ def logs(
     JOB is a job index (e.g. 5) or name (e.g. "GCC 15").
     """
     if follow:
-        print_warning("--follow is not yet implemented; showing log snapshot only.")
+        print_warning("--follow is not yet implemented (no live tail); showing log snapshot only.")
     if timestamps:
         print_warning("--timestamps is not yet implemented; ignoring.")
 
@@ -98,6 +98,7 @@ def logs(
     except Exception as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
+        return
 
     # Find matching job result
     match = _find_job(summary, job)
@@ -128,8 +129,13 @@ def logs(
     # Save to file
     if output_file:
         out = Path(output_file)
-        out.write_text(content, encoding="utf-8")
-        print_info(f"Logs saved to {out}")
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(content, encoding="utf-8")
+            print_info(f"Logs saved to {out}")
+        except (FileNotFoundError, OSError) as exc:
+            print_error(f"Failed to write logs to {out}: {exc}")
+            ctx.exit(1)
         return
 
     # Print to console
