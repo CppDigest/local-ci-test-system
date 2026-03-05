@@ -315,7 +315,7 @@ jobs:
 
       - name: CMake Workflow
         uses: alandefreitas/cpp-actions/cmake-workflow@v1.9.0
-        if: ${{ matrix.coverage || matrix.time-trace || matrix.build-cmake || matrix.is-earliest }}
+        if: ${{ matrix.coverage || matrix.time-trace || matrix.build-cmake || matrix.is-latest }}
         with:
           source-dir: capy-root
           build-dir: __build__
@@ -344,7 +344,7 @@ jobs:
           build-dir: __build__
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Codecov
+      - name: Generate coverage report
         if: ${{ matrix.coverage }}
         run: |
           set -x
@@ -352,14 +352,11 @@ jobs:
           # Generate report
           gcov_tool="gcov"
           if command -v "gcov-${{ steps.setup-cpp.outputs.version-major }}.${{ steps.setup-cpp.outputs.version-minor }}" &> /dev/null; then
-              gcov_tool="gcov"
+              gcov_tool="gcov-${{ steps.setup-cpp.outputs.version-major }}.${{ steps.setup-cpp.outputs.version-minor }}"
           elif command -v "gcov-${{ steps.setup-cpp.outputs.version-major }}" &> /dev/null; then
               gcov_tool="gcov-${{ steps.setup-cpp.outputs.version-major }}"
           fi
           lcov -c -q -o "capy-root/__build__/coverage.info" -d "capy-root/__build__" --include "$(pwd)/capy-root/*" --gcov-tool "$gcov_tool"
-
-          # Upload to codecov
-          bash <(curl -s https://codecov.io/bash) -f "capy-root/__build__/coverage.info"
 
           # Summary
           echo "# Coverage" >> $GITHUB_STEP_SUMMARY
@@ -372,6 +369,13 @@ jobs:
           echo "Branch: [![codecov](https://codecov.io/github/$GITHUB_REPOSITORY/branch/$GITHUB_REF_NAME/graph/badge.svg)](https://codecov.io/github/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+      - name: Upload to Codecov
+        if: ${{ matrix.coverage }}
+        uses: codecov/codecov-action@v4
+        with:
+          files: capy-root/__build__/coverage.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   changelog:
     defaults:
       run:
@@ -379,7 +383,7 @@ jobs:
 
     name: Changelog Summary
     runs-on: 'ubuntu-22.04'
-    timeout-minutes: 120
+    timeout-minutes: 15
 
     steps:
       - name: Clone Boost.Capy

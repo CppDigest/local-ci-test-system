@@ -92,7 +92,7 @@ def status(
         "#", "Name", "Status", "Duration", "Image",
         title="Job Results",
     )
-    for r in sorted(summary.results, key=lambda x: x.matrix_index):
+    for r in sorted(summary.results, key=lambda x: (x.matrix_index is None, x.matrix_index)):
         status_style = {
             "passed": "[green]passed[/green]",
             "failed": "[red]failed[/red]",

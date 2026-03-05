@@ -26,7 +26,9 @@ import json
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from localci.cli.main import cli
 from localci.core.serialization import (
     workflow_summary,
     workflow_to_dict,
@@ -646,9 +648,6 @@ class TestCLIIntegration:
     """End-to-end CLI tests with the full workflow fixture."""
 
     def test_analyze_table(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(cli, ["analyze", str(FULL_WORKFLOW)])
         assert result.exit_code == 0
@@ -656,9 +655,6 @@ class TestCLIIntegration:
         assert "GCC 15" in result.output
 
     def test_analyze_json(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(cli, ["analyze", str(FULL_WORKFLOW), "-f", "json"])
         assert result.exit_code == 0
@@ -666,17 +662,11 @@ class TestCLIIntegration:
         assert data["name"] == "CI"
 
     def test_list_all(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(cli, ["list", "-w", str(FULL_WORKFLOW)])
         assert result.exit_code == 0
 
     def test_list_platform_linux(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(
             cli, ["list", "-w", str(FULL_WORKFLOW), "-p", "linux"]
@@ -684,9 +674,6 @@ class TestCLIIntegration:
         assert result.exit_code == 0
 
     def test_list_platform_windows(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(
             cli, ["list", "-w", str(FULL_WORKFLOW), "-p", "windows"]
@@ -694,9 +681,6 @@ class TestCLIIntegration:
         assert result.exit_code == 0
 
     def test_list_compiler_gcc(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(
             cli, ["list", "-w", str(FULL_WORKFLOW), "--compiler", "gcc"]
@@ -704,9 +688,6 @@ class TestCLIIntegration:
         assert result.exit_code == 0
 
     def test_list_json(self):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         result = runner.invoke(
             cli, ["list", "-w", str(FULL_WORKFLOW), "-f", "json"]
@@ -717,9 +698,6 @@ class TestCLIIntegration:
         assert len(data) == 14
 
     def test_analyze_output_to_file(self, tmp_path):
-        from click.testing import CliRunner
-        from localci.cli.main import cli
-
         runner = CliRunner()
         out = tmp_path / "output.json"
         result = runner.invoke(

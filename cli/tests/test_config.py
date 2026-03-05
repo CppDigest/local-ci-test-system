@@ -39,7 +39,10 @@ class TestDefaultConfig:
 
     def test_workflow_default(self):
         cfg = LocalCIConfig()
-        assert cfg.workflow == Path(".github/workflows/ci.yml")
+        # Validator runs on default (validate_default=True), so path is expanded/absolute
+        assert cfg.workflow.is_absolute()
+        assert cfg.workflow.name == "ci.yml"
+        assert ".github" in cfg.workflow.parts and "workflows" in cfg.workflow.parts
 
 
 # ---------------------------------------------------------------------------

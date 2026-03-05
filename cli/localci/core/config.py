@@ -155,7 +155,10 @@ class LocalCIConfig(BaseModel):
     """Root configuration model for .localci.yml."""
 
     version: int = 1
-    workflow: Path = Field(default=Path(".github/workflows/ci.yml"))
+    workflow: Path = Field(
+        default=Path(".github/workflows/ci.yml"),
+        validate_default=True,
+    )
     event: str = "push"
 
     @field_validator("workflow", mode="after")

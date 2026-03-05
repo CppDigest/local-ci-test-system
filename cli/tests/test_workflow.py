@@ -1,7 +1,7 @@
 """Unit tests for the Workflow Analyzer module (Issue 2).
 
 Uses the ``sample_ci.yml`` fixture which mirrors capy's CI structure
-with 5 matrix entries across Linux, Windows, and macOS.
+with 14 matrix entries: 10 Linux, 3 Windows, 1 macOS.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from localci.core.workflow import (
     WorkflowAnalyzer,
     WorkflowError,
     WorkflowParseError,
+    UnsupportedMatrixError,
 )
 from localci.core.serialization import (
     workflow_summary,
@@ -68,7 +69,12 @@ class TestWorkflowAnalyzer:
         assert "pull_request" in sample_workflow.events
 
     def test_parse_env(self, sample_workflow):
-        assert sample_workflow.env.get("PYTHON_VERSION") == "3.11"
+        assert sample_workflow.env.get("NET_RETRY_COUNT") == "5"
+        assert sample_workflow.env.get("GIT_FETCH_JOBS") == "8"
+
+    def test_parse_concurrency(self, sample_workflow):
+        assert sample_workflow.concurrency is not None
+        assert sample_workflow.concurrency.get("cancel-in-progress") is True
 
     def test_job_count(self, sample_workflow):
         assert sample_workflow.total_jobs == 2
@@ -76,15 +82,24 @@ class TestWorkflowAnalyzer:
         assert "changelog" in sample_workflow.jobs
 
     def test_matrix_count(self, sample_workflow):
-        assert len(sample_workflow.jobs["build"].matrix) == 5
+        assert len(sample_workflow.jobs["build"].matrix) == 14
 
     def test_total_matrix_entries(self, sample_workflow):
-        # 5 from build + 1 from changelog (no matrix)
-        assert sample_workflow.total_matrix_entries == 6
+        # 14 from build + 1 from changelog (no matrix)
+        assert sample_workflow.total_matrix_entries == 15
 
     def test_file_path(self, sample_workflow):
         assert sample_workflow.file_path.name == "sample_ci.yml"
 
+    def test_event_warning(self, analyzer, caplog):
+        """Passing an event not in the workflow logs a warning."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            analyzer.analyze(
+                FIXTURES_DIR / "sample_ci.yml", event="schedule"
+            )
+        assert "schedule" in caplog.text
     def test_analyze_with_event_filter_same_when_no_conditions(self, analyzer):
         """With no event-specific job conditions, --event does not change job set."""
         wf_no_event = analyzer.analyze(FIXTURES_DIR / "sample_ci.yml")
@@ -102,8 +117,8 @@ class TestWorkflowAnalyzer:
 class TestMatrixEntryParsing:
     """Individual matrix entry parsing."""
 
-    def test_gcc_entry(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+    def test_gcc15_entry(self, sample_workflow):
+        gcc = sample_workflow.jobs["build"].matrix[4]  # GCC 15
         assert gcc.name == "GCC 15: C++20"
         assert gcc.compiler.family == CompilerFamily.GCC
         assert gcc.compiler.version == "15"
@@ -115,23 +130,39 @@ class TestMatrixEntryParsing:
         assert gcc.architecture == "x86_64"
         assert gcc.variant.shared is True
         assert gcc.variant.build_type == "Release"
+        assert gcc.is_latest is True
 
-    def test_clang_entry(self, sample_workflow):
-        clang = sample_workflow.jobs["build"].matrix[1]
+    def test_clang20_entry(self, sample_workflow):
+        clang = sample_workflow.jobs["build"].matrix[8]  # Clang 20
         assert clang.name == "Clang 20: C++20-23"
         assert clang.compiler.family == CompilerFamily.CLANG
         assert clang.compiler.cxxstd == ["20", "23"]
+        assert clang.compiler.latest_cxxstd == "23"
         assert clang.platform == Platform.LINUX
         assert clang.container.image == "ubuntu:24.04"
 
     def test_msvc_entry(self, sample_workflow):
-        msvc = sample_workflow.jobs["build"].matrix[2]
+        msvc = sample_workflow.jobs["build"].matrix[0]  # MSVC 14.42
         assert msvc.name == "MSVC 14.42: C++20"
         assert msvc.compiler.family == CompilerFamily.MSVC
         assert msvc.compiler.version == "14.42"
         assert msvc.platform == Platform.WINDOWS
         assert msvc.container.image is None
         assert msvc.generator == "Visual Studio 17 2022"
+        assert msvc.is_latest is True
+
+    def test_msvc_shared_entry(self, sample_workflow):
+        msvc2 = sample_workflow.jobs["build"].matrix[1]  # MSVC 14.34
+        assert msvc2.name == "MSVC 14.34: C++20 (shared)"
+        assert msvc2.variant.shared is True
+        assert msvc2.is_earliest is True
+
+    def test_mingw_entry(self, sample_workflow):
+        mingw = sample_workflow.jobs["build"].matrix[2]
+        assert mingw.name == "MinGW: C++20"
+        assert mingw.compiler.family == CompilerFamily.MINGW
+        assert mingw.compiler.is_wildcard is True
+        assert mingw.platform == Platform.WINDOWS
 
     def test_apple_clang_entry(self, sample_workflow):
         ac = sample_workflow.jobs["build"].matrix[3]
@@ -142,36 +173,41 @@ class TestMatrixEntryParsing:
         assert ac.variant.ubsan is True
 
     def test_coverage_entry(self, sample_workflow):
-        cov = sample_workflow.jobs["build"].matrix[4]
+        cov = sample_workflow.jobs["build"].matrix[7]  # GCC 13 coverage
         assert cov.name == "GCC 13: C++20 coverage"
         assert cov.variant.coverage is True
         assert cov.compiler.family == CompilerFamily.GCC
         assert cov.compiler.version == "13"
 
+    def test_x86_entry(self, sample_workflow):
+        x86 = sample_workflow.jobs["build"].matrix[11]  # Clang 20 x86
+        assert x86.name == "Clang 20: C++20-23 x86"
+        assert x86.variant.x86 is True
+        assert x86.architecture == "x86"
+
 
 # =====================================================================
-# Platform classification
+# Platform classification -- acceptance criteria
 # =====================================================================
 
 
 class TestPlatformClassification:
-    """Platform detection from runs-on and container."""
+    """Platform detection -- spec requires 10 Linux, 3 Windows, 1 macOS."""
 
     def test_platform_summary(self, sample_workflow):
         summary = sample_workflow.platform_summary()
-        assert summary[Platform.LINUX] >= 2
-        assert summary[Platform.WINDOWS] == 1
+        assert summary[Platform.LINUX] == 10
+        assert summary[Platform.WINDOWS] == 3
         assert summary[Platform.MACOS] == 1
 
     def test_filter_linux(self, analyzer, sample_workflow):
         linux = analyzer.filter_by_platform(sample_workflow, Platform.LINUX)
-        assert len(linux) >= 2
+        assert len(linux) == 10
         assert all(e.platform == Platform.LINUX for e in linux)
 
     def test_filter_windows(self, analyzer, sample_workflow):
         win = analyzer.filter_by_platform(sample_workflow, Platform.WINDOWS)
-        assert len(win) == 1
-        assert win[0].compiler.family == CompilerFamily.MSVC
+        assert len(win) == 3
 
     def test_filter_macos(self, analyzer, sample_workflow):
         mac = analyzer.filter_by_platform(sample_workflow, Platform.MACOS)
@@ -180,24 +216,24 @@ class TestPlatformClassification:
 
 
 # =====================================================================
-# Compiler classification
+# Compiler classification -- acceptance criteria
 # =====================================================================
 
 
 class TestCompilerClassification:
-    """Compiler detection."""
+    """Compiler detection -- spec requires 4 GCC entries."""
 
     def test_filter_gcc(self, analyzer, sample_workflow):
         gcc = analyzer.filter_by_compiler(sample_workflow, CompilerFamily.GCC)
-        assert len(gcc) == 2  # GCC 15 + GCC 13
+        assert len(gcc) == 4  # GCC 15, GCC 15 asan, GCC 12, GCC 13 coverage
 
     def test_filter_clang(self, analyzer, sample_workflow):
         clang = analyzer.filter_by_compiler(sample_workflow, CompilerFamily.CLANG)
-        assert len(clang) == 1
+        assert len(clang) == 6
 
     def test_filter_msvc(self, analyzer, sample_workflow):
         msvc = analyzer.filter_by_compiler(sample_workflow, CompilerFamily.MSVC)
-        assert len(msvc) == 1
+        assert len(msvc) == 2
 
     def test_filter_apple_clang(self, analyzer, sample_workflow):
         ac = analyzer.filter_by_compiler(
@@ -205,10 +241,16 @@ class TestCompilerClassification:
         )
         assert len(ac) == 1
 
+    def test_filter_mingw(self, analyzer, sample_workflow):
+        mingw = analyzer.filter_by_compiler(
+            sample_workflow, CompilerFamily.MINGW
+        )
+        assert len(mingw) == 1
+
     def test_compiler_display_name(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+        gcc = sample_workflow.jobs["build"].matrix[4]
         assert gcc.compiler.display_name == "GCC 15"
-        msvc = sample_workflow.jobs["build"].matrix[2]
+        msvc = sample_workflow.jobs["build"].matrix[0]
         assert msvc.compiler.display_name == "MSVC 14.42"
 
 
@@ -221,14 +263,16 @@ class TestBuildSystemDetection:
     """Build system detection from matrix flags and steps."""
 
     def test_b2_and_cmake(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+        gcc = sample_workflow.jobs["build"].matrix[4]  # GCC 15 build-cmake
         assert gcc.build_system == BuildSystem.BOTH
 
     def test_coverage_is_cmake(self, sample_workflow):
-        cov = sample_workflow.jobs["build"].matrix[4]
-        # coverage entries get cmake; the B2 step is skipped because of
-        # the ``!matrix.coverage`` condition
+        cov = sample_workflow.jobs["build"].matrix[7]  # GCC 13 coverage
         assert cov.build_system == BuildSystem.CMAKE
+
+    def test_plain_b2(self, sample_workflow):
+        asan = sample_workflow.jobs["build"].matrix[5]  # GCC 15 asan
+        assert asan.build_system == BuildSystem.B2
 
 
 # =====================================================================
@@ -241,8 +285,7 @@ class TestVariantFiltering:
 
     def test_filter_asan(self, analyzer, sample_workflow):
         asan = analyzer.filter_by_variant(sample_workflow, asan=True)
-        assert len(asan) == 1
-        assert asan[0].variant.ubsan is True  # apple-clang has both
+        assert len(asan) == 3  # apple-clang, gcc15 asan, clang20 asan
 
     def test_filter_coverage(self, analyzer, sample_workflow):
         cov = analyzer.filter_by_variant(sample_workflow, coverage=True)
@@ -258,6 +301,14 @@ class TestVariantFiltering:
         v = BuildVariant()
         assert v.label == "standard"
 
+    def test_time_trace_label(self):
+        v = BuildVariant(time_trace=True)
+        assert "time-trace" in v.label
+
+    def test_valgrind_label(self):
+        v = BuildVariant(valgrind=True)
+        assert "valgrind" in v.label
+
 
 # =====================================================================
 # Search
@@ -267,9 +318,9 @@ class TestVariantFiltering:
 class TestSearch:
     """Search by name pattern."""
 
-    def test_search_by_name(self, analyzer, sample_workflow):
+    def test_search_gcc(self, analyzer, sample_workflow):
         results = analyzer.search(sample_workflow, "gcc")
-        assert len(results) == 2  # GCC 15 + GCC 13
+        assert len(results) == 4
 
     def test_search_case_insensitive(self, analyzer, sample_workflow):
         results = analyzer.search(sample_workflow, "CLANG")
@@ -309,17 +360,17 @@ class TestContainerInfo:
     """Container parsing."""
 
     def test_container_os(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+        gcc = sample_workflow.jobs["build"].matrix[4]
         assert gcc.container.os_name == "ubuntu"
         assert gcc.container.os_version == "25.04"
 
     def test_no_container(self, sample_workflow):
-        msvc = sample_workflow.jobs["build"].matrix[2]
+        msvc = sample_workflow.jobs["build"].matrix[0]
         assert msvc.container.image is None
         assert msvc.is_containerized is False
 
     def test_is_containerized(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+        gcc = sample_workflow.jobs["build"].matrix[4]
         assert gcc.is_containerized is True
 
 
@@ -332,18 +383,22 @@ class TestPackageRequirements:
     """Package requirements extraction."""
 
     def test_gcc_packages(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+        gcc = sample_workflow.jobs["build"].matrix[4]
         assert "gcc-15" in gcc.packages.apt_packages
         assert "g++-15" in gcc.packages.apt_packages
         assert "libssl-dev" in gcc.packages.apt_packages
 
     def test_cmake_build_tool(self, sample_workflow):
-        gcc = sample_workflow.jobs["build"].matrix[0]
+        gcc = sample_workflow.jobs["build"].matrix[4]
         assert "cmake" in gcc.packages.build_tools
 
     def test_coverage_packages(self, sample_workflow):
-        cov = sample_workflow.jobs["build"].matrix[4]
+        cov = sample_workflow.jobs["build"].matrix[7]
         assert "lcov" in cov.packages.apt_packages
+
+    def test_x86_architecture(self, sample_workflow):
+        x86 = sample_workflow.jobs["build"].matrix[11]
+        assert x86.packages.apt_add_architecture == "i386"
 
     def test_all_packages(self):
         pkg = PackageRequirements(
@@ -404,7 +459,9 @@ class TestSerialization:
         s = workflow_summary(sample_workflow)
         assert s["name"] == "CI Test"
         assert s["total_jobs"] == 2
-        assert "linux" in s["platform_summary"]
+        assert s["platform_summary"]["linux"] == 10
+        assert s["platform_summary"]["windows"] == 3
+        assert s["platform_summary"]["macos"] == 1
         assert "dependency_order" in s
 
 
@@ -428,6 +485,14 @@ class TestDataModels:
         ci = CompilerInfo(family=CompilerFamily.APPLE_CLANG, version="16")
         assert ci.display_name == "Apple-Clang 16"
 
+    def test_compiler_latest_cxxstd(self):
+        ci = CompilerInfo(
+            family=CompilerFamily.CLANG,
+            version="20",
+            latest_cxxstd="23",
+        )
+        assert ci.latest_cxxstd == "23"
+
     def test_matrix_entry_image_key(self):
         entry = MatrixEntry(
             index=0,
@@ -441,6 +506,23 @@ class TestDataModels:
             build_system=BuildSystem.B2,
         )
         assert entry.image_requirements_key == "ubuntu:25.04-gcc-15-x86_64"
+
+    def test_matrix_entry_is_latest_earliest(self):
+        entry = MatrixEntry(
+            index=0,
+            name="test",
+            platform=Platform.LINUX,
+            compiler=CompilerInfo(family=CompilerFamily.GCC, version="15"),
+            container=ContainerInfo(),
+            variant=BuildVariant(),
+            packages=PackageRequirements(),
+            runs_on="ubuntu-latest",
+            build_system=BuildSystem.B2,
+            is_latest=True,
+            is_earliest=False,
+        )
+        assert entry.is_latest is True
+        assert entry.is_earliest is False
 
     def test_job_entries_by_platform(self):
         entry_linux = MatrixEntry(
@@ -481,6 +563,27 @@ class TestDataModels:
 
 
 # =====================================================================
+# Error classes
+# =====================================================================
+
+
+class TestErrorClasses:
+    """Error hierarchy and messages."""
+
+    def test_workflow_parse_error(self):
+        err = WorkflowParseError(Path("ci.yml"), "bad yaml")
+        assert "ci.yml" in str(err)
+        assert isinstance(err, WorkflowError)
+
+    def test_unsupported_matrix_error(self):
+        err = UnsupportedMatrixError({"name": "test"}, "missing field")
+        assert "test" in str(err)
+        assert isinstance(err, WorkflowError)
+
+    def test_missing_field_error(self):
+        err = MissingFieldError("compiler", "matrix entry 3")
+        assert "compiler" in str(err)
+        assert isinstance(err, WorkflowError)
 # Event filtering
 # =====================================================================
 
@@ -560,13 +663,6 @@ class TestEdgeCases:
         changelog = sample_workflow.jobs["changelog"]
         assert changelog.has_matrix is False
         assert changelog.total_configurations == 1
-
-    def test_error_classes(self):
-        err = WorkflowParseError(Path("ci.yml"), "bad yaml")
-        assert "ci.yml" in str(err)
-
-        err2 = MissingFieldError("compiler", "matrix entry 3")
-        assert "compiler" in str(err2)
 
     def test_analyze_sample_workflow_fixture(self, analyzer):
         """Also parse the original sample_workflow.yml (Issue 1 fixture)."""
