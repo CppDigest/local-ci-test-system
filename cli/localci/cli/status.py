@@ -33,7 +33,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow mode / live updates (not yet implemented; shows current state only).",
+    help="Follow mode / live polling (not yet implemented; shows current state only).",
 )
 @click.option(
     "--format",
@@ -52,6 +52,7 @@ def status(
     """Show execution progress."""
     if follow:
         print_info("Follow mode: polling status file until Ctrl+C.")
+        print_warning("--follow is not yet implemented (no live polling); showing current state only.")
 
     cfg = ctx.obj["config"]
     logs_dir = Path(cfg.logging.directory)
@@ -100,6 +101,7 @@ def status(
     except Exception as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
+        return
 
     if output_format == "json":
         click.echo(json.dumps(summary.to_dict(), indent=2))

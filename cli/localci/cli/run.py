@@ -161,6 +161,7 @@ def run(
     except Exception as exc:
         print_error(f"Failed to parse workflow: {exc}")
         ctx.exit(1)
+        return
 
     # Collect (job_id, entry) pairs
     all_pairs: list[tuple[str, MatrixEntry]] = []
@@ -268,12 +269,14 @@ def run(
     except ActNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
+        return
 
     # ── 5b. Phase 2: ensure Boost cache (clone/fetch when enabled) ───
     if not no_cache and cfg.cache.enabled and cfg.cache.boost.enabled:
@@ -361,6 +364,7 @@ def run(
 
     if not summary.all_passed:
         ctx.exit(1)
+        return
 
 
 # ─── Helpers ───────────────────────────────────────────────────────

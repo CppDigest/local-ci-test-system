@@ -76,6 +76,7 @@ def config_init(ctx: click.Context, force: bool) -> None:
             "  Use --force to overwrite."
         )
         ctx.exit(1)
+        return
 
     content = default_config_yaml()
     target.write_text(content, encoding="utf-8")
@@ -100,6 +101,7 @@ def config_set(ctx: click.Context, key: str, value: str) -> None:
     if config_path is None:
         print_error("No config file found. Run 'localci config init' first.")
         ctx.exit(1)
+        return
 
     with open(config_path, "r", encoding="utf-8") as fh:
         data: dict = yaml.safe_load(fh) or {}
@@ -145,6 +147,7 @@ def config_get(ctx: click.Context, key: str) -> None:
         else:
             print_error(f"Key not found: {key}")
             ctx.exit(1)
+            return
 
     console.print(current)
 
