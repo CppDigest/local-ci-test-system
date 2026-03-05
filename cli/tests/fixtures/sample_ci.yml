@@ -1,0 +1,200 @@
+# Test fixture matching capy's CI structure with 14 matrix entries.
+# Platform breakdown: 10 Linux, 3 Windows, 1 macOS.
+# Used by test_workflow.py and test_yq.py.
+
+name: CI Test
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+
+concurrency:
+  group: ${{format('{0}:{1}', github.repository, github.ref)}}
+  cancel-in-progress: true
+
+env:
+  GIT_FETCH_JOBS: "8"
+  NET_RETRY_COUNT: "5"
+
+jobs:
+  build:
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- Windows (3 entries) ---
+
+          - compiler: "msvc"
+            version: "14.42"
+            cxxstd: "20"
+            runs-on: "windows-2022"
+            b2-toolset: "msvc-14.4"
+            generator: "Visual Studio 17 2022"
+            name: "MSVC 14.42: C++20"
+            shared: false
+            build-type: "Release"
+            build-cmake: true
+            is-latest: true
+
+          - compiler: "msvc"
+            version: "14.34"
+            cxxstd: "20"
+            runs-on: "windows-2022"
+            b2-toolset: "msvc-14.3"
+            name: "MSVC 14.34: C++20 (shared)"
+            shared: true
+            build-type: "Release"
+            is-earliest: true
+
+          - compiler: "mingw"
+            version: "*"
+            cxxstd: "20"
+            runs-on: "windows-2022"
+            b2-toolset: "gcc"
+            generator: "MinGW Makefiles"
+            name: "MinGW: C++20"
+            build-cmake: true
+
+          # --- macOS (1 entry) ---
+
+          - compiler: "apple-clang"
+            version: "16"
+            cxxstd: "20"
+            runs-on: "macos-26"
+            name: "Apple-Clang: asan+ubsan"
+            asan: true
+            ubsan: true
+
+          # --- Linux (10 entries) ---
+
+          - compiler: "gcc"
+            version: "15"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:25.04"
+            b2-toolset: "gcc"
+            name: "GCC 15: C++20"
+            shared: true
+            build-type: "Release"
+            build-cmake: true
+            cxx: "g++-15"
+            cc: "gcc-15"
+            install: "gcc-15 g++-15 libssl-dev"
+            is-latest: true
+
+          - compiler: "gcc"
+            version: "15"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:25.04"
+            b2-toolset: "gcc"
+            name: "GCC 15: C++20 asan+ubsan"
+            asan: true
+            ubsan: true
+            install: "gcc-15 g++-15 libssl-dev"
+
+          - compiler: "gcc"
+            version: "12"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:22.04"
+            b2-toolset: "gcc"
+            name: "GCC 12: C++20"
+            shared: true
+            install: "gcc-12 g++-12"
+
+          - compiler: "gcc"
+            version: "13"
+            cxxstd: "20"
+            runs-on: "ubuntu-24.04"
+            name: "GCC 13: C++20 coverage"
+            coverage: true
+            install: "gcc-13 g++-13 lcov"
+
+          - compiler: "clang"
+            version: "20"
+            cxxstd: "20,23"
+            latest-cxxstd: "23"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:24.04"
+            b2-toolset: "clang"
+            name: "Clang 20: C++20-23"
+            shared: true
+            build-type: "Release"
+            build-cmake: true
+            is-latest: true
+
+          - compiler: "clang"
+            version: "20"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:24.04"
+            b2-toolset: "clang"
+            name: "Clang 20: C++20 asan+ubsan"
+            asan: true
+            ubsan: true
+            install: "clang-20"
+
+          - compiler: "clang"
+            version: "17"
+            cxxstd: "20"
+            runs-on: "ubuntu-24.04"
+            name: "Clang 17: C++20"
+            install: "clang-17"
+
+          - compiler: "clang"
+            version: "20"
+            cxxstd: "20,23"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:24.04"
+            name: "Clang 20: C++20-23 x86"
+            x86: true
+            install: "clang-20 gcc-multilib g++-multilib"
+
+          - compiler: "clang"
+            version: "19"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:24.04"
+            b2-toolset: "clang"
+            name: "Clang 19: C++20"
+            install: "clang-19"
+
+          - compiler: "clang"
+            version: "18"
+            cxxstd: "20"
+            runs-on: "ubuntu-latest"
+            container: "ubuntu:24.04"
+            b2-toolset: "clang"
+            name: "Clang 18: C++20"
+            install: "clang-18"
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs-on }}
+    container:
+      image: ${{ matrix.container }}
+      options: --privileged
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: B2 Build
+        uses: alandefreitas/cpp-actions/b2-workflow@v1.9.0
+        if: ${{ !matrix.coverage }}
+      - name: CMake Build
+        uses: alandefreitas/cpp-actions/cmake-workflow@v1.9.0
+        if: ${{ matrix.coverage || matrix.build-cmake }}
+
+  changelog:
+    name: Changelog Summary
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: alandefreitas/cpp-actions/create-changelog@v1.9.0

@@ -1,0 +1,252 @@
+# Full GitHub Actions workflow matching capy's CI structure.
+# Contains all 14 matrix configurations from the capy project:
+#   - Windows: 3 (MSVC 14.42, MSVC 14.34 shared, MinGW)
+#   - macOS: 1 (Apple-Clang asan+ubsan)
+#   - Linux: 10 (GCC 12/13/15, Clang 17/20 variants)
+#
+# Used by test_workflow.py for integration-level testing.
+
+name: CI
+
+on:
+  push:
+    branches: [master, develop, "bugfix/**", "feature/**", "fix/**", "pr/**"]
+  pull_request:
+
+concurrency:
+  group: "${{ format('{0}:{1}', github.repository, github.ref) }}"
+  cancel-in-progress: true
+
+env:
+  GIT_FETCH_JOBS: 8
+  NET_RETRY_COUNT: 5
+  DEFAULT_BUILD_VARIANT: "debug,release"
+  UBSAN_OPTIONS: "print_stacktrace=1"
+  DEBIAN_FRONTEND: "noninteractive"
+  TZ: "Europe/London"
+
+jobs:
+  build:
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Windows ────────────────────────────────────────────
+          - name: "MSVC 14.42: C++20"
+            compiler: msvc
+            version: "14.42"
+            cxxstd: "20"
+            runs-on: windows-2022
+            b2-toolset: "msvc-14.4"
+            generator: "Visual Studio 17 2022"
+            shared: false
+            build-type: Release
+            build-cmake: true
+
+          - name: "MSVC 14.34: C++20 shared"
+            compiler: msvc
+            version: "14.34"
+            cxxstd: "20"
+            runs-on: windows-2022
+            b2-toolset: "msvc-14.3"
+            shared: true
+            build-type: Release
+
+          - name: "MinGW: C++20"
+            compiler: mingw
+            version: "*"
+            cxxstd: "20"
+            runs-on: windows-2022
+            generator: "MinGW Makefiles"
+            build-cmake: true
+
+          # ── macOS ──────────────────────────────────────────────
+          - name: "Apple-Clang: asan+ubsan"
+            compiler: apple-clang
+            version: "16"
+            cxxstd: "20"
+            runs-on: macos-26
+            asan: true
+            ubsan: true
+
+          # ── Linux: GCC ─────────────────────────────────────────
+          - name: "GCC 15: C++20"
+            compiler: gcc
+            version: "15"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:25.04"
+            b2-toolset: gcc
+            cxx: "g++-15"
+            cc: "gcc-15"
+            shared: true
+            build-type: Release
+            build-cmake: true
+            is-latest: true
+            install: "gcc-15 g++-15 libssl-dev zlib1g-dev"
+
+          - name: "GCC 15: C++20 asan+ubsan"
+            compiler: gcc
+            version: "15"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:25.04"
+            b2-toolset: gcc
+            cxx: "g++-15"
+            cc: "gcc-15"
+            asan: true
+            ubsan: true
+            install: "gcc-15 g++-15 libssl-dev zlib1g-dev"
+
+          - name: "GCC 12: C++20"
+            compiler: gcc
+            version: "12"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:22.04"
+            b2-toolset: gcc
+            cxx: "g++-12"
+            cc: "gcc-12"
+            shared: true
+            build-type: Release
+            is-earliest: true
+            install: "gcc-12 g++-12"
+
+          - name: "GCC 13: C++20 coverage"
+            compiler: gcc
+            version: "13"
+            cxxstd: "20"
+            runs-on: ubuntu-24.04
+            b2-toolset: gcc
+            cxx: "g++-13"
+            cc: "gcc-13"
+            coverage: true
+            build-cmake: true
+            install: "gcc-13 g++-13 lcov wget unzip"
+            cxxflags: "--coverage -fprofile-arcs -ftest-coverage"
+            ccflags: "--coverage -fprofile-arcs -ftest-coverage"
+
+          # ── Linux: Clang ───────────────────────────────────────
+          - name: "Clang 20: C++20-23"
+            compiler: clang
+            version: "20"
+            cxxstd: "20,23"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            b2-toolset: clang
+            cxx: "clang++-20"
+            cc: "clang-20"
+            shared: true
+            build-type: Release
+            build-cmake: true
+            is-latest: true
+            install: "clang-20"
+
+          - name: "Clang 20: C++20 asan+ubsan"
+            compiler: clang
+            version: "20"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            b2-toolset: clang
+            cxx: "clang++-20"
+            cc: "clang-20"
+            asan: true
+            ubsan: true
+            install: "clang-20"
+
+          - name: "Clang 17: C++20"
+            compiler: clang
+            version: "17"
+            cxxstd: "20"
+            runs-on: ubuntu-24.04
+            b2-toolset: clang
+            cxx: "clang++-17"
+            cc: "clang-17"
+            install: "clang-17"
+
+          - name: "Clang 20: C++20-23 x86"
+            compiler: clang
+            version: "20"
+            cxxstd: "20,23"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            b2-toolset: clang
+            cxx: "clang++-20"
+            cc: "clang-20"
+            x86: true
+            install: "clang-20 gcc-multilib g++-multilib"
+
+          # ── Linux: extra GCC configs (to reach 14 total) ──────
+          - name: "GCC 15: C++20 valgrind"
+            compiler: gcc
+            version: "15"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:25.04"
+            b2-toolset: gcc
+            cxx: "g++-15"
+            cc: "gcc-15"
+            valgrind: true
+            install: "gcc-15 g++-15 valgrind"
+
+          - name: "GCC 13: C++20 shared"
+            compiler: gcc
+            version: "13"
+            cxxstd: "20"
+            runs-on: ubuntu-latest
+            container: "ubuntu:24.04"
+            b2-toolset: gcc
+            cxx: "g++-13"
+            cc: "gcc-13"
+            shared: true
+            build-type: Release
+            install: "gcc-13 g++-13"
+
+    name: "${{ matrix.name }}"
+    runs-on: ${{ matrix.runs-on }}
+    container:
+      image: ${{ matrix.container }}
+      options: --privileged
+    timeout-minutes: 120
+
+    steps:
+      - name: Clone Repository
+        uses: actions/checkout@v4
+      - name: Setup C++
+        uses: alandefreitas/cpp-actions/setup-cpp@v1.9.0
+      - name: Install Packages
+        uses: alandefreitas/cpp-actions/package-install@v1.9.0
+      - name: Clone Boost
+        uses: alandefreitas/cpp-actions/boost-clone@v1.9.0
+      - name: ASLR Fix
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Patch Boost
+        run: |
+          cp -r $GITHUB_WORKSPACE/* libs/capy/
+      - name: B2 Build
+        uses: alandefreitas/cpp-actions/b2-workflow@v1.9.0
+        if: "${{ !matrix.coverage && !matrix.time-trace }}"
+      - name: CMake Build
+        uses: alandefreitas/cpp-actions/cmake-workflow@v1.9.0
+        if: "${{ matrix.coverage || matrix.build-cmake || matrix.is-earliest }}"
+      - name: FlameGraph
+        uses: alandefreitas/cpp-actions/flamegraph@v1.9.0
+        if: "${{ matrix.time-trace }}"
+      - name: Codecov
+        if: "${{ matrix.coverage }}"
+        run: |
+          lcov --directory . --capture --output-file coverage.info
+          bash <(curl -s https://codecov.io/bash) -f coverage.info
+
+  changelog:
+    name: Changelog Summary
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: alandefreitas/cpp-actions/create-changelog@v1.9.0

@@ -1,0 +1,75 @@
+# .localci.yml - Local CI Configuration
+# Place this file in your project root.
+# Documentation: https://github.com/CppDigest/local-ci-test-system
+
+# Schema version
+version: 1
+
+# Default workflow file
+workflow: .github/workflows/ci.yml
+
+# Default event type
+event: push
+
+# Parallelism settings
+parallel:
+  max_jobs: 8              # Maximum concurrent jobs
+  resource_limit:
+    cpu_percent: 80        # Max CPU usage before throttling
+    memory_percent: 70     # Max memory usage before throttling
+
+# Platform configuration
+platforms:
+  linux: true              # Enable Linux jobs
+  windows: false           # Disable Windows (requires Windows host)
+  macos: false             # Disable macOS (not containerisable)
+
+# Job filters
+jobs:
+  # Jobs to include (empty = all)
+  include: []
+  # Jobs to exclude
+  exclude: []
+
+# Matrix filters
+matrix:
+  # Include filters (OR logic between entries)
+  include: []
+  # Exclude filters
+  exclude: []
+
+# Priority overrides (lower number = higher priority)
+priorities: {}
+
+# Docker image settings
+images:
+  registry: ~/.localci/images    # Image storage location
+  auto_build: true               # Build missing images automatically
+  cleanup:
+    enabled: true
+    max_age_days: 30
+    max_size_gb: 20
+
+# Cache settings
+cache:
+  enabled: true
+  directory: ~/.localci/cache
+  ccache:
+    enabled: true
+    max_size: 5G
+  boost:
+    enabled: true
+    branch: develop
+
+# Logging
+logging:
+  level: info                    # debug, info, warning, error
+  directory: ~/.localci/logs
+  max_files: 10
+  max_size_mb: 100
+
+# Execution settings
+execution:
+  timeout: 3600                  # Default job timeout in seconds
+  keep_containers: false         # Cleanup containers after run
+  stop_on_first_failure: false   # Continue running on job failure
