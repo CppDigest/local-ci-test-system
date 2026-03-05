@@ -34,7 +34,7 @@ def cache_cmd(ctx: click.Context) -> None:
 @click.option(
     "--target",
     "-t",
-    type=click.Choice(["ccache", "boost", "cmake", "b2-source", "all"]),
+    type=click.Choice(["ccache", "boost", "cmake", "b2-source", "apt", "all"]),
     default="ccache",
     help="Which cache to clear (default: ccache).",
 )
