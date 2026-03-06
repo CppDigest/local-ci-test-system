@@ -255,6 +255,9 @@ def _follow_status(status_file: Path, output_format: str) -> None:
             except json.JSONDecodeError as exc:
                 print_warning(f"Invalid JSON in status file {status_file}: {exc}")
                 continue
+            except OSError as exc:
+                print_warning(f"Could not read status file {status_file}: {exc}")
+                continue
             if new_data != last_data:
                 last_data = new_data
                 console.clear()
