@@ -71,7 +71,13 @@ def status(
                 _follow_status(status_file, output_format)
                 return
             status_data = None
-        if status_data is not None and "progress" in status_data:
+        except OSError as exc:
+            print_warning(f"Could not read status file {status_file}: {exc}")
+            if follow:
+                _follow_status(status_file, output_format)
+                return
+            status_data = None
+        if isinstance(status_data, dict) and "progress" in status_data:
             if output_format == "json":
                 click.echo(json.dumps(status_data, indent=2))
                 if follow:
