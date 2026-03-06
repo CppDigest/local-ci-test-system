@@ -158,6 +158,16 @@ def status(
         )
 
 
+def _safe_float(value: object, default: float = 0.0) -> float:
+    """Coerce *value* to float, returning *default* on None or parse failure."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _print_status_table(data: dict) -> None:
     """Render MCP status data as Rich table."""
     console.print()
@@ -166,7 +176,7 @@ def _print_status_table(data: dict) -> None:
     )
     console.print(f"[bold]Progress:[/bold]  {data.get('progress', '')}")
     console.print(
-        f"[bold]Elapsed:[/bold]   {data.get('elapsed_seconds', 0):.0f}s"
+        f"[bold]Elapsed:[/bold]   {_safe_float(data.get('elapsed_seconds')):.0f}s"
     )
     console.print()
 
@@ -175,7 +185,7 @@ def _print_status_table(data: dict) -> None:
         console.print("[bold cyan]Running:[/bold cyan]")
         for job in running:
             name = job.get("name", "<unknown>")
-            elapsed = job.get("elapsed_seconds", 0)
+            elapsed = _safe_float(job.get("elapsed_seconds"))
             step = job.get("current_step")
             if step:
                 console.print(f"  ● {name} — {step} ({elapsed:.0f}s)")
@@ -190,7 +200,7 @@ def _print_status_table(data: dict) -> None:
         )
         for job in completed:
             name = job.get("name", "<unknown>")
-            dur = job.get("duration_seconds", 0)
+            dur = _safe_float(job.get("duration_seconds"))
             console.print(f"  ✓ {name} ({dur:.0f}s)")
         console.print()
 

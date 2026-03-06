@@ -80,14 +80,18 @@ class YqWrapper:
                 self._yq_path = raw_path
                 logger.debug("yq (mikefarah) found at %s", raw_path)
             else:
+                install_hint = (
+                    "sudo snap install yq" if self._is_linux
+                    else "https://github.com/mikefarah/yq/releases"
+                )
                 logger.warning(
                     "yq at %s is not mikefarah/yq (detected: %s) -- "
-                    "using PyYAML fallback. Install mikefarah/yq for best results: "
-                    "sudo snap install yq",
-                    raw_path, flavour,
+                    "using PyYAML fallback (limited expression support). "
+                    "Install mikefarah/yq for best results: %s",
+                    raw_path, flavour, install_hint,
                 )
-
-        if not self._yq_path:
+        else:
+            # No yq binary found at all
             if self._is_linux:
                 logger.warning(
                     "mikefarah/yq not available on Linux -- using PyYAML fallback. "
