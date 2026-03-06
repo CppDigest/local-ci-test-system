@@ -87,6 +87,10 @@ def status(
             if follow:
                 _follow_status(status_file, output_format)
             return
+        elif follow:
+            # status_file was the source but payload lacked "progress" — still poll
+            _follow_status(status_file, output_format)
+            return
 
     # Fall back to results file (last-run.json or {execution_id}.json)
     if execution_id:
