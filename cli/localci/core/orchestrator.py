@@ -43,6 +43,7 @@ class OrchestratorState(Enum):
     RUNNING = "running"
     PAUSED = "paused"
     CANCELLING = "cancelling"
+    CANCELLED = "cancelled"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -250,11 +251,12 @@ class ParallelExecutionManager:
                 self._cleanup_all_containers()
             if self._run:
                 self._run.finished_at = datetime.now()
-                self._run.state = (
-                    OrchestratorState.COMPLETED
-                    if self._state != OrchestratorState.FAILED
-                    else OrchestratorState.FAILED
-                )
+                if self._state == OrchestratorState.FAILED:
+                    self._run.state = OrchestratorState.FAILED
+                elif self._state == OrchestratorState.CANCELLING:
+                    self._run.state = OrchestratorState.CANCELLED
+                else:
+                    self._run.state = OrchestratorState.COMPLETED
 
         logger.info(
             "Execution %s complete: %d/%d passed in %.1fs",
@@ -384,40 +386,47 @@ class ParallelExecutionManager:
                     container_mount_options=container_mount_options,
                 )
 
-            # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
-            # (causes "remove ... no such file or directory" when one job cleans cache)
-            act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
-            act_cache_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
+                # (causes "remove ... no such file or directory" when one job cleans cache)
+                act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
+                act_cache_dir.mkdir(parents=True, exist_ok=True)
 
-            builder = ActCommandBuilder(
-                workflow_file=self.workflow_file,
-                project_dir=self.project_dir,
-                job_id=job.job_id,
-                default_secrets=self.config.default_secrets or {},
-                default_env=self.config.default_env or {},
-                offline=self.config.offline,
-                act_version=self._executor.act_version_tuple,
-            )
-            cmd = builder.build(
-                job.matrix_entry,
-                image_tag=image_tag,
-                verbose=self.config.verbose,
-                workflow_file=workflow_file,
-                action_cache_path=act_cache_dir,
-                resolved_cache_paths=resolved_cache_paths,
-                cache_config=self._cache_config,
-            )
-            result = self._executor.run(
-                cmd,
-                matrix_index=job.matrix_entry.index,
-                matrix_name=job.matrix_entry.name,
-                timeout=self.config.job_timeout,
-                stream_output=False,
-                on_output=lambda line: self._emit(
-                    JobEventType.JOB_OUTPUT, job, line=line
-                ),
-            )
-            return result
+                builder = ActCommandBuilder(
+                    workflow_file=self.workflow_file,
+                    project_dir=self.project_dir,
+                    job_id=job.job_id,
+                    default_secrets=self.config.default_secrets or {},
+                    default_env=self.config.default_env or {},
+                    offline=self.config.offline,
+                    act_version=self._executor.act_version_tuple,
+                )
+                cmd = builder.build(
+                    job.matrix_entry,
+                    image_tag=image_tag,
+                    verbose=self.config.verbose,
+                    workflow_file=workflow_file,
+                    action_cache_path=act_cache_dir,
+                    resolved_cache_paths=resolved_cache_paths,
+                    cache_config=self._cache_config,
+                )
+                result = self._executor.run(
+                    cmd,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    timeout=self.config.job_timeout,
+                    stream_output=False,
+                    on_output=lambda line: self._emit(
+                        JobEventType.JOB_OUTPUT, job, line=line
+                    ),
+                )
+                return result
+            finally:
+                if self._workflow_patcher is not None and workflow_file != self.workflow_file:
+                    try:
+                        workflow_file.unlink(missing_ok=True)
+                    except OSError as unlink_err:
+                        logger.debug("Could not remove patched workflow temp file %s: %s", workflow_file, unlink_err)
         except Exception as e:
             logger.exception(
                 "Job execution error: %s: %s",

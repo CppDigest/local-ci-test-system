@@ -87,11 +87,17 @@ class YqWrapper:
                     raw_path, flavour,
                 )
 
-        if not self._yq_path and self._is_linux:
-            logger.warning(
-                "mikefarah/yq not available on Linux -- using PyYAML fallback. "
-                "Install with: sudo snap install yq"
-            )
+        if not self._yq_path:
+            if self._is_linux:
+                logger.warning(
+                    "mikefarah/yq not available on Linux -- using PyYAML fallback. "
+                    "Install with: sudo snap install yq"
+                )
+            else:
+                logger.warning(
+                    "mikefarah/yq not available -- using PyYAML fallback. "
+                    "Install yq for full expression support."
+                )
 
     @staticmethod
     def _detect_yq_flavour(yq_path: str) -> str:

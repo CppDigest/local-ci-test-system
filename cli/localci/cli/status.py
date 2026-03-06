@@ -61,9 +61,15 @@ def status(
                 status_data = json.load(f)
         except FileNotFoundError as exc:
             print_warning(f"Status file not found: {status_file}; {exc}")
+            if follow:
+                _follow_status(status_file, output_format)
+                return
             status_data = None
         except json.JSONDecodeError as exc:
             print_warning(f"Invalid JSON in status file {status_file}: {exc}")
+            if follow:
+                _follow_status(status_file, output_format)
+                return
             status_data = None
         if status_data is not None and "progress" in status_data:
             if output_format == "json":
@@ -168,12 +174,13 @@ def _print_status_table(data: dict) -> None:
     if running:
         console.print("[bold cyan]Running:[/bold cyan]")
         for job in running:
+            name = job.get("name", "<unknown>")
             elapsed = job.get("elapsed_seconds", 0)
             step = job.get("current_step")
             if step:
-                console.print(f"  ● {job['name']} — {step} ({elapsed:.0f}s)")
+                console.print(f"  ● {name} — {step} ({elapsed:.0f}s)")
             else:
-                console.print(f"  ● {job['name']} ({elapsed:.0f}s)")
+                console.print(f"  ● {name} ({elapsed:.0f}s)")
         console.print()
 
     completed = data.get("completed_jobs", [])
@@ -182,16 +189,18 @@ def _print_status_table(data: dict) -> None:
             f"[bold green]Completed ({len(completed)}):[/bold green]"
         )
         for job in completed:
+            name = job.get("name", "<unknown>")
             dur = job.get("duration_seconds", 0)
-            console.print(f"  ✓ {job['name']} ({dur:.0f}s)")
+            console.print(f"  ✓ {name} ({dur:.0f}s)")
         console.print()
 
     failed = data.get("failed_jobs", [])
     if failed:
         console.print(f"[bold red]Failed ({len(failed)}):[/bold red]")
         for job in failed:
+            name = job.get("name", "<unknown>")
             msg = job.get("error_message", "unknown error")
-            console.print(f"  ✗ {job['name']}: {msg}")
+            console.print(f"  ✗ {name}: {msg}")
         console.print()
 
     pending = data.get("pending_jobs", [])
