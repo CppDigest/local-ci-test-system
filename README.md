@@ -72,15 +72,15 @@ localci run --platform linux
 | `localci cache`    | Clear or inspect caches       |
 | `localci config`   | Show/edit `.localci.yml`      |
 
-Configuration is read from `.localci.yml` in the project root (see [User Guide](cli/USER_GUIDE.md) for full options).
+Configuration is read from `.localci.yml` in the project root (see [User Guide](cli/Usage%20Guide.md) for full options).
 
 ## Project Layout
 
-```
+```text
 local-ci-test-system/
 ├── cli/                 # localci Python package and CLI
 │   ├── localci/         # Source
-│   └── USER_GUIDE.md    # Full usage and config reference
+│   └── Usage Guide.md   # Full usage and config reference
 ├── docs/                # Design and planning
 │   ├── Design Guide.md
 │   └── Preparation and Plan.md   # Issue breakdown and roadmap
@@ -90,7 +90,7 @@ local-ci-test-system/
 
 ## Documentation
 
-- **[User Guide](cli/USER_GUIDE.md)** — Installation, configuration, commands, troubleshooting
+- **[User Guide](cli/Usage%20Guide.md)** — Installation, configuration, commands, troubleshooting
 - **[Design Guide](docs/Design%20Guide.md)** — Architecture, MCP, caching
 - **[Performance and Caching](docs/Performance%20and%20Caching.md)** — Cache layout and config
 - **[Preparation and Plan](docs/Preparation%20and%20Plan.md)** — Implementation plan and issue breakdown

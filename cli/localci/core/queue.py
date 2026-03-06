@@ -338,6 +338,11 @@ class PriorityJobQueue:
         return len(self._jobs)
 
     @property
+    def num_priority_levels(self) -> int:
+        """Number of distinct priority levels in the queue."""
+        return len(self._priority_levels)
+
+    @property
     def completed_count(self) -> int:
         return len(self._completed_keys)
 

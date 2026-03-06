@@ -175,6 +175,7 @@ def list_cmd(
         if target_family is None:
             print_error(f"Unknown compiler: {compiler!r}. Valid: {', '.join(sorted(_COMPILER_MAP))}.")
             ctx.exit(1)
+            return
         entries = [e for e in entries if e.compiler.family == target_family]
 
     if comp_version:
@@ -185,6 +186,7 @@ def list_cmd(
         if enabled and disabled:
             print_error("Cannot use both --enabled and --disabled; choose one.")
             ctx.exit(1)
+            return
         if config:
             include_names = config.jobs.include or []
             exclude_names = config.jobs.exclude or []

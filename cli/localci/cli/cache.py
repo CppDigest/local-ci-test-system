@@ -76,6 +76,9 @@ def cache_clear(
             dirs_to_remove.append(Path(d).expanduser().resolve())
         if cfg.cache.boost.enabled and getattr(cfg.cache.boost, "build_dir", True):
             dirs_to_remove.append((root / "b2-source").resolve())
+        if cfg.cache.apt.enabled:
+            d = cfg.cache.apt.dir or root / "apt"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
     else:
         # Explicit target: honor regardless of enabled; warn if that cache is disabled
         if target == "ccache":
@@ -97,6 +100,11 @@ def cache_clear(
             dirs_to_remove.append((root / "b2-source").resolve())
             if not cfg.cache.boost.enabled:
                 print_warning("Boost cache is disabled in config; clearing b2-source anyway.")
+        elif target == "apt":
+            d = cfg.cache.apt.dir or root / "apt"
+            dirs_to_remove.append(Path(d).expanduser().resolve())
+            if not cfg.cache.apt.enabled:
+                print_warning("APT cache is disabled in config; clearing anyway.")
 
     if not dirs_to_remove:
         print_info("No cache directories configured for the selected target.")
@@ -189,5 +197,8 @@ def cache_update(ctx: click.Context, target: str) -> None:
             print_warning("Boost cache is disabled in config.")
             return
         print_info("Updating Boost cache (clone or fetch + reset)...")
-        ensure_boost_cache(cfg.cache, no_cache=False, cache_dir_override=None)
-        print_success("Boost cache update complete.")
+        ok = ensure_boost_cache(cfg.cache, no_cache=False, cache_dir_override=None)
+        if ok:
+            print_success("Boost cache update complete.")
+        else:
+            print_error("Boost cache update failed; check logs for details.")

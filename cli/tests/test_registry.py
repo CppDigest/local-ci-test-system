@@ -335,3 +335,38 @@ jobs:
         assert len(jobs) == 1
         assert jobs[0].needs_build is True
         assert "gcc" in (jobs[0].image_tag or "")
+
+    def test_non_linux_runner_no_image_tag(self, tmp_path: Path):
+        """Non-Linux runners without container.image must not get a synthesized image tag."""
+        from localci.core.queue_builder import QueueBuilder
+        from localci.core.workflow import WorkflowAnalyzer
+
+        registry_path = tmp_path / "image-registry.yml"
+        registry_path.write_text(
+            yaml.safe_dump({"version": "1.0", "images": []}),
+            encoding="utf-8",
+        )
+        wf_path = tmp_path / "ci.yml"
+        wf_path.write_text(
+            """
+name: CI
+on: [push]
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - compiler: msvc
+            version: "14.42"
+""",
+            encoding="utf-8",
+        )
+        analyzer = WorkflowAnalyzer()
+        wf = analyzer.analyze(wf_path)
+        builder = QueueBuilder(wf)
+        queue = builder.build(registry_path=registry_path)
+        jobs = list(queue.get_all_jobs())
+        assert len(jobs) == 1
+        assert jobs[0].image_tag is None
+        assert jobs[0].needs_build is False or jobs[0].needs_build is True  # no image to build

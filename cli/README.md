@@ -80,7 +80,7 @@ Use `localci <command> --help` for options.
 
 ## Project layout
 
-```
+```text
 cli/
 ├── localci/              # Main package
 │   ├── cli/              # Command implementations (analyze, list, run, …)

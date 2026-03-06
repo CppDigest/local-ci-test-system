@@ -24,16 +24,18 @@ def ensure_boost_cache(
     cache_config: "CacheConfig",
     no_cache: bool,
     cache_dir_override: Optional[Path] = None,
-) -> None:
+) -> bool:
     """Ensure the Boost cache directory exists and is a git repo (clone or fetch).
 
-    If cache is disabled (no_cache or cache.enabled/boost.enabled false), returns.
-    Otherwise resolves the boost cache dir; if missing or not a git repo, runs
-    ``git clone`` (shallow when config.boost.shallow); if already a repo, runs
-    ``git fetch`` to update.
+    If cache is disabled (no_cache or cache.enabled/boost.enabled false), returns True
+    (nothing to do). Otherwise resolves the boost cache dir; if missing or not a git
+    repo, runs ``git clone`` (shallow when config.boost.shallow); if already a repo,
+    runs ``git fetch`` to update.
+
+    Returns True on success, False on failure.
     """
     if no_cache or not cache_config.enabled or not cache_config.boost.enabled:
-        return
+        return True
     root = cache_dir_override or cache_config.directory
     root = Path(root).expanduser().resolve()
     boost_dir = cache_config.boost.dir or root / "boost"
@@ -45,37 +47,39 @@ def ensure_boost_cache(
 
     if not boost_dir.exists():
         boost_dir.parent.mkdir(parents=True, exist_ok=True)
-        _git_clone(boost_dir, branch, shallow, remote_url)
-        return
+        return _git_clone(boost_dir, branch, shallow, remote_url)
 
     if not (boost_dir / ".git").is_dir():
         logger.debug(
             "Boost cache path %s exists but is not a git repo; skipping bootstrap",
             boost_dir,
         )
-        return
+        return True
 
-    _git_fetch_and_update(boost_dir, branch, shallow)
+    return _git_fetch_and_update(boost_dir, branch, shallow)
 
 
-def _git_clone(dest: Path, branch: str, shallow: bool, remote_url: str) -> None:
+def _git_clone(dest: Path, branch: str, shallow: bool, remote_url: str) -> bool:
+    """Clone Boost repo. Returns True on success, False on failure."""
     args = ["git", "clone", "--branch", branch]
     if shallow:
         args.extend(["--depth", "1"])
     args.extend([remote_url, str(dest)])
     try:
-        subprocess.run(args, check=True, capture_output=True, text=True)
+        subprocess.run(args, check=True, capture_output=True, text=True, timeout=300)
         logger.info("Boost cache cloned at %s (branch=%s)", dest, branch)
-    except subprocess.CalledProcessError as e:
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
         logger.warning(
             "Boost cache clone failed: %s (stderr: %s)",
             e,
-            (e.stderr or "").strip() or "(none)",
+            getattr(e, "stderr", "") or "(none)",
         )
+        return False
 
 
-def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> None:
-    """Fetch origin and reset working tree to origin/<branch>."""
+def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> bool:
+    """Fetch origin and reset working tree to origin/<branch>. Returns True on success."""
     try:
         fetch_args = ["git", "-C", str(dest), "fetch", "origin", branch]
         if shallow:
@@ -85,16 +89,21 @@ def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> Non
             check=True,
             capture_output=True,
             text=True,
+            timeout=300,
         )
         subprocess.run(
             ["git", "-C", str(dest), "reset", "--hard", f"origin/{branch}"],
             check=True,
             capture_output=True,
             text=True,
+            timeout=120,
         )
         logger.debug("Boost cache updated at %s (branch=%s)", dest, branch)
-    except subprocess.CalledProcessError as e:
-        logger.debug(
-            "Boost cache fetch/update failed (non-fatal): %s",
-            (e.stderr or "").strip() or str(e),
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logger.warning(
+            "Boost cache fetch/update failed: %s (stderr: %s)",
+            e,
+            getattr(e, "stderr", "") or "(none)",
         )
+        return False

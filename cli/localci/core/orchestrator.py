@@ -63,6 +63,8 @@ class OrchestratorConfig:
     default_secrets: Optional[dict[str, str]] = None
     default_env: Optional[dict[str, str]] = None
     image_registry_path: Optional[Path] = None
+    verbose: bool = False
+    offline: bool = False
 
     @classmethod
     def from_config(cls, config: "LocalCIConfig") -> OrchestratorConfig:
@@ -367,7 +369,7 @@ class ParallelExecutionManager:
                     )
                 if resolved_cache_paths.apt_host is not None:
                     mount_parts.append(
-                        f"-v {resolved_cache_paths.apt_host}:{resolved_cache_paths.apt_container}"
+                        f"-v {shlex.quote(str(resolved_cache_paths.apt_host))}:{shlex.quote(str(resolved_cache_paths.apt_container))}"
                     )
                 if mount_parts:
                     container_mount_options = " ".join(mount_parts)
@@ -393,10 +395,13 @@ class ParallelExecutionManager:
                 job_id=job.job_id,
                 default_secrets=self.config.default_secrets or {},
                 default_env=self.config.default_env or {},
+                offline=self.config.offline,
+                act_version=self._executor.act_version_tuple,
             )
             cmd = builder.build(
                 job.matrix_entry,
                 image_tag=image_tag,
+                verbose=self.config.verbose,
                 workflow_file=workflow_file,
                 action_cache_path=act_cache_dir,
                 resolved_cache_paths=resolved_cache_paths,

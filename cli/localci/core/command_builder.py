@@ -56,6 +56,7 @@ class ActCommandBuilder:
         default_env: Optional[dict[str, str]] = None,
         default_secrets: Optional[dict[str, str]] = None,
         offline: bool = False,
+        act_version: Optional[tuple[int, int, int]] = None,
     ) -> None:
         self.workflow_file = workflow_file
         self.project_dir = project_dir
@@ -64,6 +65,7 @@ class ActCommandBuilder:
         self.default_env = default_env or {}
         self.default_secrets = default_secrets or {}
         self.offline = offline
+        self.act_version = act_version
 
     # -----------------------------------------------------------------
     # Public API
@@ -147,7 +149,7 @@ class ActCommandBuilder:
                 )
             if resolved_cache_paths.apt_host is not None:
                 mount_parts.append(
-                    f"-v {resolved_cache_paths.apt_host}:{resolved_cache_paths.apt_container}"
+                    f"-v {shlex.quote(str(resolved_cache_paths.apt_host))}:{shlex.quote(str(resolved_cache_paths.apt_container))}"
                 )
             if mount_parts:
                 container_options = " ".join(mount_parts)
@@ -207,6 +209,7 @@ class ActCommandBuilder:
             action_cache_path=action_cache_path,
             container_options=container_options,
             workdir=self.project_dir,
+            act_version=self.act_version,
         )
 
     # -----------------------------------------------------------------

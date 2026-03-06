@@ -29,11 +29,11 @@ class ResourceSnapshot:
 
     @property
     def is_healthy(self) -> bool:
-        """True if resources are within safe limits."""
+        """True if resources are within safe limits (threshold values are treated as healthy)."""
         return (
-            self.cpu_percent < 90.0
-            and self.memory_percent < 85.0
-            and self.disk_free_gb > 10.0
+            self.cpu_percent <= 90.0
+            and self.memory_percent <= 85.0
+            and self.disk_free_gb >= 10.0
         )
 
     def summary(self) -> str:

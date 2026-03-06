@@ -88,7 +88,7 @@ The result is used by `list` (to show and filter jobs), by `run` (to build the e
 
 Analyze might show something like:
 
-```
+```text
 Workflow: CI
 File: .github/workflows/ci.yml
 Events: push, pull_request
@@ -142,7 +142,7 @@ The executor builds the act command, runs it, captures stdout/stderr, and return
 
 ### What it does
 
-- **Registry:** A YAML registry (e.g. `images/capy/image-registry.yml` or a path from config) lists known images: name, file (e.g. `.tar`), Docker tag, OS, compiler(s), optional variants (asan, coverage, x86).
+- **Registry:** A YAML registry file (e.g. `images/capy/image-registry.yml`; configured via `images.registry` in `.localci.yml`) lists known images: name, file (e.g. `.tar`), Docker tag, OS, compiler(s), optional variants (asan, coverage, x86). The `images.registry` config key accepts a path to a single YAML file; the CLI reads that file to load all registry entries.
 - **Matching:** For each job (matrix entry), the system tries to find an image whose OS, compiler, and features match. If found, the job uses that image instead of the workflow’s default container image (e.g. `ubuntu:25.04`), so you avoid re-installing compilers and tools every run.
 - **Loading:** Images can be loaded from `.tar` files (e.g. built elsewhere or from CI). The CLI can build images when they are missing if a build script exists (e.g. `images/capy/build-one.sh <name> --save`).
 - **CLI:** `localci images list`, `localci images info <name>`, `localci images build` (or build a specific image), and optional cleanup of old images.

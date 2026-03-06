@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -359,14 +361,25 @@ class ProgressTracker:
         self._write_status_file_impl()
 
     def _write_status_file_impl(self) -> None:
-        """Write current status to status_file."""
+        """Write current status to status_file atomically (temp file + os.replace)."""
         if not self.status_file:
             return
         try:
             data = self.get_status_dict()
             self.status_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.status_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
+            dir_path = str(self.status_file.parent)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=dir_path,
+                delete=False,
+                suffix=".tmp",
+            ) as tmp:
+                json.dump(data, tmp, indent=2)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+                tmp_path = tmp.name
+            os.replace(tmp_path, self.status_file)
         except Exception as e:
             logger.debug("Could not write status file: %s", e)
 
@@ -636,6 +649,12 @@ class ProgressTracker:
                 QueuedJobStatus.TIMEOUT,
             )
         ]
+        cancelled = [
+            j
+            for j in jobs
+            if j.status
+            in (QueuedJobStatus.CANCELLED, QueuedJobStatus.SKIPPED)
+        ]
         running = [
             j
             for j in jobs
@@ -655,7 +674,7 @@ class ProgressTracker:
         ]
 
         total = len(jobs)
-        done = len(completed) + len(failed)
+        done = len(completed) + len(failed) + len(cancelled)
 
         result = {
             "progress": f"{done}/{total} jobs completed",
@@ -664,6 +683,7 @@ class ProgressTracker:
             "completed_count": done,
             "passed_count": len(completed),
             "failed_count": len(failed),
+            "cancelled_count": len(cancelled),
             "running_count": len(running),
             "pending_count": len(pending),
             "elapsed_seconds": self._elapsed_seconds(),

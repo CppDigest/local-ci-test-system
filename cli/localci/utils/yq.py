@@ -80,7 +80,7 @@ class YqWrapper:
                 self._yq_path = raw_path
                 logger.debug("yq (mikefarah) found at %s", raw_path)
             else:
-                logger.debug(
+                logger.warning(
                     "yq at %s is not mikefarah/yq (detected: %s) -- "
                     "using PyYAML fallback. Install mikefarah/yq for best results: "
                     "sudo snap install yq",
@@ -88,7 +88,7 @@ class YqWrapper:
                 )
 
         if not self._yq_path and self._is_linux:
-            logger.debug(
+            logger.warning(
                 "mikefarah/yq not available on Linux -- using PyYAML fallback. "
                 "Install with: sudo snap install yq"
             )
@@ -107,6 +107,8 @@ class YqWrapper:
                 text=True,
                 timeout=10,
             )
+            if result.returncode != 0:
+                return "unknown"
             version_str = (result.stdout + result.stderr).lower()
             if "mikefarah" in version_str or "github.com/mikefarah" in version_str:
                 return "mikefarah"

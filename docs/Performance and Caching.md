@@ -38,7 +38,7 @@ With caches warm, full Linux CI can complete in under ~2 minutes and incremental
 │ Build         │ │ Boost         │ │ CMake         │
 │ Artifact      │ │ Dependency    │ │ Config        │
 │ Cache         │ │ Cache         │ │ Cache         │
-│ (ccache)      │ │ + b2-source   │ │ Cache         │
+│ (ccache)      │ │ + b2-source   │ │ (per-job)     │
 └───────────────┘ └───────────────┘ └───────────────┘
         │                 │                 │
         └─────────────────┼─────────────────┘

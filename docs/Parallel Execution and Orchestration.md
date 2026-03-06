@@ -22,7 +22,7 @@ Together, these are the **orchestrator** and **parallel execution** features: th
 
 ## How It Fits in the Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                      MCP / CLI                                    │
 └─────────────────────┬───────────────────────────────────────────┘
@@ -136,7 +136,7 @@ The orchestrator (or progress tracker) writes a status file (e.g. `last-status.j
 
 ## Data Flow (Conceptual)
 
-```
+```text
 Workflow file + Config
         │
         ▼

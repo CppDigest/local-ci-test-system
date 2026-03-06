@@ -290,7 +290,8 @@ def run(
 
     # ── 5b. Phase 2: ensure Boost cache (clone/fetch when enabled) ───
     if not no_cache and cfg.cache.enabled and cfg.cache.boost.enabled:
-        ensure_boost_cache(cfg.cache, no_cache, cache_dir)
+        if not ensure_boost_cache(cfg.cache, no_cache, cache_dir):
+            print_warning("Boost cache setup failed; jobs will clone Boost from scratch.")
 
     # ── 6. Execute via orchestrator ────────────────────────────────
     orch_config = OrchestratorConfig(
@@ -301,6 +302,8 @@ def run(
         default_secrets={"GITHUB_TOKEN": gh_token},
         default_env={},
         image_registry_path=cfg.images.registry,
+        verbose=verbose,
+        offline=offline,
     )
     orchestrator = ParallelExecutionManager(
         queue=queue,

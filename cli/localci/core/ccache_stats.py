@@ -22,7 +22,7 @@ def get_ccache_stats(host_ccache_dir: Path) -> Optional[str]:
     ccache = shutil.which("ccache")
     if not ccache:
         return None
-    if not host_ccache_dir.exists():
+    if not host_ccache_dir.is_dir():
         return None
     try:
         env = os.environ.copy()

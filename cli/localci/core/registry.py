@@ -286,13 +286,22 @@ class ImageRegistry:
             raise ValueError(f"Registry already has an image named {entry.name!r}")
         self.entries.append(entry)
 
+    ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset({
+        "docker_tag", "file", "size_mb", "packages",
+        "last_used", "usage_count", "build_date",
+    })
+
     def update(self, name: str, **kwargs: Any) -> None:
         e = self.find_by_name(name)
         if not e:
             raise ValueError(f"No image named {name!r} in registry")
         for k, v in kwargs.items():
-            if hasattr(e, k):
-                setattr(e, k, v)
+            if k not in self.ALLOWED_UPDATE_FIELDS:
+                raise ValueError(
+                    f"Field {k!r} is not allowed in registry update; "
+                    f"permitted fields: {sorted(self.ALLOWED_UPDATE_FIELDS)}"
+                )
+            setattr(e, k, v)
 
     def update_usage(self, name: str) -> None:
         """Increment usage_count and set last_used to now (ISO)."""

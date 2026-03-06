@@ -8,6 +8,7 @@ Analyzed the Local CI System Design document and capy's GitHub Actions workflow 
 ## Current State Analysis
 
 ### Capy CI Metrics
+
 | Metric | Current | Target |
 |--------|---------|--------|
 | CI workflow time | 12-15 min | ~1 min |
@@ -31,9 +32,9 @@ Analyzed the Local CI System Design document and capy's GitHub Actions workflow 
 
 ---
 
-## Architecture Overview (From [Design Doc]())
+## Architecture Overview (From [Design Doc](Design%20Guide.md))
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                      MCP Server Interface                        │
 │  analyze_workflow | run_local_ci | get_status | get_logs        │

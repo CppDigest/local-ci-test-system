@@ -23,34 +23,22 @@ logger = logging.getLogger(__name__)
 def _resolve_image_tag_and_build(
     entry: MatrixEntry,
     registry: Optional["ImageRegistry"],
-) -> tuple[str, Optional[str], bool]:
-    """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build."""
+) -> tuple[Optional[str], Optional[str], bool]:
+    """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build.
+
+    Returns (None, None, True) when no image tag can be derived (e.g. non-Linux runner).
+    """
+    derived_tag = derive_image_tag(entry)
     if registry is None:
-        return _derive_image_tag(entry), None, False
+        if derived_tag is not None:
+            return derived_tag, None, False
+        return None, None, True
     result = registry.select(entry)
     if result.use_image:
         return result.use_image.docker_tag, None, False
     if result.base_image:
-        return _derive_image_tag(entry), result.base_image.docker_tag, True
-    return _derive_image_tag(entry), None, True
-
-
-def _derive_image_tag(entry: MatrixEntry) -> str:
-    """Derive Docker image tag from matrix entry (same logic as run.py)."""
-    if entry.container.image:
-        img = entry.container.image.strip().lower()
-        os_label = img.replace(":", "-", 1) if ":" in img else img
-    else:
-        os_label = entry.runs_on
-    compiler_label = f"{entry.compiler.family.value}{entry.compiler.version}"
-    base = f"capy-{os_label}-{compiler_label}"
-    if entry.variant.coverage:
-        base += "-cov"
-    elif entry.variant.asan:
-        base += "-asan"
-    elif entry.variant.x86:
-        base += "-x86"
-    return f"{base}:latest"
+        return derived_tag, result.base_image.docker_tag, True
+    return derived_tag, None, True
 
 
 def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:
@@ -173,6 +161,6 @@ class QueueBuilder:
         logger.info(
             "Queue built: %d jobs, %d priority levels",
             queue.total_jobs,
-            len(queue._priority_levels),
+            queue.num_priority_levels,
         )
         return queue

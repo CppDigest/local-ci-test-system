@@ -33,7 +33,7 @@ from localci.utils.output import (
     "--follow",
     "-f",
     is_flag=True,
-    help="Follow mode / live polling (not yet implemented; shows current state only).",
+    help="Follow mode: poll last-status.json until Ctrl+C (requires a running execution).",
 )
 @click.option(
     "--format",
@@ -50,10 +50,6 @@ def status(
     output_format: str,
 ) -> None:
     """Show execution progress."""
-    if follow:
-        print_info("Follow mode: polling status file until Ctrl+C.")
-        print_warning("--follow is not yet implemented (no live polling); showing current state only.")
-
     cfg = ctx.obj["config"]
     logs_dir = Path(cfg.logging.directory)
 
@@ -72,6 +68,8 @@ def status(
         if status_data is not None and "progress" in status_data:
             if output_format == "json":
                 click.echo(json.dumps(status_data, indent=2))
+                if follow:
+                    _follow_status(status_file, output_format)
                 return
             _print_status_table(status_data)
             if follow:
@@ -103,6 +101,8 @@ def status(
         ctx.exit(1)
         return
 
+    if follow:
+        print_warning("--follow only works with a live last-status.json (running execution); showing current state only.")
     if output_format == "json":
         click.echo(json.dumps(summary.to_dict(), indent=2))
         return
