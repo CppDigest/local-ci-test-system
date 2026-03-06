@@ -168,8 +168,20 @@ def _safe_float(value: object, default: float = 0.0) -> float:
         return default
 
 
-def _print_status_table(data: dict) -> None:
+def _job_list(data: dict, key: str) -> list[dict]:
+    """Return a list of dict items from *data[key]*, skipping non-dict entries."""
+    raw = data.get(key) if isinstance(data, dict) else None
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def _print_status_table(data: object) -> None:
     """Render MCP status data as Rich table."""
+    if not isinstance(data, dict):
+        console.print("[bold red]Status data is not a valid dict.[/bold red]")
+        return
+
     console.print()
     console.print(
         f"[bold]Execution:[/bold] {data.get('execution_id', 'unknown')}"
@@ -180,7 +192,7 @@ def _print_status_table(data: dict) -> None:
     )
     console.print()
 
-    running = data.get("running_jobs", [])
+    running = _job_list(data, "running_jobs")
     if running:
         console.print("[bold cyan]Running:[/bold cyan]")
         for job in running:
@@ -193,7 +205,7 @@ def _print_status_table(data: dict) -> None:
                 console.print(f"  ● {name} ({elapsed:.0f}s)")
         console.print()
 
-    completed = data.get("completed_jobs", [])
+    completed = _job_list(data, "completed_jobs")
     if completed:
         console.print(
             f"[bold green]Completed ({len(completed)}):[/bold green]"
@@ -204,16 +216,16 @@ def _print_status_table(data: dict) -> None:
             console.print(f"  ✓ {name} ({dur:.0f}s)")
         console.print()
 
-    failed = data.get("failed_jobs", [])
+    failed = _job_list(data, "failed_jobs")
     if failed:
         console.print(f"[bold red]Failed ({len(failed)}):[/bold red]")
         for job in failed:
             name = job.get("name", "<unknown>")
-            msg = job.get("error_message", "unknown error")
+            msg = job.get("error_message") or "unknown error"
             console.print(f"  ✗ {name}: {msg}")
         console.print()
 
-    pending = data.get("pending_jobs", [])
+    pending = _job_list(data, "pending_jobs")
     if pending:
         console.print(f"[dim]Pending ({len(pending)})[/dim]")
     console.print()
