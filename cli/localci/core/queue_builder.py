@@ -80,9 +80,8 @@ def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:
 class QueueBuilder:
     """Build a populated PriorityJobQueue from workflow and config.
 
-    Applies platform/compiler/matrix filters, priority assignment, and
-    dependency keys. Image matching is stubbed (derive image_tag from
-    entry; no registry required until Issue 3).
+    Applies platform/compiler/matrix filters, priority assignment,
+    dependency keys, and image registry matching when a registry path is provided.
     """
 
     def __init__(

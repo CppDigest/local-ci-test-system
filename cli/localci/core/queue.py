@@ -189,7 +189,11 @@ class PriorityJobQueue:
             # Always point to highest priority (lowest number) so order of enqueue doesn't matter
             self._current_priority = self._priority_levels[0]
             self._dep_resolver.add_job(key, list(job.dependencies))
-            job.status = QueuedJobStatus.QUEUED
+            # Only jobs at the current priority level are QUEUED; others wait for _check_priority_advance()
+            if job.priority == self._current_priority:
+                job.status = QueuedJobStatus.QUEUED
+            else:
+                job.status = QueuedJobStatus.WAITING_PRIORITY
             self._emit(JobEventType.JOB_QUEUED, job)
             logger.debug(
                 "Enqueued: %s (priority=%s, deps=%s)",

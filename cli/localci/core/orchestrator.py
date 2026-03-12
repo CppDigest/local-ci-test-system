@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import shlex
 import signal
+import subprocess
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -66,6 +67,7 @@ class OrchestratorConfig:
     image_registry_path: Optional[Path] = None
     verbose: bool = False
     offline: bool = False
+    auto_build: bool = True
 
     @classmethod
     def from_config(cls, config: "LocalCIConfig") -> OrchestratorConfig:
@@ -86,6 +88,7 @@ class OrchestratorConfig:
                 config.execution, "stop_on_first_failure", False
             ),
             image_registry_path=registry_path,
+            auto_build=getattr(images, "auto_build", True) if images else True,
         )
 
 
@@ -386,6 +389,7 @@ class ParallelExecutionManager:
                     container_mount_options=container_mount_options,
                 )
 
+            event_file_to_clean: Optional[Path] = None
             try:
                 # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
                 # (causes "remove ... no such file or directory" when one job cleans cache)
@@ -410,6 +414,7 @@ class ParallelExecutionManager:
                     resolved_cache_paths=resolved_cache_paths,
                     cache_config=self._cache_config,
                 )
+                event_file_to_clean = getattr(cmd, "event_file", None)
                 result = self._executor.run(
                     cmd,
                     matrix_index=job.matrix_entry.index,
@@ -427,6 +432,11 @@ class ParallelExecutionManager:
                         workflow_file.unlink(missing_ok=True)
                     except OSError as unlink_err:
                         logger.debug("Could not remove patched workflow temp file %s: %s", workflow_file, unlink_err)
+                if event_file_to_clean is not None:
+                    try:
+                        event_file_to_clean.unlink(missing_ok=True)
+                    except OSError as unlink_err:
+                        logger.debug("Could not remove event temp file %s: %s", event_file_to_clean, unlink_err)
         except Exception as e:
             logger.exception(
                 "Job execution error: %s: %s",
@@ -465,10 +475,44 @@ class ParallelExecutionManager:
                 logger.debug("No tar at %s for %s", tar_path, job.image_tag)
         else:
             logger.debug("No image registry path; image must be pre-loaded: %s", job.image_tag)
-        # Only return tag if image is now present (e.g. after load); else None so job fails clearly
+        # If still missing and job.needs_build, build synchronously (Design Guide: "jobs are never skipped due to missing images")
+        if (
+            not self._docker.image_exists(job.image_tag)
+            and job.needs_build
+            and self.config.auto_build
+        ):
+            build_script = self.project_dir / "images" / "capy" / "build-one.sh"
+            if build_script.exists():
+                image_name = job.image_tag.split(":")[0]
+                try:
+                    result = subprocess.run(
+                        ["bash", str(build_script), image_name, "--save"],
+                        cwd=str(self.project_dir),
+                        capture_output=True,
+                        text=True,
+                        timeout=3600,
+                    )
+                    if result.returncode == 0 and self._docker.image_exists(job.image_tag):
+                        logger.info("Built image for %s: %s", job.matrix_entry.name, job.image_tag)
+                        return job.image_tag
+                    if result.returncode != 0:
+                        logger.warning(
+                            "Build failed for %s (exit %s): %s",
+                            job.image_tag,
+                            result.returncode,
+                            (result.stderr or result.stdout or "").strip() or "(no output)",
+                        )
+                except subprocess.TimeoutExpired:
+                    logger.warning("Build timed out for %s", job.image_tag)
+                except (OSError, FileNotFoundError) as e:
+                    logger.warning("Could not run build script for %s: %s", job.image_tag, e)
+            else:
+                logger.debug("No build script at %s; cannot build %s", build_script, job.image_tag)
+
+        # Only return tag if image is now present (e.g. after load or build); else None so job fails clearly
         if self._docker.image_exists(job.image_tag):
             return job.image_tag
-        logger.warning("Image not available (not in cache and load from tar failed or not attempted): %s", job.image_tag)
+        logger.warning("Image not available (not in cache, load from tar failed or not attempted, and build skipped or failed): %s", job.image_tag)
         return None
 
     def _on_job_done(self, job: QueuedJob, future: Future) -> None:

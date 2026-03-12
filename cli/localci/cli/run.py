@@ -294,17 +294,16 @@ def run(
             print_warning("Boost cache setup failed; jobs will clone Boost from scratch.")
 
     # ── 6. Execute via orchestrator ────────────────────────────────
-    orch_config = OrchestratorConfig(
-        max_parallel=effective_parallel,
-        job_timeout=effective_timeout,
-        stop_on_first_failure=cfg.execution.stop_on_first_failure,
-        keep_containers=effective_keep_containers,
-        default_secrets={"GITHUB_TOKEN": gh_token},
-        default_env={},
-        image_registry_path=cfg.images.registry,
-        verbose=verbose,
-        offline=offline,
-    )
+    orch_config = OrchestratorConfig.from_config(cfg)
+    orch_config.max_parallel = effective_parallel
+    orch_config.job_timeout = effective_timeout
+    orch_config.keep_containers = effective_keep_containers
+    orch_config.default_secrets = {"GITHUB_TOKEN": gh_token}
+    orch_config.default_env = {}
+    orch_config.image_registry_path = cfg.images.registry
+    orch_config.verbose = verbose
+    orch_config.offline = offline
+    orch_config.auto_build = cfg.images.auto_build
     orchestrator = ParallelExecutionManager(
         queue=queue,
         workflow_file=workflow_path,

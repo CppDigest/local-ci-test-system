@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
+from localci.core.config import LOCALCI_CACHE_CONTAINER_ROOT
+
 if TYPE_CHECKING:
     from localci.core.config import CmakeCacheConfig
     from localci.core.workflow import MatrixEntry
@@ -21,8 +23,9 @@ logger = logging.getLogger(__name__)
 # Default paths/globs (relative to project root) included in change detection
 DEFAULT_CMAKE_INPUTS = ["CMakeLists.txt", "cmake/*.cmake"]
 
-# Value we set for BOOST_ROOT in container when boost cache is enabled (for digest stability)
-BOOST_ROOT_CACHE_VALUE = "/tmp/localci-cache/boost"
+# Must match ResolvedCachePaths.boost_container so digest and runtime BOOST_ROOT stay in sync
+def _boost_container_path_for_digest() -> str:
+    return f"{LOCALCI_CACHE_CONTAINER_ROOT}/boost"
 
 
 def compute_cmake_input_digest(
@@ -62,9 +65,9 @@ def compute_cmake_input_digest(
     cxx = (entry.compiler.cxx or "").strip()
     h.update(f"CC={cc}\nCXX={cxx}\n".encode())
 
-    # BOOST_ROOT (workflows use it; when enabled we set it to a fixed path)
+    # BOOST_ROOT (same as ResolvedCachePaths.boost_container so digest matches runtime)
     if boost_enabled:
-        h.update(f"BOOST_ROOT={BOOST_ROOT_CACHE_VALUE}\n".encode())
+        h.update(f"BOOST_ROOT={_boost_container_path_for_digest()}\n".encode())
 
     return h.hexdigest()[:12]
 
