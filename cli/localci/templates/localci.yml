@@ -67,6 +67,9 @@ cache:
   cmake:
     enabled: true
     # inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; files for change detection
+  apt:
+    enabled: true
+    # dir: ~/.localci/cache/apt   # optional; per-job subdir for package-install step
 
 # Logging
 logging:

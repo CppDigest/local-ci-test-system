@@ -299,7 +299,8 @@ def run(
     orch_config.job_timeout = effective_timeout
     orch_config.keep_containers = effective_keep_containers
     orch_config.default_secrets = {"GITHUB_TOKEN": gh_token}
-    orch_config.default_env = {}
+    # Match feature/cache-main-install behavior: noninteractive apt so "Install packages" never hangs
+    orch_config.default_env = {"DEBIAN_FRONTEND": "noninteractive"}
     orch_config.image_registry_path = cfg.images.registry
     orch_config.verbose = verbose
     orch_config.offline = offline
@@ -341,6 +342,8 @@ def run(
             cache_parts.append("cmake")
         if getattr(cfg.cache.boost, "build_dir", True):
             cache_parts.append("b2-source")
+        if getattr(cfg.cache, "apt", None) and getattr(cfg.cache.apt, "enabled", True):
+            cache_parts.append("apt")
         if cache_parts:
             print_info(f"Cache enabled: {', '.join(cache_parts)}. Use --no-cache to disable.")
 
