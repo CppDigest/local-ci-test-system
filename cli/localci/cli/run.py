@@ -331,6 +331,19 @@ def run(
 
     orchestrator.add_listener(tracker.on_event)
 
+    if not no_cache and cfg.cache.enabled:
+        cache_parts = []
+        if cfg.cache.ccache.enabled:
+            cache_parts.append("ccache")
+        if cfg.cache.boost.enabled:
+            cache_parts.append("boost")
+        if cfg.cache.cmake.enabled:
+            cache_parts.append("cmake")
+        if getattr(cfg.cache.boost, "build_dir", True):
+            cache_parts.append("b2-source")
+        if cache_parts:
+            print_info(f"Cache enabled: {', '.join(cache_parts)}. Use --no-cache to disable.")
+
     tracker.start_live()
     try:
         run = orchestrator.execute()

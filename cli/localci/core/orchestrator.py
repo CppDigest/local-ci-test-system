@@ -378,6 +378,27 @@ class ParallelExecutionManager:
                     )
                 if mount_parts:
                     container_mount_options = " ".join(mount_parts)
+                    parts = []
+                    if resolved_cache_paths.ccache_host is not None:
+                        parts.append("ccache")
+                    if resolved_cache_paths.boost_host is not None:
+                        parts.append("boost")
+                    if resolved_cache_paths.cmake_host is not None:
+                        parts.append("cmake")
+                    if resolved_cache_paths.b2_source_host is not None:
+                        parts.append("b2-source")
+                    if resolved_cache_paths.apt_host is not None:
+                        parts.append("apt")
+                    logger.info(
+                        "Cache mounts applied for %s: %s",
+                        job.matrix_entry.name,
+                        ", ".join(parts),
+                    )
+            elif self._cache_config is not None and not self._no_cache and self._cache_config.enabled:
+                logger.debug(
+                    "Cache enabled in config but no paths resolved for %s (check job_id/queue_key and cache sub-options)",
+                    job.matrix_entry.name,
+                )
 
             workflow_file = self.workflow_file
             if self._workflow_patcher is not None:
