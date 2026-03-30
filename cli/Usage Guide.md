@@ -1,4 +1,4 @@
-# Local CI - User Guide
+# Local CI - Usage Guide
 
 ## Table of Contents
 
@@ -17,6 +17,7 @@
   - [localci status](#localci-status)
   - [localci logs](#localci-logs)
   - [localci images](#localci-images)
+  - [localci cache](#localci-cache)
   - [Building Docker images (images/ scripts)](#building-docker-images-images-scripts)
   - [localci config](#localci-config)
 - [Workflows](#workflows)
@@ -50,7 +51,7 @@ Key features:
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| Python 3.11+ | Runtime | [python.org](https://www.python.org/downloads/) |
+| Python 3.10+ | Runtime | [python.org](https://www.python.org/downloads/) |
 | Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
 | act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` |
@@ -189,16 +190,29 @@ images:
     max_age_days: 30
     max_size_gb: 20
 
-# Build caching
+# Build caching (Phase 2)
 cache:
   enabled: true
   directory: ~/.localci/cache
   ccache:
     enabled: true
     max_size: 5G
+    compress: true       # CCACHE_COMPRESS (recommended)
+    # dir: ~/.localci/cache/ccache   # optional; default: directory/ccache
   boost:
     enabled: true
     branch: develop
+    shallow: true
+    build_dir: true   # per-job b2-source cache for incremental B2 builds
+    # dir: ~/.localci/cache/boost   # optional; default: directory/boost
+    # remote: https://github.com/boostorg/boost.git   # optional; default Boost superproject URL
+  cmake:
+    enabled: true
+    # dir: ~/.localci/cache/cmake   # base dir; per-job path: dir/<job_matrix_key>_<input_digest>
+    # inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; files/globs for change detection (default shown)
+  apt:
+    enabled: true
+    # dir: ~/.localci/cache/apt   # optional; per-job dir mounted at /var/cache/apt/archives
 
 # Logging
 logging:
@@ -211,8 +225,24 @@ logging:
 execution:
   timeout: 3600            # Default job timeout in seconds
   keep_containers: false   # Remove containers after run
-  stop_on_first_failure: false
+  stop_on_first_failure: false  # Stop dispatching new jobs after first failure
 ```
+
+#### Parallel and orchestration parameters (summary)
+
+| Where | Parameter | Purpose |
+|-------|-----------|---------|
+| **Config** `parallel` | `max_jobs` | Max concurrent jobs (1–64). |
+| **Config** `parallel.resource_limit` | `cpu_percent` | Pause dispatching new jobs when CPU usage exceeds this (default 80). |
+| **Config** `parallel.resource_limit` | `memory_percent` | Pause dispatching when memory usage exceeds this (default 70). |
+| **Config** `execution` | `timeout` | Per-job timeout in seconds (default 3600). |
+| **Config** `execution` | `keep_containers` | If true, do not remove act containers after each run. |
+| **Config** `execution` | `stop_on_first_failure` | If true, stop dispatching new jobs after the first job fails. |
+| **CLI** `localci run` | `--parallel` | Override `parallel.max_jobs` for this run. |
+| **CLI** `localci run` | `--timeout` | Override `execution.timeout` (seconds) for this run. |
+| **CLI** `localci run` | `--keep-containers` | Override to keep containers after run (for debugging). |
+
+There is no CLI flag for `stop_on_first_failure`; set it in `.localci.yml` or with `localci config set execution.stop_on_first_failure true`.
 
 #### Key sections
 
@@ -224,8 +254,75 @@ execution:
 | `matrix` | Filter matrix entries by compiler, version, asan, etc. |
 | `priorities` | Override execution order (lower number runs first) |
 | `images` | Where Docker images are stored, auto-build, cleanup |
-| `cache` | ccache and Boost dependency caching |
+| `cache` | ccache, Boost dependency, and CMake config caching |
 | `execution` | Timeouts, container cleanup, failure behaviour |
+
+#### Build caching (Phase 2)
+
+When `cache.enabled` is true, Local CI bind-mounts host cache directories into
+containers so that repeated runs reuse build artifacts, the Boost tree, and
+CMake configuration.
+
+| Cache | Purpose | Env / path in container |
+|-------|---------|--------------------------|
+| **ccache** | Compilation cache (B2, CMake builds) | `CCACHE_DIR`, `CCACHE_MAXSIZE`, `CCACHE_COMPRESS` |
+| **boost** | Pre-cloned Boost superproject | `BOOST_ROOT`; workflow can skip clone |
+| **b2-source** | Per-job persistent `boost-root` (Boost source + `bin.v2` artifacts) for incremental b2 builds | `LOCALCI_B2_SOURCE_DIR` |
+| **cmake** | Per-job CMake config cache; path keyed by input digest (Issue 11) | `LOCALCI_CMAKE_CACHE_DIR` |
+
+- **Host cache root:** `cache.directory` (default `~/.localci/cache`). Subdirs
+  `ccache/`, `boost/`, `b2-source/<job_matrix_key>/`, `cmake/<job_matrix_key>_<input_digest>/` are created as needed.
+- **Boost cache:** On first run with `cache.boost.enabled`, Local CI runs
+  `git clone` (shallow by default; branch from `cache.boost.branch`, remote from
+  `cache.boost.remote`). On later runs it runs `git fetch` and `git reset
+  --hard origin/<branch>` so the tree is up to date. Jobs see the cache at
+  `BOOST_ROOT`. **Current behavior:** the workflow patcher does not skip the Clone Boost step or add a "Use cached Boost (BOOST_ROOT)" step; the Clone Boost step remains unconditional. The patcher replaces the Patch Boost step's `cp -rL boost-source boost-root` with cache-hit/miss logic when `LOCALCI_B2_SOURCE_DIR` is set. Use `localci cache update` to refresh the Boost cache without running CI.
+- **B2 source cache (`b2-source`):** When `cache.boost.build_dir` is true (default), Local CI caches the entire per-job `boost-root` at `b2-source/<job_matrix_key>/` and sets `LOCALCI_B2_SOURCE_DIR`. The workflow patcher replaces the `cp -rL boost-source boost-root` in the Patch Boost step: when the cache exists it rsyncs only changed Boost files into the cache (preserving `bin.v2/` artifacts and `libs/capy`), then symlinks `boost-root` to it; on the first run it falls back to the original `cp -rL` and seeds the cache. Since `bin.v2/` persists and unchanged source files keep their timestamps, b2 only rebuilds what actually changed (&lt;10s for a small `.cpp`/`.h` change). Clear with `localci cache clear --target b2-source`.
+- **Branch:** Set `cache.boost.branch` (e.g. `develop` or `master`) so the
+  cached tree matches your workflow; only one branch is cached at a time (the
+  dir is updated to that branch on each refresh).
+- **Disk:** Shallow clone (`cache.boost.shallow: true`) keeps the Boost cache
+  smaller; a full clone is larger but allows arbitrary branch/checkout later.
+- **CMake cache (Issue 11):** The CMake cache directory is keyed by job/matrix
+  and an **input digest** so that unchanged inputs reuse the same dir (workflow
+  can skip configure); when CMakeLists.txt, toolchain, compiler, or BOOST_ROOT
+  change, a new directory is used and CMake reconfigures. Change detection
+  includes by default: `CMakeLists.txt`, `cmake/*.cmake`, compiler (CC/CXX),
+  and BOOST_ROOT when Boost cache is enabled. Optional `cache.cmake.inputs`
+  overrides the file list. Clear with `localci cache clear --target cmake`.
+- **CLI:** `--no-cache` disables all build caches for that run. `--cache-dir
+  /path` overrides the cache root.
+- **Job container mounts:** When the workflow uses `container: image: ...`, act
+  does not apply `--container-options` to that job container. Local CI therefore
+  injects the cache volume mounts into the job's `container.options` in the
+  patched workflow so the job container sees `BOOST_ROOT`, `CCACHE_DIR`, etc.
+- **Docker must see the cache path:** Cache dirs are bind-mounted into the job
+  container. If you see "BOOST_ROOT ... is not a directory in the container",
+  the host path (e.g. `~/.localci/cache/boost`) is not visible to the Docker
+  daemon (common with Docker Desktop + WSL2 or mixed host/daemon OS). Use a
+  cache path that Docker can mount (e.g. under a WSL2 path if the daemon runs
+  in WSL2), or run with `--no-cache`.
+
+**Cache invalidation:** Caches are not automatically cleared. To force a clean
+build: use `localci run --no-cache` for one run; or run `localci cache clear`
+(optionally `--target ccache`, `boost`, `b2-source`, `cmake`, `apt`, or `all`) to remove cache
+dirs; or delete the relevant subdir under `cache.directory` manually. Changing
+compiler or toolchain may require clearing ccache or cmake cache.
+
+**ccache stats:** After each run with ccache enabled, `localci run` prints
+ccache statistics (hit/miss, size) when the host has `ccache` installed. You can
+also run `localci cache stats` anytime to see current stats for the configured
+ccache directory.
+
+**Speeding up runtime:** Use the **per-step runtime** table in the run summary to
+see how long each workflow step took (clone, configure, build, etc.). Optimize
+the longest step first, then re-run and compare. With caches enabled, changing
+one `.cpp` file only rebuilds that translation unit and the link step (ccache
+reuses object files for unchanged sources). Unlike GitHub-hosted runners, local
+cache size is not limited to 10GB per repo — you can keep a large ccache and
+build-artifact tree so incremental runs feel like local development. Ensure
+your workflow does not run a full clean (e.g. `rm -rf build`) at the start when
+using caches. Local CI sets `BOOST_ROOT` and patches the workflow to skip the Clone Boost step when it is set; set or use `LOCALCI_CMAKE_CACHE_DIR` in the cmake-workflow action so configure is skipped when the cache is valid; the `b2-source` cache handles incremental b2 builds automatically via the workflow patch.
 
 ### Viewing and Editing Config
 
@@ -366,7 +463,7 @@ localci run [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--workflow`, `-w` | Workflow file (defaults to config value) |
-| `--job`, `-j` | Job index or name — repeatable for multiple jobs |
+| `--job`, `-j` | Job index (Idx) or name — repeatable for multiple jobs |
 | `--platform`, `-p` | Run all jobs for a platform: `linux`, `windows`, `macos` |
 | `--compiler` | Filter by compiler |
 | `--matrix`, `-m` | Matrix filter as `key=value` — repeatable |
@@ -375,7 +472,8 @@ localci run [OPTIONS]
 | `--dry-run` | Preview the execution plan without running anything |
 | `--github-token`, `-t` | GitHub token for downloading external actions |
 | `--offline` | Run in offline mode (requires pre-cached actions) |
-| `--no-cache` | Disable build caching (ccache/sccache) |
+| `--no-cache` | Disable build caching (ccache, boost, cmake) |
+| `--cache-dir` | Override cache root directory |
 | `--rebuild-image` | Force Docker image rebuild |
 | `--keep-containers` | Don't remove containers after execution |
 | `--interactive`, `-i` | Interactively select which jobs to run |
@@ -411,6 +509,8 @@ localci run --job 5 --keep-containers
 # Force image rebuild
 localci run --job 5 --rebuild-image
 ```
+
+**Summary table columns:** After a run, the job table shows **#** (row number, 1-based) and **Idx** (workflow matrix entry index). Use the Idx value with `localci run --job <Idx>` to re-run that job. When you filter jobs (e.g. by platform), only a subset runs but each keeps its matrix index, so the first row may show #1 with Idx 4 if the first job in your filtered set is the fifth matrix entry.
 
 #### GitHub Authentication
 
@@ -560,6 +660,9 @@ localci images list
 
 # JSON output
 localci images list --format json
+
+# Use a specific registry file
+localci images list --registry /path/to/image-registry.yml
 ```
 
 #### localci images info
@@ -567,6 +670,9 @@ localci images list --format json
 ```bash
 # Show details for a specific image
 localci images info capy-ubuntu-25.04-gcc15
+
+# Use a specific registry file
+localci images info capy-ubuntu-25.04-gcc15 --registry /path/to/image-registry.yml
 ```
 
 #### localci images build
@@ -650,6 +756,59 @@ Supported image names: `capy-ubuntu-24.04-base`, `capy-ubuntu-25.04-base`,
 ```bash
 ./images/capy/test-image.sh capy-ubuntu-24.04-clang20:latest
 ```
+
+---
+
+### localci cache
+
+Manage build caches (ccache, boost, b2-source, cmake, apt). Use after changing
+compiler/toolchain or to free disk space.
+
+#### localci cache clear
+
+Remove cache directories to force fresh builds:
+
+```bash
+# Clear ccache only (default)
+localci cache clear
+
+# Clear a specific cache
+localci cache clear --target ccache
+localci cache clear --target boost
+localci cache clear --target b2-source
+localci cache clear --target cmake
+localci cache clear --target apt
+
+# Clear all caches
+localci cache clear --target all
+
+# Skip confirmation
+localci cache clear --target ccache --yes
+```
+
+#### localci cache stats
+
+Show ccache statistics (hit/miss, size) for the configured ccache directory.
+Requires `ccache` to be installed on the host:
+
+```bash
+localci cache stats
+```
+
+#### localci cache update (Issue 10)
+
+Refresh the Boost superproject cache without running a full CI run (clone if
+missing, or `git fetch` + `git reset --hard origin/<branch>` if it already
+exists):
+
+```bash
+localci cache update
+# or explicitly:
+localci cache update --target boost
+```
+
+Useful to pull the latest Boost branch before a run, or to populate the cache
+before going offline.
 
 ---
 

@@ -50,16 +50,26 @@ images:
     max_age_days: 30
     max_size_gb: 20
 
-# Cache settings
+# Cache settings (Phase 2)
 cache:
   enabled: true
   directory: ~/.localci/cache
   ccache:
     enabled: true
     max_size: 5G
+    compress: true
   boost:
     enabled: true
     branch: develop
+    shallow: true
+    build_dir: true              # cache per-job boost-root (source + bin.v2) via LOCALCI_B2_SOURCE_DIR
+    # remote: https://github.com/boostorg/boost.git   # optional
+  cmake:
+    enabled: true
+    # inputs: [CMakeLists.txt, cmake/*.cmake]   # optional; files for change detection
+  apt:
+    enabled: true
+    # dir: ~/.localci/cache/apt   # optional; per-job subdir for package-install step
 
 # Logging
 logging:

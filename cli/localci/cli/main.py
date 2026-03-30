@@ -79,6 +79,7 @@ def cli(
 # ---------------------------------------------------------------------------
 
 from localci.cli.analyze import analyze  # noqa: E402
+from localci.cli.cache import cache_cmd  # noqa: E402
 from localci.cli.config import config  # noqa: E402
 from localci.cli.images import images  # noqa: E402
 from localci.cli.list import list_cmd  # noqa: E402
@@ -87,6 +88,7 @@ from localci.cli.run import run  # noqa: E402
 from localci.cli.status import status  # noqa: E402
 
 cli.add_command(analyze)
+cli.add_command(cache_cmd, name="cache")
 cli.add_command(list_cmd, name="list")
 cli.add_command(run)
 cli.add_command(status)

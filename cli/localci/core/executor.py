@@ -147,11 +147,20 @@ class ActCommand:
     # Container
     container_architecture: Optional[str] = None
 
+    # Action cache (per-job path to avoid parallel races in ~/.cache/act)
+    action_cache_path: Optional[Path] = None
+
+    # Phase 2: bind mounts for ccache/boost/cmake (act --container-options "-v ...")
+    container_options: Optional[str] = None
+
     # Working directory
     workdir: Optional[Path] = None
-    
+
     # Binary name (set by executor)
     act_binary: str = "act"
+
+    # Parsed act version for feature-gating; None means unknown (flags are always emitted)
+    act_version: Optional[tuple[int, int, int]] = None
 
     def build(self) -> list[str]:
         """Build complete act command as argument list."""
@@ -214,6 +223,28 @@ class ActCommand:
         # Container architecture
         if self.container_architecture:
             cmd.extend(["--container-architecture", self.container_architecture])
+
+        # Per-job action cache (avoids parallel jobs corrupting shared ~/.cache/act)
+        # Requires act >= 0.2.47
+        if self.action_cache_path:
+            if self.act_version is None or self.act_version >= (0, 2, 47):
+                cmd.extend(["--action-cache-path", str(self.action_cache_path)])
+            else:
+                logger.warning(
+                    "--action-cache-path requires act >= 0.2.47 (found %s.%s.%s); skipping flag",
+                    *self.act_version,
+                )
+
+        # Phase 2: bind mounts for build/boost/cmake caches
+        # Requires act >= 0.2.35
+        if self.container_options:
+            if self.act_version is None or self.act_version >= (0, 2, 35):
+                cmd.extend(["--container-options", self.container_options])
+            else:
+                logger.warning(
+                    "--container-options requires act >= 0.2.35 (found %s.%s.%s); skipping flag",
+                    *self.act_version,
+                )
 
         return cmd
 
@@ -297,6 +328,7 @@ class JobExecutor:
         # On Windows, choco installs the binary as `act-cli.exe`
         # On Linux/macOS, it's `act`
         self._act_path: Optional[str] = self._find_act_binary()
+        self._act_version: Optional[tuple[int, int, int]] = None
 
     @staticmethod
     def _find_act_binary() -> Optional[str]:
@@ -335,6 +367,7 @@ class JobExecutor:
         """Verify ``act`` is installed and return its version string.
 
         Raises :class:`ActNotFoundError` if not found.
+        Also parses and caches the version tuple for feature-gating.
         """
         if not self._act_path:
             raise ActNotFoundError()
@@ -347,7 +380,16 @@ class JobExecutor:
         )
         version = result.stdout.strip()
         logger.info("act found: %s", version)
+        import re
+        m = re.search(r"v?(\d+)\.(\d+)\.(\d+)", version)
+        if m:
+            self._act_version = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
         return version
+
+    @property
+    def act_version_tuple(self) -> Optional[tuple[int, int, int]]:
+        """Parsed act version as (major, minor, patch), or None if not yet checked."""
+        return self._act_version
 
     def check_docker(self) -> None:
         """Verify Docker daemon is accessible.

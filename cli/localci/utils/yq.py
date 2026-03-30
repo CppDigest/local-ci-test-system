@@ -16,6 +16,7 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -67,19 +68,68 @@ class YqWrapper:
     """
 
     def __init__(self) -> None:
-        self._yq_path: Optional[str] = shutil.which("yq")
-        self._file_cache: dict[Path, dict] = {}  # PyYAML fallback cache
+        self._is_linux: bool = sys.platform.startswith("linux")
+        self._file_cache: dict[Path, dict] = {}
 
-        if self._yq_path:
-            logger.debug("yq found at %s", self._yq_path)
+        raw_path: Optional[str] = shutil.which("yq")
+        self._yq_path: Optional[str] = None
+
+        if raw_path:
+            flavour = self._detect_yq_flavour(raw_path)
+            if flavour == "mikefarah":
+                self._yq_path = raw_path
+                logger.debug("yq (mikefarah) found at %s", raw_path)
+            else:
+                install_hint = (
+                    "sudo snap install yq" if self._is_linux
+                    else "https://github.com/mikefarah/yq/releases"
+                )
+                logger.warning(
+                    "yq at %s is not mikefarah/yq (detected: %s) -- "
+                    "using PyYAML fallback (limited expression support). "
+                    "Install mikefarah/yq for best results: %s",
+                    raw_path, flavour, install_hint,
+                )
         else:
-            logger.warning(
-                "yq not found -- using PyYAML fallback. "
-                "Install yq for full functionality: "
-                "choco install yq (Windows) / "
-                "sudo snap install yq (Linux) / "
-                "brew install yq (macOS)"
+            # No yq binary found at all
+            if self._is_linux:
+                logger.warning(
+                    "mikefarah/yq not available on Linux -- using PyYAML fallback. "
+                    "Install with: sudo snap install yq"
+                )
+            else:
+                logger.warning(
+                    "mikefarah/yq not available -- using PyYAML fallback. "
+                    "Install yq for full expression support."
+                )
+
+    @staticmethod
+    def _detect_yq_flavour(yq_path: str) -> str:
+        """Return 'mikefarah', 'kislyuk', or 'unknown' based on --version output.
+
+        mikefarah/yq:  'yq (https://github.com/mikefarah/yq/) version v4.x.x'
+        kislyuk/yq:    'yq x.x.x' (no URL) — Python wrapper around jq
+        """
+        try:
+            result = subprocess.run(
+                [yq_path, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
+            if result.returncode != 0:
+                return "unknown"
+            version_str = (result.stdout + result.stderr).lower()
+            if "mikefarah" in version_str or "github.com/mikefarah" in version_str:
+                return "mikefarah"
+            if "kislyuk" in version_str or "jq" in version_str:
+                return "kislyuk"
+            # mikefarah/yq 4.x often prints "yq ... version v4.x"; some builds omit the URL
+            if "version v" in version_str:
+                return "mikefarah"
+            return "unknown"
+        except Exception:
+            return "unknown"
 
     # -----------------------------------------------------------------
     # Properties

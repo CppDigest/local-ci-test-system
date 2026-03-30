@@ -162,7 +162,7 @@ def list_cmd(
         ctx.exit(1)
         return
 
-    # Collect entries and apply filters
+    # Collect all matrix entries; include/exclude are applied later by entry.name
     entries = wf.all_matrix_entries()
 
     if platform != "all":
@@ -175,6 +175,7 @@ def list_cmd(
         if target_family is None:
             print_error(f"Unknown compiler: {compiler!r}. Valid: {', '.join(sorted(_COMPILER_MAP))}.")
             ctx.exit(1)
+            return
         entries = [e for e in entries if e.compiler.family == target_family]
 
     if comp_version:
@@ -185,6 +186,7 @@ def list_cmd(
         if enabled and disabled:
             print_error("Cannot use both --enabled and --disabled; choose one.")
             ctx.exit(1)
+            return
         if config:
             include_names = config.jobs.include or []
             exclude_names = config.jobs.exclude or []
@@ -234,16 +236,16 @@ def list_cmd(
 
     # ── Table output (default) ───────────────────────────────────
     filter_desc = []
+    if enabled:
+        filter_desc.append("enabled")
+    if disabled:
+        filter_desc.append("disabled")
     if platform != "all":
         filter_desc.append(f"platform={platform}")
     if compiler:
         filter_desc.append(f"compiler={compiler}")
     if comp_version:
         filter_desc.append(f"version={comp_version}")
-    if enabled:
-        filter_desc.append("enabled")
-    if disabled:
-        filter_desc.append("disabled")
 
     title = f"Matrix Entries ({len(entries)})"
     if filter_desc:

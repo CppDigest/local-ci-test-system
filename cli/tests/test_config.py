@@ -11,10 +11,12 @@ from pathlib import Path
 import yaml
 
 from localci.core.config import (
+    CacheConfig,
     LocalCIConfig,
     default_config_yaml,
     find_config_file,
     load_config,
+    resolve_cache_paths,
 )
 
 
@@ -205,3 +207,113 @@ class TestValidation:
             assert False, "Expected validation error"
         except Exception:
             pass
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 cache path resolution
+# ---------------------------------------------------------------------------
+
+
+class TestResolveCachePaths:
+    """resolve_cache_paths returns correct host paths when cache enabled."""
+
+    def test_resolve_cache_paths_default(self):
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(cfg.cache, False, None, "build", "build:gcc-15")
+        assert r is not None
+        assert r.ccache_host is not None
+        assert r.boost_host is not None
+        assert r.cmake_host is not None
+        assert "ccache" in str(r.ccache_host)
+        assert "boost" in str(r.boost_host)
+        assert "cmake" in str(r.cmake_host)
+        assert "build" in str(r.cmake_host)
+        assert r.b2_source_host is not None
+        assert "b2-source" in str(r.b2_source_host)
+        assert r.apt_host is not None
+        assert "apt" in str(r.apt_host)
+        assert "build-gcc-15" in str(r.apt_host)
+        assert len(r.host_dirs_to_ensure()) == 5
+
+    def test_resolve_cache_paths_no_cache(self):
+        cfg = LocalCIConfig()
+        assert resolve_cache_paths(cfg.cache, True, None, "build", "build:gcc-15") is None
+
+    def test_resolve_cache_paths_cache_disabled(self):
+        cache = CacheConfig(enabled=False)
+        assert resolve_cache_paths(cache, False, None, "build", "build:gcc-15") is None
+
+    def test_resolve_cache_paths_override_dir(self, tmp_path):
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(cfg.cache, False, tmp_path, "build", "build:gcc-15")
+        assert r is not None
+        assert str(r.ccache_host).startswith(str(tmp_path))
+
+    def test_resolve_cache_paths_cmake_input_digest(self):
+        """Issue 11: CMake path includes input digest when provided."""
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(
+            cfg.cache,
+            False,
+            None,
+            "build",
+            "build:gcc-15",
+            cmake_input_digest="a1b2c3d4e5f6",
+        )
+        assert r is not None
+        assert r.cmake_host is not None
+        assert "a1b2c3d4e5f6" in str(r.cmake_host)
+        assert r.cmake_host.name == "build-gcc-15_a1b2c3d4e5f6"
+
+    def test_resolve_cache_paths_b2_source_when_boost_enabled(self):
+        """B2 source cache path is set per job when boost cache and build_dir enabled."""
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(
+            cfg.cache, False, None, "build", "build:gcc-15"
+        )
+        assert r is not None
+        assert r.b2_source_host is not None
+        assert "b2-source" in str(r.b2_source_host)
+        assert "build-gcc-15" in str(r.b2_source_host)
+
+    def test_resolve_cache_paths_b2_source_disabled_when_build_dir_false(self):
+        """B2 source cache path is None when boost.build_dir is False."""
+        cfg = LocalCIConfig()
+        cfg = cfg.model_copy(
+            update={
+                "cache": cfg.cache.model_copy(
+                    update={
+                        "boost": cfg.cache.boost.model_copy(
+                            update={"build_dir": False}
+                        )
+                    }
+                )
+            }
+        )
+        r = resolve_cache_paths(
+            cfg.cache, False, None, "build", "build:gcc-15"
+        )
+        assert r is not None
+        assert r.b2_source_host is None
+
+    def test_resolve_cache_paths_apt_enabled_by_default(self):
+        """APT package install cache path is set per job when apt cache enabled."""
+        cfg = LocalCIConfig()
+        r = resolve_cache_paths(cfg.cache, False, None, "build", "build:gcc-15")
+        assert r is not None
+        assert r.apt_host is not None
+        assert "apt" in str(r.apt_host)
+        assert r.apt_host.name == "build-gcc-15"
+
+    def test_resolve_cache_paths_apt_disabled(self):
+        """APT cache path is None when cache.apt.enabled is False."""
+        cfg = LocalCIConfig()
+        cfg.cache.apt.enabled = False
+        r = resolve_cache_paths(cfg.cache, False, None, "build", "build:gcc-15")
+        assert r is not None
+        assert r.apt_host is None
+
+    def test_ccache_compress_default(self):
+        """Issue 9: CcacheConfig.compress defaults to True."""
+        cfg = LocalCIConfig()
+        assert cfg.cache.ccache.compress is True
