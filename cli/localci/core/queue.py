@@ -331,7 +331,8 @@ class PriorityJobQueue:
 
     @property
     def is_empty(self) -> bool:
-        return self._current_priority is None
+        with self._lock:
+            return self._current_priority is None
 
     @property
     def is_done(self) -> bool:
