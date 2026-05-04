@@ -97,4 +97,4 @@ local-ci-test-system/
 
 ## License
 
-MIT (see [LICENSE](LICENSE) if present).
+BSL-1.0 (see [LICENSE](LICENSE)).

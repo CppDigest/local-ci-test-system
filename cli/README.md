@@ -114,4 +114,4 @@ pytest --cov=localci
 
 ## License
 
-MIT (see repository root).
+BSL-1.0 (see [LICENSE](../LICENSE)).
