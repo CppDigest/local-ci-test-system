@@ -231,6 +231,10 @@ class YqWrapper:
         path_expr = pipe_parts[0]
         pipe_ops = pipe_parts[1:]
 
+        # Strip yq alternative-operator wrapper: (.path // default) → .path
+        # _navigate already returns None for missing keys, and pipe ops handle None safely.
+        path_expr = re.sub(r"^\((.+?)\s*//.*\)$", r"\1", path_expr)
+
         result = self._navigate(data, path_expr)
 
         for op in pipe_ops:
@@ -349,7 +353,7 @@ class YqWrapper:
 
     def job_names(self, file: Path) -> list[str]:
         """Extract all job IDs."""
-        result = self.query(file, ".jobs | keys")
+        result = self.query(file, "(.jobs // {}) | keys")
         return result if isinstance(result, list) else []
 
     def job_data(self, file: Path, job_id: str) -> dict:
