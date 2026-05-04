@@ -7,7 +7,7 @@ name = "localci"
 version = "0.1.0"
 description = "Local CI - Run GitHub Actions workflows locally"
 readme = "README.md"
-license = "MIT"
+license = "BSL-1.0"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1.0",

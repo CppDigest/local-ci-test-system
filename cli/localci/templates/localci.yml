@@ -1,6 +1,6 @@
 # .localci.yml - Local CI Configuration
 # Place this file in your project root.
-# Documentation: https://github.com/CppDigest/local-ci-test-system
+# Documentation: https://github.com/cppalliance/local-ci-test-system
 
 # Schema version
 version: 1
