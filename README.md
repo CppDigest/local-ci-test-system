@@ -20,8 +20,20 @@ Local CI parses your workflow file, runs selected jobs in containers with pre-bu
 |-----------|----------------------|
 | Python 3.10+ | CLI runtime        |
 | Docker    | Container execution  |
-| [yq](https://github.com/mikefarah/yq) | YAML parsing |
+| **[mikefarah/yq](https://github.com/mikefarah/yq) v4+** | YAML parsing -- **not** pip `yq` (PyPI) or [kislyuk/yq](https://github.com/kislyuk/yq) |
 | [act](https://github.com/nektos/act)  | Run GitHub Actions locally |
+
+### yq (mikefarah/yq v4 or newer)
+
+Several incompatible tools share the name `yq`. Local CI requires **[mikefarah/yq](https://github.com/mikefarah/yq)** **v4+** (`yq --version` output should reference `mikefarah` / `github.com/mikefarah` or report `version v4`). The wrong install fails at runtime with unclear errors. If no suitable binary is on `PATH`, the CLI uses a PyYAML fallback with limited expression support and emits a warning.
+
+| OS | Example install |
+|----|-----------------|
+| **Windows** | `winget install MikeFarah.yq` or `choco install yq` — or a binary from [Releases](https://github.com/mikefarah/yq/releases) |
+| **macOS** | `brew install yq` |
+| **Linux** | `sudo snap install yq` **or** install the static binary from [Releases](https://github.com/mikefarah/yq/releases) (verify with `yq --version` before relying on a distro package) |
+
+More options: [mikefarah/yq — Install](https://github.com/mikefarah/yq#install).
 
 ## Installation
 

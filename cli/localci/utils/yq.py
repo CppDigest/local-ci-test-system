@@ -17,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 from typing import Any, Optional
 
@@ -44,12 +45,18 @@ class YqNotFoundError(Exception):
 
     def __init__(self) -> None:
         super().__init__(
-            "yq is not installed.\n"
-            "Install with:\n"
-            "  Windows:  choco install yq\n"
-            "  Linux:    sudo snap install yq  OR  sudo apt-get install yq\n"
+            "mikefarah/yq is not installed.\n"
+            "Install v4+ (not pip's `yq` / kislyuk/yq): "
+            "https://github.com/mikefarah/yq#install\n"
+            "Examples:\n"
+            "  Windows:  winget install MikeFarah.yq  OR  choco install yq\n"
+            "  Linux:    sudo snap install yq  OR  install from GitHub releases\n"
             "  macOS:    brew install yq"
         )
+
+
+class YqFallbackWarning(UserWarning):
+    """PyYAML fallback is active because mikefarah/yq v4+ is missing or wrong flavour."""
 
 
 # =====================================================================
@@ -64,7 +71,8 @@ class YqWrapper:
     uses the ``yq`` binary for **all** queries when it is available.
     When ``yq`` is absent a PyYAML-based fallback handles the simple
     dot-path expressions used by the built-in high-level helpers, and
-    logs a warning so the user knows to install ``yq``.
+    emits :exc:`YqFallbackWarning` plus a log line so the user knows to
+    install ``mikefarah/yq`` v4+.
     """
 
     def __init__(self) -> None:
@@ -84,24 +92,37 @@ class YqWrapper:
                     "sudo snap install yq" if self._is_linux
                     else "https://github.com/mikefarah/yq/releases"
                 )
-                logger.warning(
-                    "yq at %s is not mikefarah/yq (detected: %s) -- "
-                    "using PyYAML fallback (limited expression support). "
-                    "Install mikefarah/yq for best results: %s",
-                    raw_path, flavour, install_hint,
+                detail = (
+                    f"The `yq` on PATH at {raw_path!r} is not mikefarah/yq v4+ "
+                    f"(detected: {flavour}). "
+                    f"Install mikefarah/yq: {install_hint}"
                 )
+                self._warn_pyyaml_fallback(detail)
         else:
             # No yq binary found at all
             if self._is_linux:
-                logger.warning(
-                    "mikefarah/yq not available on Linux -- using PyYAML fallback. "
-                    "Install with: sudo snap install yq"
+                detail = (
+                    "No mikefarah/yq v4+ binary was found on PATH on Linux. "
+                    "Example: sudo snap install yq"
                 )
             else:
-                logger.warning(
-                    "mikefarah/yq not available -- using PyYAML fallback. "
-                    "Install yq for full expression support."
+                detail = (
+                    "No mikefarah/yq v4+ binary was found on PATH. "
+                    "See https://github.com/mikefarah/yq#install"
                 )
+            self._warn_pyyaml_fallback(detail)
+
+    def _warn_pyyaml_fallback(self, detail: str) -> None:
+        """Log and emit a visible warning when PyYAML fallback is used."""
+        msg = (
+            "Local CI is using the PyYAML YAML fallback (limited yq expression "
+            "support). "
+            f"{detail} "
+            "Required: mikefarah/yq v4 or newer — "
+            "https://github.com/mikefarah/yq#install"
+        )
+        logger.warning(msg.replace("\n", " "))
+        warnings.warn(msg, YqFallbackWarning, stacklevel=3)
 
     @staticmethod
     def _detect_yq_flavour(yq_path: str) -> str:

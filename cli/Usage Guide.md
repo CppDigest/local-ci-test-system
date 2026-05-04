@@ -53,7 +53,7 @@ Key features:
 |------|---------|---------|
 | Python 3.10+ | Runtime | [python.org](https://www.python.org/downloads/) |
 | Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
-| yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
+| **mikefarah/yq v4+** | YAML parsing (not pip `yq` / kislyuk) | **Windows:** `winget install MikeFarah.yq` or `choco install yq` — **macOS:** `brew install yq` — **Linux:** `sudo snap install yq` or [release binary](https://github.com/mikefarah/yq/releases) — see [yq#install](https://github.com/mikefarah/yq#install) |
 | act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` |
 
 ### Install for usage
