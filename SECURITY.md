@@ -2,18 +2,23 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| main    | Yes       |
-| v0.1.x  | Yes       |
+Local CI is in pre-release development. There are no tagged stable releases yet
+(`pyproject.toml` declares `0.1.0`, not yet tagged).
 
-Older branches or tags not listed above do not receive security fixes.
+Security fixes are produced only against the latest commit on the
+[`develop`](https://github.com/cppalliance/local-ci-test-system/tree/develop)
+branch. Once a `v0.1.0` tag is cut, this section will be reformatted as a
+semver-style support table.
 
 ## Reporting a Vulnerability
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
 Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** (preferred), or email **security@cppalliance.org** if you do not have a GitHub account.
+
+If you need an encrypted channel, mention this in your initial email and a
+maintainer will reply with a current PGP key fingerprint or arrange another
+secure channel.
 
 Include as much of the following as you can:
 
@@ -23,6 +28,10 @@ Include as much of the following as you can:
 - Any proposed mitigation or fix
 
 You can expect an acknowledgement within **5 business days** and a resolution or status update within **90 days**.
+
+For confirmed vulnerabilities with user impact, CppAlliance maintainers will
+request a CVE through GitHub's CNA on your behalf and credit you in the
+advisory unless you ask to remain anonymous.
 
 ## Scope
 
@@ -41,5 +50,6 @@ Issues with the act runner itself, Docker Engine, or other external prerequisite
 ## Out of Scope
 
 - Vulnerabilities in third-party dependencies (act, Docker, yq) that are not amplified by Local CI
-- Denial-of-service issues with no security impact
+- Resource-exhaustion or crash issues with no privilege escalation, sandbox
+  escape, or data-exfiltration consequence
 - Theoretical vulnerabilities without a realistic attack scenario
