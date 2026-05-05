@@ -14,7 +14,7 @@ semver-style support table.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** (preferred), or email **security@cppalliance.org** if you do not have a GitHub account.
+Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** (preferred), or email **will@cppalliance.org** if you do not have a GitHub account.
 
 If you need an encrypted channel, mention this in your initial email and a
 maintainer will reply with a current PGP key fingerprint or arrange another
@@ -37,13 +37,13 @@ advisory unless you ask to remain anonymous.
 
 The following classes of vulnerability are **in scope**:
 
-| Category | Examples |
-|---|---|
-| Container escape | Breakout from Docker containers spawned by `localci run` |
-| Token / secret exposure | CI tokens, Docker registry credentials, or `.localci.yml` secrets leaked to logs, temp files, or child processes |
-| Path traversal | Workflow YAML or config paths that escape the project root |
-| Dependency confusion / supply chain | Malicious images resolved by the image-scoring algorithm |
-| Privilege escalation | Commands that gain unintended host-level access via Docker socket |
+| Category                            | Examples                                                                                                         |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Container escape                    | Breakout from Docker containers spawned by `localci run`                                                         |
+| Token / secret exposure             | CI tokens, Docker registry credentials, or `.localci.yml` secrets leaked to logs, temp files, or child processes |
+| Path traversal                      | Workflow YAML or config paths that escape the project root                                                       |
+| Dependency confusion / supply chain | Malicious images resolved by the image-scoring algorithm                                                         |
+| Privilege escalation                | Commands that gain unintended host-level access via Docker socket                                                |
 
 Issues with the act runner itself, Docker Engine, or other external prerequisites should be reported to their respective projects unless the vulnerability is triggered specifically by Local CI's orchestration of those tools.
 
