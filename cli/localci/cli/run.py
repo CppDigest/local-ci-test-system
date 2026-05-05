@@ -18,6 +18,7 @@ from localci.core.executor import (
     DockerNotAvailableError,
     JobExecutor,
 )
+from localci.errors import WorkflowNotFoundError, WorkflowParseError
 from localci.core.models import JobEvent, JobEventType
 from localci.core.orchestrator import (
     OrchestratorConfig,
@@ -158,8 +159,12 @@ def run(
     try:
         analyzer = WorkflowAnalyzer()
         wf = analyzer.analyze(workflow_path)
-    except Exception as exc:
-        print_error(f"Failed to parse workflow: {exc}")
+    except WorkflowNotFoundError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+    except WorkflowParseError as exc:
+        print_error(str(exc))
         ctx.exit(1)
         return
 

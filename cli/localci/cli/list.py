@@ -157,7 +157,7 @@ def list_cmd(
     try:
         analyzer = WorkflowAnalyzer()
         wf = analyzer.analyze(wf_path)
-    except (WorkflowError, FileNotFoundError) as exc:
+    except WorkflowError as exc:
         print_error(str(exc))
         ctx.exit(1)
         return
