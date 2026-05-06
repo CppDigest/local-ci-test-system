@@ -578,13 +578,19 @@ class TestErrorClasses:
         assert isinstance(err, WorkflowError)
 
     def test_unsupported_matrix_error(self):
-        err = UnsupportedMatrixError({"name": "test"}, "missing field")
+        entry = {"name": "test"}
+        err = UnsupportedMatrixError(entry, "missing field")
         assert "test" in str(err)
+        assert err.entry is entry
+        assert err.detail == "missing field"
+        assert err.name == "test"
         assert isinstance(err, WorkflowError)
 
     def test_missing_field_error(self):
         err = MissingFieldError("compiler", "matrix entry 3")
         assert "compiler" in str(err)
+        assert err.field_name == "compiler"
+        assert err.context == "matrix entry 3"
         assert isinstance(err, WorkflowError)
 # Event filtering
 # =====================================================================

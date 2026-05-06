@@ -168,15 +168,23 @@ class MissingFieldError(WorkflowError):
     """Required field missing from workflow."""
 
     def __init__(self, field_name: str, context: str) -> None:
-        super().__init__(f"Missing required field '{field_name}' in {context}")
+        self.field_name = field_name
+        self.context = context
+        super().__init__(
+            f"Missing required field '{field_name}' in {context}"
+        )
 
 
 class UnsupportedMatrixError(WorkflowError):
     """Matrix configuration not supported."""
 
     def __init__(self, entry: dict[str, Any], detail: str) -> None:
-        name = entry.get("name", "unknown")
-        super().__init__(f"Unsupported matrix entry '{name}': {detail}")
+        self.entry = entry
+        self.detail = detail
+        self.name = entry.get("name", "unknown")
+        super().__init__(
+            f"Unsupported matrix entry '{self.name}': {detail}"
+        )
 
 
 class CyclicDependencyError(WorkflowError):
