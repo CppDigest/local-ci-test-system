@@ -573,6 +573,7 @@ class TestErrorClasses:
     def test_workflow_parse_error(self):
         err = WorkflowParseError(Path("ci.yml"), "bad yaml")
         assert "ci.yml" in str(err)
+        assert err.detail == "bad yaml"
         assert isinstance(err, WorkflowError)
 
     def test_unsupported_matrix_error(self):

@@ -1,10 +1,11 @@
 """Tests for structured error types (Issue #28).
 
 Covers:
-- Exception hierarchy and attribute contracts for every type
+- Exception hierarchy under :class:`~localci.errors.LocalCIError` (config, workflow,
+  execution, yq families) and attribute contracts for config/workflow parse types
 - Backward-compatibility: structured errors are still caught by built-in base classes
-- load_config raises structured errors for every failure mode
-- CLI exits with code 1 and an actionable message for each config error path
+- load_config raises structured errors for each failure mode
+- CLI exits with code 1 and an actionable message for config error paths
 - WorkflowAnalyzer raises WorkflowNotFoundError / WorkflowParseError
 - CLI run/list exit cleanly on workflow errors
 """
@@ -22,14 +23,22 @@ from localci.cli.main import cli
 from localci.core.config import load_config
 from localci.core.workflow import WorkflowAnalyzer
 from localci.errors import (
+    ActNotFoundError,
     ConfigError,
     ConfigFileNotFoundError,
     ConfigIOError,
     ConfigValidationError,
+    CyclicDependencyError,
+    DockerNotAvailableError,
+    ExecutionError,
     LocalCIError,
+    MissingFieldError,
+    UnsupportedMatrixError,
     WorkflowError,
     WorkflowNotFoundError,
     WorkflowParseError,
+    YqError,
+    YqNotFoundError,
 )
 
 
@@ -42,7 +51,7 @@ runner = CliRunner()
 
 
 class TestExceptionHierarchy:
-    """All custom errors are subclasses of LocalCIError."""
+    """Structured errors used by the CLI and core are under LocalCIError."""
 
     def test_config_error_is_local_ci_error(self):
         assert issubclass(ConfigError, LocalCIError)
@@ -76,6 +85,22 @@ class TestExceptionHierarchy:
 
     def test_workflow_parse_error_is_workflow_error(self):
         assert issubclass(WorkflowParseError, WorkflowError)
+
+    def test_missing_field_and_matrix_errors_are_workflow_error(self):
+        assert issubclass(MissingFieldError, WorkflowError)
+        assert issubclass(UnsupportedMatrixError, WorkflowError)
+
+    def test_cyclic_dependency_is_workflow_error(self):
+        assert issubclass(CyclicDependencyError, WorkflowError)
+
+    def test_execution_family_under_local_ci_error(self):
+        assert issubclass(ExecutionError, LocalCIError)
+        assert issubclass(ActNotFoundError, ExecutionError)
+        assert issubclass(DockerNotAvailableError, ExecutionError)
+
+    def test_yq_errors_under_local_ci_error(self):
+        assert issubclass(YqError, LocalCIError)
+        assert issubclass(YqNotFoundError, LocalCIError)
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +163,7 @@ class TestErrorAttributes:
         p = tmp_path / "ci.yml"
         exc = WorkflowParseError(p, "unexpected key")
         assert exc.path == p
+        assert exc.detail == "unexpected key"
         assert "unexpected key" in str(exc)
         assert str(p) in str(exc)
 

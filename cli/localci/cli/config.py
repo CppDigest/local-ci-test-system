@@ -163,9 +163,9 @@ def _coerce_value(raw: str) -> str | int | float | bool:
     try:
         return int(raw)
     except ValueError:
-        pass
+        pass  # fall through to float / plain string
     try:
         return float(raw)
     except ValueError:
-        pass
+        pass  # not numeric; return raw string below
     return raw

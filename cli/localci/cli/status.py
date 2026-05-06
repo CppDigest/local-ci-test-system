@@ -112,7 +112,7 @@ def status(
 
     try:
         summary = ExecutionSummary.load(results_file)
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
         return
@@ -270,4 +270,4 @@ def _follow_status(status_file: Path, output_format: str) -> None:
                 else:
                     _print_status_table(last_data)
     except KeyboardInterrupt:
-        pass
+        pass  # intentional: quiet exit after follow mode

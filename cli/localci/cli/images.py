@@ -81,8 +81,12 @@ def images_list(ctx: click.Context, output_format: str, registry_path: Path | No
     """List available images."""
     try:
         registry = _get_registry(registry_path)
-    except Exception as exc:  # noqa: BLE001
+    except FileNotFoundError as exc:
         print_error(str(exc))
+        ctx.exit(1)
+        return
+    except (OSError, yaml.YAMLError, TypeError, ValueError) as exc:
+        print_error(f"Could not load image registry: {exc}")
         ctx.exit(1)
         return
 
@@ -123,8 +127,12 @@ def images_info(ctx: click.Context, image: str, registry_path: Path | None) -> N
     """Show detailed information about an image."""
     try:
         registry = _get_registry(registry_path)
-    except Exception as exc:  # noqa: BLE001
+    except FileNotFoundError as exc:
         print_error(str(exc))
+        ctx.exit(1)
+        return
+    except (OSError, yaml.YAMLError, TypeError, ValueError) as exc:
+        print_error(f"Could not load image registry: {exc}")
         ctx.exit(1)
         return
 

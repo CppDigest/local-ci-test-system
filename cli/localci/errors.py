@@ -138,17 +138,20 @@ class WorkflowNotFoundError(WorkflowError, FileNotFoundError):
 class WorkflowParseError(WorkflowError):
     """The workflow file could not be parsed (invalid YAML, unexpected structure, etc.).
 
+    Use ``raise WorkflowParseError(path, detail) from exc`` to retain the original
+    exception as :attr:`__cause__`.
+
     Attributes
     ----------
     path:
         Path to the workflow file.
-    cause:
-        The underlying parse exception.
+    detail:
+        Human-readable parse failure (typically ``str(exc)`` from the underlying error).
     """
 
     def __init__(self, path: Path, detail: str) -> None:
         self.path = Path(path)
-        self.cause = detail
+        self.detail = detail
         super().__init__(f"Failed to parse workflow {self.path}: {detail}")
 
 
@@ -227,8 +230,11 @@ class YqNotFoundError(LocalCIError):
             "mikefarah/yq is not installed.\n"
             "Install v4+ (not pip's `yq` / kislyuk/yq): "
             "https://github.com/mikefarah/yq#install\n"
+            "Prefer a normal binary on PATH (GitHub releases, distro packages). "
+            "Snap-installed yq is often confined and cannot read arbitrary paths (e.g. /tmp).\n"
             "Examples:\n"
             "  Windows:  winget install MikeFarah.yq  OR  choco install yq\n"
-            "  Linux:    sudo snap install yq  OR  install from GitHub releases\n"
+            "  Linux:    install from https://github.com/mikefarah/yq/releases "
+            "OR your distro's `yq` package (ensure `yq --version` shows mikefarah)\n"
             "  macOS:    brew install yq"
         )
