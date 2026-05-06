@@ -1,6 +1,9 @@
 """Core modules for Local CI."""
 
-from localci.core.workflow import (
+from localci.errors import (
+    ActNotFoundError,
+    CyclicDependencyError,
+    DockerNotAvailableError,
     MissingFieldError,
     UnsupportedMatrixError,
     WorkflowError,
@@ -8,8 +11,6 @@ from localci.core.workflow import (
 )
 from localci.core.executor import (  # noqa: F401
     ActCommand,
-    ActNotFoundError,
-    DockerNotAvailableError,
     JobExecutor,
     JobResult,
     JobStatus,
@@ -23,7 +24,6 @@ from localci.core.models import (  # noqa: F401
     QueuedJobStatus,
 )
 from localci.core.queue import (  # noqa: F401
-    CyclicDependencyError,
     DependencyResolver,
     PriorityConfig,
     PriorityJobQueue,

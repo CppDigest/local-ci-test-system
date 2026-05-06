@@ -17,6 +17,8 @@ from typing import Any, Optional
 
 from localci.errors import (
     LocalCIError,
+    MissingFieldError,
+    UnsupportedMatrixError,
     WorkflowError,
     WorkflowNotFoundError,
     WorkflowParseError,
@@ -324,26 +326,6 @@ class Workflow:
             visit(job_id)
 
         return order
-
-
-# =====================================================================
-# Errors
-# =====================================================================
-
-
-class UnsupportedMatrixError(WorkflowError):
-    """Matrix configuration not supported."""
-
-    def __init__(self, entry: dict, detail: str):
-        name = entry.get("name", "unknown")
-        super().__init__(f"Unsupported matrix entry '{name}': {detail}")
-
-
-class MissingFieldError(WorkflowError):
-    """Required field missing from workflow."""
-
-    def __init__(self, field_name: str, context: str):
-        super().__init__(f"Missing required field '{field_name}' in {context}")
 
 
 # =====================================================================

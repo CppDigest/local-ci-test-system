@@ -991,7 +991,7 @@ class TestDockerManager:
 
         from localci.utils.docker import DockerManager
 
-        with pytest.raises(RuntimeError, match="not installed"):
+        with pytest.raises(DockerNotAvailableError, match="not installed"):
             DockerManager()
 
     @patch("subprocess.run")
@@ -1002,7 +1002,7 @@ class TestDockerManager:
 
         from localci.utils.docker import DockerManager
 
-        with pytest.raises(RuntimeError, match="not responding"):
+        with pytest.raises(DockerNotAvailableError, match="not responding"):
             DockerManager()
 
     @patch("subprocess.run")

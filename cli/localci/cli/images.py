@@ -14,6 +14,7 @@ import click
 import yaml
 
 from localci.core.registry import ImageRegistry
+from localci.errors import DockerNotAvailableError
 from localci.utils.docker import DockerManager
 from localci.utils.output import (
     console,
@@ -212,7 +213,7 @@ def images_clean(
 
     try:
         dm = DockerManager()
-    except RuntimeError as exc:
+    except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
         return
@@ -258,7 +259,7 @@ def images_import(ctx: click.Context, tar_file: str) -> None:
     """Import a Docker image from a tar file."""
     try:
         dm = DockerManager()
-    except RuntimeError as exc:
+    except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
         return
@@ -285,7 +286,7 @@ def images_export(ctx: click.Context, image: str, output_path: str) -> None:
     """Export a Docker image to a tar file."""
     try:
         dm = DockerManager()
-    except RuntimeError as exc:
+    except DockerNotAvailableError as exc:
         print_error(str(exc))
         ctx.exit(1)
         return

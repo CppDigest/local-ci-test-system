@@ -11,15 +11,23 @@ Hierarchy::
     │   ├── ConfigFileNotFoundError   (also FileNotFoundError)
     │   ├── ConfigIOError             (also OSError)
     │   └── ConfigValidationError
-    └── WorkflowError
-        ├── WorkflowNotFoundError     (also FileNotFoundError)
-        └── WorkflowParseError
+    ├── WorkflowError
+    │   ├── WorkflowNotFoundError     (also FileNotFoundError)
+    │   ├── WorkflowParseError
+    │   ├── MissingFieldError
+    │   ├── UnsupportedMatrixError
+    │   └── CyclicDependencyError
+    ├── ExecutionError                (act / Docker prerequisites)
+    │   ├── ActNotFoundError
+    │   └── DockerNotAvailableError
+    ├── YqError
+    └── YqNotFoundError
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +150,85 @@ class WorkflowParseError(WorkflowError):
         self.path = Path(path)
         self.cause = detail
         super().__init__(f"Failed to parse workflow {self.path}: {detail}")
+
+
+class MissingFieldError(WorkflowError):
+    """Required field missing from workflow."""
+
+    def __init__(self, field_name: str, context: str) -> None:
+        super().__init__(f"Missing required field '{field_name}' in {context}")
+
+
+class UnsupportedMatrixError(WorkflowError):
+    """Matrix configuration not supported."""
+
+    def __init__(self, entry: dict[str, Any], detail: str) -> None:
+        name = entry.get("name", "unknown")
+        super().__init__(f"Unsupported matrix entry '{name}': {detail}")
+
+
+class CyclicDependencyError(WorkflowError):
+    """Circular dependency detected in job graph."""
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__(f"Cyclic dependency detected involving job: {job_id}")
+        self.job_id = job_id
+
+
+# ---------------------------------------------------------------------------
+# Execution prerequisites (act, Docker)
+# ---------------------------------------------------------------------------
+
+
+class ExecutionError(LocalCIError):
+    """Base class for missing ``act`` or unavailable Docker."""
+
+
+class ActNotFoundError(ExecutionError):
+    """``act`` is not installed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "act is not installed.\n"
+            "Install with:\n"
+            "  Windows: choco install act-cli\n"
+            "  Linux:   curl -s https://raw.githubusercontent.com/nektos/act/"
+            "master/install.sh | sudo bash\n"
+            "  macOS:   brew install act"
+        )
+
+
+class DockerNotAvailableError(ExecutionError):
+    """Docker daemon is not running or not installed."""
+
+    def __init__(self, detail: str = "Docker daemon is not running") -> None:
+        super().__init__(detail)
+
+
+# ---------------------------------------------------------------------------
+# YAML query (yq)
+# ---------------------------------------------------------------------------
+
+
+class YqError(LocalCIError):
+    """Error from yq execution."""
+
+    def __init__(self, expression: str, stderr: str) -> None:
+        self.expression = expression
+        self.stderr = stderr
+        super().__init__(f"yq error for '{expression}': {stderr}")
+
+
+class YqNotFoundError(LocalCIError):
+    """yq is not installed."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "mikefarah/yq is not installed.\n"
+            "Install v4+ (not pip's `yq` / kislyuk/yq): "
+            "https://github.com/mikefarah/yq#install\n"
+            "Examples:\n"
+            "  Windows:  winget install MikeFarah.yq  OR  choco install yq\n"
+            "  Linux:    sudo snap install yq  OR  install from GitHub releases\n"
+            "  macOS:    brew install yq"
+        )
