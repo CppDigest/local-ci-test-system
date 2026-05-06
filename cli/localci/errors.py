@@ -79,7 +79,8 @@ class ConfigIOError(ConfigError, OSError):
     path:
         The config file path that could not be read.
     cause:
-        The underlying :exc:`OSError`.
+        The underlying :exc:`OSError` (read failure) or ``yaml.YAMLError``
+        from PyYAML (malformed YAML during load).
     """
 
     def __init__(self, path: Path, cause: Exception) -> None:
@@ -138,21 +139,29 @@ class WorkflowNotFoundError(WorkflowError, FileNotFoundError):
 class WorkflowParseError(WorkflowError):
     """The workflow file could not be parsed (invalid YAML, unexpected structure, etc.).
 
-    Use ``raise WorkflowParseError(path, detail) from exc`` to retain the original
-    exception as :attr:`__cause__`.
+    Prefer ``raise WorkflowParseError(path, exc) from exc`` so :attr:`cause` and
+    :attr:`__cause__` both reference the original exception. Use *message* when
+    the user-facing text should add context beyond ``str(exc)``.
 
     Attributes
     ----------
     path:
         Path to the workflow file.
-    detail:
-        Human-readable parse failure (typically ``str(exc)`` from the underlying error).
+    cause:
+        The underlying exception from parsing or analysis.
     """
 
-    def __init__(self, path: Path, detail: str) -> None:
+    def __init__(
+        self,
+        path: Path,
+        cause: Exception,
+        *,
+        message: Optional[str] = None,
+    ) -> None:
         self.path = Path(path)
-        self.detail = detail
-        super().__init__(f"Failed to parse workflow {self.path}: {detail}")
+        self.cause = cause
+        part = message if message is not None else str(cause)
+        super().__init__(f"Failed to parse workflow {self.path}: {part}")
 
 
 class MissingFieldError(WorkflowError):

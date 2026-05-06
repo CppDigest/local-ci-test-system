@@ -571,9 +571,10 @@ class TestErrorClasses:
     """Error hierarchy and messages."""
 
     def test_workflow_parse_error(self):
-        err = WorkflowParseError(Path("ci.yml"), "bad yaml")
+        cause = ValueError("bad yaml")
+        err = WorkflowParseError(Path("ci.yml"), cause)
         assert "ci.yml" in str(err)
-        assert err.detail == "bad yaml"
+        assert err.cause is cause
         assert isinstance(err, WorkflowError)
 
     def test_unsupported_matrix_error(self):

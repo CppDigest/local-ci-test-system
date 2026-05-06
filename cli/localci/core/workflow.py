@@ -391,7 +391,7 @@ class WorkflowAnalyzer:
         except FileNotFoundError as exc:
             raise WorkflowNotFoundError(workflow_path, exc) from exc
         except Exception as exc:
-            raise WorkflowParseError(workflow_path, str(exc)) from exc
+            raise WorkflowParseError(workflow_path, exc) from exc
 
         events = self.yq.events(workflow_path)
 
@@ -420,7 +420,9 @@ class WorkflowAnalyzer:
                 raise
             except Exception as exc:
                 raise WorkflowParseError(
-                    workflow_path, f"Error parsing job '{job_id}': {exc}"
+                    workflow_path,
+                    exc,
+                    message=f"Error parsing job '{job_id}': {exc}",
                 ) from exc
 
         workflow = Workflow(

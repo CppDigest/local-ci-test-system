@@ -386,7 +386,7 @@ def load_config(path: Path | str | None = None) -> LocalCIConfig:
     try:
         with open(config_path, "r", encoding="utf-8") as fh:
             raw: dict[str, Any] = yaml.safe_load(fh) or {}
-    except OSError as exc:
+    except (OSError, yaml.YAMLError) as exc:
         raise ConfigIOError(config_path, exc) from exc
 
     try:

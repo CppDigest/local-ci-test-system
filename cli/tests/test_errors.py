@@ -161,9 +161,10 @@ class TestErrorAttributes:
 
     def test_workflow_parse_error_attributes(self, tmp_path):
         p = tmp_path / "ci.yml"
-        exc = WorkflowParseError(p, "unexpected key")
+        original = ValueError("unexpected key")
+        exc = WorkflowParseError(p, original)
         assert exc.path == p
-        assert exc.detail == "unexpected key"
+        assert exc.cause is original
         assert "unexpected key" in str(exc)
         assert str(p) in str(exc)
 
@@ -256,6 +257,16 @@ class TestLoadConfigStructuredErrors:
             load_config(cfg_file)
         assert exc_info.value.path == cfg_file
         assert isinstance(exc_info.value.cause, PermissionError)
+
+    def test_malformed_yaml_raises_config_io_error(self, tmp_path):
+        """Invalid YAML is surfaced as ConfigIOError (same as read/parse failures)."""
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("version: 1\n  bad_indent: x\n")
+
+        with pytest.raises(ConfigIOError) as exc_info:
+            load_config(cfg_file)
+        assert exc_info.value.path == cfg_file
+        assert isinstance(exc_info.value.cause, yaml.YAMLError)
 
 
 # ---------------------------------------------------------------------------
