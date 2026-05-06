@@ -14,6 +14,12 @@ import click
 
 from localci import __version__
 from localci.core.config import load_config
+from localci.errors import (
+    ConfigError,
+    ConfigFileNotFoundError,
+    ConfigIOError,
+    ConfigValidationError,
+)
 from localci.utils.output import configure_console, console, print_error
 
 # ---------------------------------------------------------------------------
@@ -58,12 +64,21 @@ def cli(
     # Load configuration – surface any validation errors immediately.
     try:
         cfg = load_config(config_path)
-    except FileNotFoundError as exc:
+    except ConfigFileNotFoundError as exc:
         print_error(str(exc))
         ctx.exit(1)
         return
-    except Exception as exc:  # noqa: BLE001
-        print_error(f"Failed to load config: {exc}")
+    except ConfigIOError as exc:
+        print_error(f"Cannot read config file {exc.path}: {exc.cause}")
+        ctx.exit(1)
+        return
+    except ConfigValidationError as exc:
+        location = f" {exc.path}" if exc.path else ""
+        print_error(f"Invalid config{location}: {exc.cause}")
+        ctx.exit(1)
+        return
+    except ConfigError as exc:
+        print_error(str(exc))
         ctx.exit(1)
         return
 

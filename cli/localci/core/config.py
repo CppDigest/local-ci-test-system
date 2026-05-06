@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from localci.errors import ConfigFileNotFoundError, ConfigIOError, ConfigValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -372,7 +374,7 @@ def load_config(path: Path | str | None = None) -> LocalCIConfig:
     if path is not None:
         config_path = Path(path)
         if not config_path.is_file():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+            raise ConfigFileNotFoundError(config_path)
     else:
         config_path = find_config_file()
 
@@ -381,10 +383,16 @@ def load_config(path: Path | str | None = None) -> LocalCIConfig:
         return LocalCIConfig()
 
     logger.debug("Loading config from %s", config_path)
-    with open(config_path, "r", encoding="utf-8") as fh:
-        raw: dict[str, Any] = yaml.safe_load(fh) or {}
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            raw: dict[str, Any] = yaml.safe_load(fh) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigIOError(config_path, exc) from exc
 
-    return LocalCIConfig.model_validate(raw)
+    try:
+        return LocalCIConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise ConfigValidationError(config_path, exc) from exc
 
 
 def default_config_yaml() -> str:

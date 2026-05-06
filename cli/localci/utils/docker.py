@@ -13,6 +13,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from localci.errors import DockerNotAvailableError
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +47,7 @@ class DockerManager:
     def _check_docker(self) -> None:
         """Verify Docker is available."""
         if not self._docker_path:
-            raise RuntimeError("Docker is not installed")
+            raise DockerNotAvailableError("Docker is not installed")
 
         result = subprocess.run(
             [self._docker_path, "version", "--format", "{{.Server.Version}}"],
@@ -56,7 +58,7 @@ class DockerManager:
         if result.returncode == 0:
             logger.info("Docker version: %s", result.stdout.strip())
         else:
-            raise RuntimeError("Docker daemon not responding")
+            raise DockerNotAvailableError("Docker daemon not responding")
 
     # -----------------------------------------------------------------
     # Image operations

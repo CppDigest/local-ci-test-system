@@ -19,6 +19,8 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Callable, Optional
 
+from localci.errors import ActNotFoundError, DockerNotAvailableError
+
 logger = logging.getLogger(__name__)
 
 
@@ -266,32 +268,6 @@ class ActCommand:
 
     def __str__(self) -> str:
         return self.display()
-
-
-# =====================================================================
-# Errors
-# =====================================================================
-
-
-class ActNotFoundError(RuntimeError):
-    """``act`` is not installed."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            "act is not installed.\n"
-            "Install with:\n"
-            "  Windows: choco install act-cli\n"
-            "  Linux:   curl -s https://raw.githubusercontent.com/nektos/act/"
-            "master/install.sh | sudo bash\n"
-            "  macOS:   brew install act"
-        )
-
-
-class DockerNotAvailableError(RuntimeError):
-    """Docker daemon is not running or not installed."""
-
-    def __init__(self, detail: str = "Docker daemon is not running") -> None:
-        super().__init__(detail)
 
 
 # =====================================================================

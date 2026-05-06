@@ -23,36 +23,9 @@ from typing import Any, Optional
 
 import yaml
 
+from localci.errors import YqError, YqNotFoundError
+
 logger = logging.getLogger(__name__)
-
-
-# =====================================================================
-# Errors
-# =====================================================================
-
-
-class YqError(Exception):
-    """Error from yq execution."""
-
-    def __init__(self, expression: str, stderr: str):
-        self.expression = expression
-        self.stderr = stderr
-        super().__init__(f"yq error for '{expression}': {stderr}")
-
-
-class YqNotFoundError(Exception):
-    """yq is not installed."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            "mikefarah/yq is not installed.\n"
-            "Install v4+ (not pip's `yq` / kislyuk/yq): "
-            "https://github.com/mikefarah/yq#install\n"
-            "Examples:\n"
-            "  Windows:  winget install MikeFarah.yq  OR  choco install yq\n"
-            "  Linux:    sudo snap install yq  OR  install from GitHub releases\n"
-            "  macOS:    brew install yq"
-        )
 
 
 class YqFallbackWarning(UserWarning):

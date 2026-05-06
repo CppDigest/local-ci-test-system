@@ -15,6 +15,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from localci.errors import (
+    LocalCIError,
+    MissingFieldError,
+    UnsupportedMatrixError,
+    WorkflowError,
+    WorkflowNotFoundError,
+    WorkflowParseError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -320,38 +329,6 @@ class Workflow:
 
 
 # =====================================================================
-# Errors
-# =====================================================================
-
-
-class WorkflowError(Exception):
-    """Base error for workflow analysis."""
-
-
-class WorkflowParseError(WorkflowError):
-    """Failed to parse workflow YAML."""
-
-    def __init__(self, file: Path, detail: str):
-        self.file = file
-        super().__init__(f"Failed to parse {file}: {detail}")
-
-
-class UnsupportedMatrixError(WorkflowError):
-    """Matrix configuration not supported."""
-
-    def __init__(self, entry: dict, detail: str):
-        name = entry.get("name", "unknown")
-        super().__init__(f"Unsupported matrix entry '{name}': {detail}")
-
-
-class MissingFieldError(WorkflowError):
-    """Required field missing from workflow."""
-
-    def __init__(self, field_name: str, context: str):
-        super().__init__(f"Missing required field '{field_name}' in {context}")
-
-
-# =====================================================================
 # WorkflowAnalyzer
 # =====================================================================
 
@@ -411,10 +388,10 @@ class WorkflowAnalyzer:
 
         try:
             name = self.yq.workflow_name(workflow_path)
-        except FileNotFoundError:
-            raise
+        except FileNotFoundError as exc:
+            raise WorkflowNotFoundError(workflow_path, exc) from exc
         except Exception as exc:
-            raise WorkflowParseError(workflow_path, str(exc)) from exc
+            raise WorkflowParseError(workflow_path, exc) from exc
 
         events = self.yq.events(workflow_path)
 
@@ -443,7 +420,9 @@ class WorkflowAnalyzer:
                 raise
             except Exception as exc:
                 raise WorkflowParseError(
-                    workflow_path, f"Error parsing job '{job_id}': {exc}"
+                    workflow_path,
+                    exc,
+                    message=f"Error parsing job '{job_id}': {exc}",
                 ) from exc
 
         workflow = Workflow(
@@ -474,7 +453,7 @@ class WorkflowAnalyzer:
         for yml in sorted(workflow_dir.glob("*.yml")):
             try:
                 workflows.append(self.analyze(yml))
-            except (WorkflowError, FileNotFoundError) as exc:
+            except WorkflowError as exc:
                 logger.warning("Failed to parse %s: %s", yml, exc)
             except Exception as exc:
                 logger.error(
