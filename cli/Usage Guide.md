@@ -4,6 +4,14 @@
 
 - [Introduction](#introduction)
 - [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Cross-platform prerequisites](#cross-platform-prerequisites)
+  - [Docker runtime differences](#docker-runtime-differences)
+  - [Preflight checklist (before your first run)](#preflight-checklist-before-your-first-run)
+  - [Windows, WSL2, and parallelism](#windows-wsl2-and-parallelism)
+  - [Install for usage](#install-for-usage)
+  - [Install for development](#install-for-development)
+  - [Verify installation](#verify-installation)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
   - [Creating a Config File](#creating-a-config-file)
@@ -52,9 +60,56 @@ Key features:
 | Tool | Purpose | Install |
 |------|---------|---------|
 | Python 3.10+ | Runtime | [python.org](https://www.python.org/downloads/) |
-| Docker | Container execution | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
-| yq | YAML parsing | `choco install yq` / `brew install yq` / `apt install yq` |
-| act | Local GitHub Actions | `choco install act-cli` / `brew install act` / `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` |
+| Docker | Container execution | Linux: Docker Engine; macOS/Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows: WSL2 backend recommended) |
+| **[mikefarah/yq](https://github.com/mikefarah/yq) v4+** | YAML parsing | Not pip `yq` / kislyuk; see [yq#install](https://github.com/mikefarah/yq#install) and [Cross-platform prerequisites](#cross-platform-prerequisites) |
+| act | Local GitHub Actions | `brew install act` / install script / Windows: `act-cli` ([Chocolatey](https://community.chocolatey.org/packages/act-cli)); see below |
+
+### Cross-platform prerequisites
+
+Local CI runs **Linux** workflow jobs in Docker via [act](https://github.com/nektos/act). Your machine may be Linux, macOS, or Windows; whether runs succeed depends on **Docker** and **act**, not only Python.
+
+#### Linux (native)
+
+- **Docker:** Install Docker Engine + CLI from your distribution or [Docker Engine install](https://docs.docker.com/engine/install/).
+- **act:** e.g. `curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh \| sudo bash` or a distro package if maintained.
+- **yq:** Install **[mikefarah/yq](https://github.com/mikefarah/yq) v4+** (Snap, release binary, or package that ships that binary). Verify with `yq --version` (output should reference mikefarah or report `version v4`).
+
+#### macOS (Intel and Apple silicon)
+
+- **Docker:** [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/).
+- **act / yq:** Commonly `brew install act` and `brew install yq` (Homebrew provides mikefarah `yq`).
+- **Apple silicon (arm64):** Workflow images are often **linux/amd64**. If image pulls or act fails with architecture errors, pull or run with an explicit platform, e.g. `docker pull --platform linux/amd64 <image>`. Use Docker Desktop settings for Rosetta / QEMU emulation when prompted.
+
+#### Windows (Docker Desktop and WSL2)
+
+- **Docker:** Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and use the **WSL2** backend. Enable **WSL integration** for the distro where you open terminals so `docker` talks to the same engine Local CI will use.
+- **act:** On Windows, Chocolatey installs the executable as **`act-cli`** (see discovery logic in [`localci/core/executor.py`](localci/core/executor.py)). Ensure `act` or `act-cli` is on `PATH`. You can use `winget install nektos.act` where it exposes `act`.
+- **yq:** Prefer `winget install MikeFarah.yq`, `choco install yq`, or a binary from [mikefarah/yq releases](https://github.com/mikefarah/yq/releases).
+- **Avoid mixed environments:** Run `docker`, `act`, and `localci` from the **same** environment (all on Windows, or all inside one WSL distro). Mixing a Windows `docker` CLI with a daemon only reachable inside WSL2 commonly yields "Docker daemon is not running" or connection errors.
+
+### Docker runtime differences
+
+- **Socket / API:** On Linux, Docker usually listens on a Unix socket (often `unix:///var/run/docker.sock`). On Windows, Docker Desktop typically exposes the engine via the named pipe **`\\.\pipe\docker_engine`**. The `docker` CLI hides most of this; problems usually show up as connection errors if the CLI and daemon use different contexts. See [Docker contexts](https://docs.docker.com/engine/context/working-with-contexts/).
+- **CPU architecture:** When the host CPU architecture does not match the image (`amd64` vs `arm64`), you may need **`docker pull --platform linux/amd64`** (or `arm64`) or equivalent build settings so act starts a compatible image.
+- **WSL2:** Bind mounts that cross the Windows/Linux filesystem boundary can be slow or permission-sensitive. Prefer cloning projects under the Linux filesystem for the distro integrated with Docker (e.g. under `\\wsl$\...`) when using WSL2 heavily. See [Docker Desktop WSL 2 backend](https://docs.docker.com/desktop/wsl/).
+
+### Preflight checklist (before your first run)
+
+Run these checks before `localci run`:
+
+```bash
+python --version          # expect Python 3.10+
+docker version
+docker info               # daemon must be reachable (no fatal errors)
+act --version || act-cli --version   # Windows: often act-cli
+yq --version              # confirm mikefarah / v4.x
+localci --version
+localci analyze path/to/your/workflow.yml   # parse-only smoke test
+```
+
+### Windows, WSL2, and parallelism
+
+There is no separate code path named "solo pool" in this repository; parallel jobs use a [`ThreadPoolExecutor`](https://docs.python.org/3/library/concurrent.futures.html#threadpoolexecutor) whose size comes from config (`parallel.max_jobs`) or **`localci run --parallel`**. On **Windows with Docker Desktop + WSL2**, all Linux containers share resources in one VM; **high parallelism** can saturate CPU, RAM, or disk I/O and cause flaky failures or Docker errors. If that happens, reduce **`parallel.max_jobs`** in `.localci.yml` or pass **`--parallel N`** with a smaller **N**.
 
 ### Install for usage
 

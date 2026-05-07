@@ -638,6 +638,8 @@ Examples:
 
 **Recommendation**: Use Windows host for maximum compatibility (supports both Windows and Linux containers).
 
+For concrete install commands, Docker Desktop/WSL2 notes, and a preflight checklist before your first run, see **[Cross-platform prerequisites](../cli/Usage%20Guide.md#cross-platform-prerequisites)** in the Usage Guide.
+
 ### G. Benefits and Limitations
 
 #### Benefits
