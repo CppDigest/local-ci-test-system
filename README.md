@@ -23,6 +23,10 @@ Local CI parses your workflow file, runs selected jobs in containers with pre-bu
 | **[mikefarah/yq](https://github.com/mikefarah/yq) v4+** | YAML parsing -- **not** pip `yq` (PyPI) or [kislyuk/yq](https://github.com/kislyuk/yq) |
 | [act](https://github.com/nektos/act)  | Run GitHub Actions locally |
 
+### Host platforms
+
+Local CI is **Linux-container-first**: workflows run Linux containers unless your jobs target Windows runners. On macOS or Windows, Docker Desktop provides the Linux runtime (use the **WSL2** backend on Windows). Setup varies by OS and Docker install; see **[Cross-platform prerequisites](cli/Usage%20Guide.md#cross-platform-prerequisites)** in the User Guide for per-OS installs, Docker caveats, a **preflight checklist**, and notes on **Windows, WSL2, and parallelism**.
+
 ### yq (mikefarah/yq v4 or newer)
 
 Several incompatible tools share the name `yq`. Local CI requires **[mikefarah/yq](https://github.com/mikefarah/yq)** **v4+** (`yq --version` output should reference `mikefarah` / `github.com/mikefarah` or report `version v4`). The wrong install fails at runtime with unclear errors. If no suitable binary is on `PATH`, the CLI uses a PyYAML fallback with limited expression support and emits a warning.

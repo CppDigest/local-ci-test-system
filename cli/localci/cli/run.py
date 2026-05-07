@@ -146,6 +146,9 @@ def run(
     cfg = ctx.obj["config"]
 
     effective_timeout = timeout or cfg.execution.timeout
+    # parallel.max_jobs / --parallel cap concurrent act processes. On Windows with
+    # Docker Desktop + WSL2, many containers share one Linux VM; very high values
+    # can contend on CPU/RAM/disk (see Usage Guide: Windows, WSL2, parallelism).
     effective_parallel = parallel or cfg.parallel.max_jobs
     effective_keep_containers = (
         keep_containers if keep_containers is not None else cfg.execution.keep_containers
