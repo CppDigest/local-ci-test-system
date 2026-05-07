@@ -19,6 +19,7 @@ from localci.core.models import (
     QueuedJob,
     QueuedJobStatus,
 )
+from localci.errors import CyclicDependencyError
 
 if TYPE_CHECKING:
     from localci.core.config import LocalCIConfig
@@ -82,14 +83,6 @@ class PriorityConfig:
 # ---------------------------------------------------------------------------
 # Dependency graph
 # ---------------------------------------------------------------------------
-
-
-class CyclicDependencyError(Exception):
-    """Circular dependency detected in job graph."""
-
-    def __init__(self, job_id: str):
-        super().__init__(f"Cyclic dependency detected involving job: {job_id}")
-        self.job_id = job_id
 
 
 class DependencyResolver:
@@ -331,7 +324,8 @@ class PriorityJobQueue:
 
     @property
     def is_empty(self) -> bool:
-        return len(self._jobs) == 0
+        with self._lock:
+            return self._current_priority is None
 
     @property
     def is_done(self) -> bool:

@@ -15,6 +15,10 @@ from localci.utils.yq import YqWrapper
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_CI = FIXTURES_DIR / "sample_ci.yml"
 
+# YqWrapper() triggers one-time PyYAML fallback warnings when mikefarah/yq
+# is missing on the test machine; filter that expected category for this module.
+pytestmark = pytest.mark.filterwarnings("ignore::localci.utils.yq.YqFallbackWarning")
+
 
 @pytest.fixture
 def yq():

@@ -18,6 +18,7 @@ from localci.core.executor import (
     DockerNotAvailableError,
     JobExecutor,
 )
+from localci.errors import WorkflowError
 from localci.core.models import JobEvent, JobEventType
 from localci.core.orchestrator import (
     OrchestratorConfig,
@@ -161,8 +162,8 @@ def run(
     try:
         analyzer = WorkflowAnalyzer()
         wf = analyzer.analyze(workflow_path)
-    except Exception as exc:
-        print_error(f"Failed to parse workflow: {exc}")
+    except WorkflowError as exc:
+        print_error(str(exc))
         ctx.exit(1)
         return
 
@@ -213,7 +214,7 @@ def run(
                         seen.add((jid, e.index))
                 continue
             except ValueError:
-                pass
+                pass  # not a numeric job index; treat *j* as a name substring below
             j_lower = j.lower()
             for jid, e in selected:
                 if j_lower in e.name.lower() and (jid, e.index) not in seen:
@@ -390,8 +391,10 @@ def run(
         summary.save(execution_file)
         print_info(f"Results saved to {last_run_file}")
         print_info(f"Execution ID: {summary.execution_id} (use with status -e or logs -e)")
-    except Exception as exc:
+    except OSError as exc:
         print_warning(f"Could not save results: {exc}")
+    except (TypeError, ValueError) as exc:
+        print_warning(f"Could not serialize results for save: {exc}")
 
     if not summary.all_passed:
         ctx.exit(1)

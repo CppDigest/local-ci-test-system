@@ -5,6 +5,7 @@ View stdout/stderr logs for a specific job execution.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -95,7 +96,7 @@ def logs(
 
     try:
         summary = ExecutionSummary.load(results_file)
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         print_error(f"Failed to load results: {exc}")
         ctx.exit(1)
         return
