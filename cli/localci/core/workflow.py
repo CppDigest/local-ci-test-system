@@ -302,30 +302,17 @@ class Workflow:
 
     def dependency_order(self) -> list[str]:
         """Topological sort of jobs by dependencies."""
-        visited: set[str] = set()
-        in_progress: set[str] = set()
-        order: list[str] = []
+        from localci.core.queue import DependencyResolver
 
-        def visit(job_id: str) -> None:
-            if job_id in visited:
-                return
-            if job_id not in self.jobs:
-                logger.warning("Dependency '%s' not found in jobs", job_id)
-                return
-            if job_id in in_progress:
-                logger.warning("Circular dependency detected involving '%s'", job_id)
-                return
-            in_progress.add(job_id)
-            visited.add(job_id)
-            for dep in self.jobs[job_id].needs:
-                visit(dep)
-            in_progress.discard(job_id)
-            order.append(job_id)
-
-        for job_id in self.jobs:
-            visit(job_id)
-
-        return order
+        resolver = DependencyResolver()
+        job_ids = set(self.jobs)
+        for job_id, job in self.jobs.items():
+            needs = [d for d in job.needs if d in job_ids]
+            for dep in job.needs:
+                if dep not in job_ids:
+                    logger.warning("Dependency '%s' not found in jobs", dep)
+            resolver.add_job(job_id, needs)
+        return resolver.resolve()
 
 
 # =====================================================================

@@ -190,9 +190,11 @@ class UnsupportedMatrixError(WorkflowError):
 class CyclicDependencyError(WorkflowError):
     """Circular dependency detected in job graph."""
 
-    def __init__(self, job_id: str) -> None:
-        super().__init__(f"Cyclic dependency detected involving job: {job_id}")
-        self.job_id = job_id
+    def __init__(self, cycle: list[str]) -> None:
+        self.cycle = list(cycle)
+        self.job_id = self.cycle[0] if self.cycle else ""
+        path = " -> ".join(self.cycle)
+        super().__init__(f"Cyclic dependency detected: {path}")
 
 
 # ---------------------------------------------------------------------------

@@ -168,6 +168,14 @@ class TestErrorAttributes:
         assert "unexpected key" in str(exc)
         assert str(p) in str(exc)
 
+    def test_cyclic_dependency_error_attributes(self):
+        cycle = ["a", "b", "a"]
+        exc = CyclicDependencyError(cycle)
+        assert exc.cycle == cycle
+        assert exc.job_id == "a"
+        assert "a -> b -> a" in str(exc)
+        assert isinstance(exc, WorkflowError)
+
 
 # ---------------------------------------------------------------------------
 # Backward-compatibility: caught by built-in types

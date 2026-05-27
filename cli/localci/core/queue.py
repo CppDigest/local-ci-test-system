@@ -109,20 +109,24 @@ class DependencyResolver:
         temp_visited: set[str] = set()
         order: list[str] = []
 
-        def visit(jid: str) -> None:
+        def visit(jid: str, path: list[str]) -> None:
             if jid in temp_visited:
-                raise CyclicDependencyError(jid)
+                idx = path.index(jid)
+                cycle = path[idx:] + [jid]
+                raise CyclicDependencyError(cycle)
             if jid in visited:
                 return
             temp_visited.add(jid)
+            path.append(jid)
             for dep in self._graph.get(jid, []):
-                visit(dep)
+                visit(dep, path)
+            path.pop()
             temp_visited.discard(jid)
             visited.add(jid)
             order.append(jid)
 
         for jid in self._graph:
-            visit(jid)
+            visit(jid, [])
         return order
 
     def get_dependencies(self, job_id: str) -> list[str]:
