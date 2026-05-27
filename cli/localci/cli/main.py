@@ -8,7 +8,8 @@ and registers every sub-command.
 from __future__ import annotations
 
 import logging
-import sys
+from pathlib import Path
+from typing import Any
 
 import click
 
@@ -20,14 +21,64 @@ from localci.errors import (
     ConfigIOError,
     ConfigValidationError,
 )
-from localci.utils.output import configure_console, console, print_error
+from localci.utils.crash import log_crash
+from localci.utils.output import configure_console, print_error
+
+# ---------------------------------------------------------------------------
+# Catch-all exception handling
+# ---------------------------------------------------------------------------
+
+
+class CatchAllGroup(click.Group):
+    """Click group that catches unhandled exceptions at the CLI entry point."""
+
+    def invoke(self, ctx: click.Context) -> Any:
+        try:
+            return super().invoke(ctx)
+        except (click.exceptions.Exit, click.ClickException):
+            raise
+        except Exception as exc:
+            if _is_debug(ctx):
+                raise
+            path = log_crash(exc)
+            _print_unhandled_error(exc, path)
+            ctx.exit(2)
+
+
+def _is_debug(ctx: click.Context) -> bool:
+    """Return True when ``--debug`` was passed on the CLI."""
+    obj = ctx.obj
+    if obj is not None and obj.get("debug"):
+        return True
+    return bool(ctx.params.get("debug"))
+
+
+def _print_unhandled_error(exc: BaseException, log_path: Path) -> None:
+    """Print a user-friendly message for an unhandled internal error."""
+    display_path = str(log_path.expanduser())
+    messages = [
+        "An unexpected internal error occurred.",
+        f"{type(exc).__name__}: {exc}",
+        f"Please file a bug report and attach {display_path} "
+        "(contains the full traceback).",
+    ]
+    try:
+        for msg in messages:
+            print_error(msg)
+    except Exception:
+        for msg in messages:
+            click.echo(msg, err=True)
+
 
 # ---------------------------------------------------------------------------
 # Root CLI group
 # ---------------------------------------------------------------------------
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(
+    cls=CatchAllGroup,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 @click.option(
     "--config",
     "-c",
@@ -39,6 +90,11 @@ from localci.utils.output import configure_console, console, print_error
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose/debug output.")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress non-essential output.")
 @click.option("--no-color", is_flag=True, help="Disable coloured output.")
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Show full tracebacks instead of friendly errors.",
+)
 @click.version_option(version=__version__, prog_name="localci")
 @click.pass_context
 def cli(
@@ -47,9 +103,11 @@ def cli(
     verbose: bool,
     quiet: bool,
     no_color: bool,
+    debug: bool,
 ) -> None:
     """Local CI - Run GitHub Actions workflows locally."""
     ctx.ensure_object(dict)
+    ctx.obj["debug"] = debug
 
     # Configure Rich console early so all downstream output respects flags.
     configure_console(no_color=no_color, quiet=quiet)

@@ -4,3 +4,26 @@
 # image 
 *.tar
 images/capy/dist/
+
+# data
+data/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+**/.___*
+**/._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.AppleDB
+.AppleDesktop
+.apdisk
+Icon?
+.com.apple.timemachine.donotpresent
+.VolumeIcon.icns
+.cursor
+

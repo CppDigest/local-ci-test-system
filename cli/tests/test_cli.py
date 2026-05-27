@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from click.testing import CliRunner
 
 from localci.cli.main import cli
+from localci.utils.crash import CRASH_LOG_NAME
 
 
 runner = CliRunner()
@@ -298,3 +301,72 @@ class TestConfig:
         result = runner.invoke(cli, ["-c", str(tmp_path / ".localci.yml"), "config", "get", "parallel.max_jobs"])
         assert result.exit_code == 0
         assert "16" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Catch-all exception handler (w4_issue_01)
+# ---------------------------------------------------------------------------
+
+
+class TestCatchAllHandler:
+    """Unhandled exceptions produce friendly output and crash.log diagnostics."""
+
+    @staticmethod
+    def _workflow_file(tmp_path: Path) -> Path:
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI\n")
+        return wf
+
+    @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
+    def test_unhandled_exception_friendly_output(self, mock_analyze, tmp_path):
+        mock_analyze.side_effect = RuntimeError("test boom")
+        wf = self._workflow_file(tmp_path)
+        result = runner.invoke(
+            cli,
+            ["analyze", str(wf)],
+            env={"HOME": str(tmp_path)},
+        )
+        assert result.exit_code == 2
+        assert "Traceback" not in result.output
+        assert "unexpected internal error" in result.output.lower()
+        assert "RuntimeError" in result.output
+        assert "test boom" in result.output
+        assert "bug report" in result.output.lower()
+        assert "crash.log" in result.output
+
+    @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
+    def test_unhandled_exception_writes_crash_log(self, mock_analyze, tmp_path):
+        mock_analyze.side_effect = RuntimeError("test boom")
+        wf = self._workflow_file(tmp_path)
+        runner.invoke(
+            cli,
+            ["analyze", str(wf)],
+            env={"HOME": str(tmp_path)},
+        )
+        log_path = tmp_path / ".localci" / CRASH_LOG_NAME
+        assert log_path.is_file()
+        content = log_path.read_text(encoding="utf-8")
+        assert "RuntimeError" in content
+        assert "test boom" in content
+        assert "traceback:" in content.lower()
+        assert "localci_version:" in content
+
+    @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
+    def test_debug_flag_reraises_exception(self, mock_analyze, tmp_path):
+        mock_analyze.side_effect = RuntimeError("test boom")
+        wf = self._workflow_file(tmp_path)
+        with pytest.raises(RuntimeError, match="test boom"):
+            runner.invoke(
+                cli,
+                ["--debug", "analyze", str(wf)],
+                env={"HOME": str(tmp_path)},
+                catch_exceptions=False,
+            )
+
+    def test_config_error_exit_code_unchanged(self, tmp_path):
+        result = runner.invoke(
+            cli,
+            ["--config", str(tmp_path / "missing.yml"), "list"],
+            env={"HOME": str(tmp_path)},
+        )
+        assert result.exit_code == 1
