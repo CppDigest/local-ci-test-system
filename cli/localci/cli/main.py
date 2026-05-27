@@ -8,7 +8,6 @@ and registers every sub-command.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import click
@@ -21,7 +20,7 @@ from localci.errors import (
     ConfigIOError,
     ConfigValidationError,
 )
-from localci.utils.crash import log_crash
+from localci.utils.crash import CRASH_LOG_NAME, log_crash
 from localci.utils.output import configure_console, print_error
 
 # ---------------------------------------------------------------------------
@@ -40,8 +39,8 @@ class CatchAllGroup(click.Group):
         except Exception as exc:
             if _is_debug(ctx):
                 raise
-            path = log_crash(exc)
-            _print_unhandled_error(exc, path)
+            log_crash(exc)
+            _print_unhandled_error(exc)
             ctx.exit(2)
 
 
@@ -53,9 +52,10 @@ def _is_debug(ctx: click.Context) -> bool:
     return bool(ctx.params.get("debug"))
 
 
-def _print_unhandled_error(exc: BaseException, log_path: Path) -> None:
+def _print_unhandled_error(exc: BaseException) -> None:
     """Print a user-friendly message for an unhandled internal error."""
-    display_path = str(log_path.expanduser())
+    # Stable short path for display (avoids terminal wrap on long temp dirs in CI).
+    display_path = f"~/.localci/{CRASH_LOG_NAME}"
     messages = [
         "An unexpected internal error occurred.",
         f"{type(exc).__name__}: {exc}",
