@@ -90,7 +90,9 @@ class TestList:
         assert result.exit_code == 0
 
     def test_platform_filter(self):
-        result = runner.invoke(cli, ["list", "--workflow", SAMPLE_CI, "--platform", "linux"])
+        result = runner.invoke(
+            cli, ["list", "--workflow", SAMPLE_CI, "--platform", "linux"]
+        )
         assert result.exit_code == 0
 
     def test_no_workflow_errors(self):
@@ -138,9 +140,7 @@ class TestRun:
         assert "--dry-run" in result.output
 
     def test_dry_run(self):
-        result = runner.invoke(
-            cli, ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run"]
-        )
+        result = runner.invoke(cli, ["run", "--workflow", SAMPLE_WORKFLOW, "--dry-run"])
         assert result.exit_code == 0
         assert "Dry run" in result.output or "dry" in result.output.lower()
 
@@ -295,10 +295,29 @@ class TestConfig:
         # Init a config first.
         runner.invoke(cli, ["config", "init"])
         # Set a value.
-        result = runner.invoke(cli, ["-c", str(tmp_path / ".localci.yml"), "config", "set", "parallel.max_jobs", "16"])
+        result = runner.invoke(
+            cli,
+            [
+                "-c",
+                str(tmp_path / ".localci.yml"),
+                "config",
+                "set",
+                "parallel.max_jobs",
+                "16",
+            ],
+        )
         assert result.exit_code == 0
         # Verify.
-        result = runner.invoke(cli, ["-c", str(tmp_path / ".localci.yml"), "config", "get", "parallel.max_jobs"])
+        result = runner.invoke(
+            cli,
+            [
+                "-c",
+                str(tmp_path / ".localci.yml"),
+                "config",
+                "get",
+                "parallel.max_jobs",
+            ],
+        )
         assert result.exit_code == 0
         assert "16" in result.output
 
@@ -332,7 +351,12 @@ class TestCatchAllHandler:
         assert "RuntimeError" in result.output
         assert "test boom" in result.output
         assert "bug report" in result.output.lower()
-        assert "crash.log" in result.output
+        # Check for crash log path, resilient to text wrapping
+        output_no_newlines = result.output.replace("\n", " ")
+        assert (
+            CRASH_LOG_NAME in output_no_newlines
+            or f".localci/{CRASH_LOG_NAME}" in output_no_newlines
+        )
 
     @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
     def test_unhandled_exception_writes_crash_log(self, mock_analyze, tmp_path):

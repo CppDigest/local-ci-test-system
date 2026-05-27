@@ -23,12 +23,12 @@ def log_crash(exc: BaseException) -> Path:
     """Write a full crash report for *exc* and return the log file path."""
     path = crash_log_path()
     lines = [
-        f"timestamp: {datetime.now(timezone.utc).isoformat()}",
-        f"localci_version: {__version__}",
-        f"python_version: {sys.version}",
-        f"platform: {platform.platform()}",
-        "",
-        "traceback:",
+        f"timestamp: {datetime.now(timezone.utc).isoformat()}\n",
+        f"localci_version: {__version__}\n",
+        f"python_version: {sys.version}\n",
+        f"platform: {platform.platform()}\n",
+        "\n",
+        "traceback:\n",
         *traceback.format_exception(type(exc), exc, exc.__traceback__),
     ]
     path.write_text("".join(lines), encoding="utf-8")
