@@ -176,6 +176,10 @@ class TestErrorAttributes:
         assert "a -> b -> a" in str(exc)
         assert isinstance(exc, WorkflowError)
 
+    def test_cyclic_dependency_error_rejects_string(self):
+        with pytest.raises(TypeError, match="cycle must be a list"):
+            CyclicDependencyError("ab")
+
 
 # ---------------------------------------------------------------------------
 # Backward-compatibility: caught by built-in types

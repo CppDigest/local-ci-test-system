@@ -374,11 +374,10 @@ class TestDependencyOrder:
         with pytest.raises(CyclicDependencyError) as exc_info:
             workflow.dependency_order()
         exc = exc_info.value
-        assert exc.cycle
-        assert "a" in exc.cycle
-        assert "b" in exc.cycle
-        assert "a" in str(exc)
-        assert "b" in str(exc)
+        assert exc.cycle == ["a", "b", "a"]
+        assert exc.cycle[0] == exc.cycle[-1]
+        assert exc.job_id == "a"
+        assert "a -> b -> a" in str(exc)
 
 
 # =====================================================================

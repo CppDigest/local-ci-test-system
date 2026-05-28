@@ -105,6 +105,13 @@ class DependencyResolver:
             self._reverse[dep].append(job_id)
 
     def resolve(self) -> list[str]:
+        """Return a topological order of registered jobs.
+
+        Dependencies listed in ``needs`` but never passed to :meth:`add_job`
+        are still visited with an empty edge list and included in the order.
+        Callers (e.g. ``Workflow.dependency_order``) must register a complete
+        graph.
+        """
         visited: set[str] = set()
         temp_visited: set[str] = set()
         order: list[str] = []

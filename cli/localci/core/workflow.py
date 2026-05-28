@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
+from localci.core.queue import DependencyResolver
 from localci.errors import (
     LocalCIError,
     MissingFieldError,
@@ -302,8 +303,6 @@ class Workflow:
 
     def dependency_order(self) -> list[str]:
         """Topological sort of jobs by dependencies."""
-        from localci.core.queue import DependencyResolver
-
         resolver = DependencyResolver()
         job_ids = set(self.jobs)
         for job_id, job in self.jobs.items():
