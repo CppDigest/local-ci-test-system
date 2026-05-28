@@ -105,24 +105,35 @@ class DependencyResolver:
             self._reverse[dep].append(job_id)
 
     def resolve(self) -> list[str]:
+        """Return a topological order of registered jobs.
+
+        Dependencies listed in ``needs`` but never passed to :meth:`add_job`
+        are still visited with an empty edge list and included in the order.
+        Callers (e.g. ``Workflow.dependency_order``) must register a complete
+        graph.
+        """
         visited: set[str] = set()
         temp_visited: set[str] = set()
         order: list[str] = []
 
-        def visit(jid: str) -> None:
+        def visit(jid: str, path: list[str]) -> None:
             if jid in temp_visited:
-                raise CyclicDependencyError(jid)
+                idx = path.index(jid)
+                cycle = path[idx:] + [jid]
+                raise CyclicDependencyError(cycle)
             if jid in visited:
                 return
             temp_visited.add(jid)
+            path.append(jid)
             for dep in self._graph.get(jid, []):
-                visit(dep)
+                visit(dep, path)
+            path.pop()
             temp_visited.discard(jid)
             visited.add(jid)
             order.append(jid)
 
         for jid in self._graph:
-            visit(jid)
+            visit(jid, [])
         return order
 
     def get_dependencies(self, job_id: str) -> list[str]:

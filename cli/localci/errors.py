@@ -188,11 +188,27 @@ class UnsupportedMatrixError(WorkflowError):
 
 
 class CyclicDependencyError(WorkflowError):
-    """Circular dependency detected in job graph."""
+    """Circular dependency detected in job graph.
 
-    def __init__(self, job_id: str) -> None:
-        super().__init__(f"Cyclic dependency detected involving job: {job_id}")
-        self.job_id = job_id
+    Attributes
+    ----------
+    cycle:
+        Ordered job IDs forming the loop; first and last elements are equal
+        (e.g. ``["a", "b", "a"]``).
+    job_id:
+        First job in the cycle, kept for backward compatibility (``cycle[0]``).
+    """
+
+    def __init__(self, cycle: list[str]) -> None:
+        if not isinstance(cycle, list):
+            raise TypeError(
+                f"cycle must be a list[str], got {type(cycle).__name__!r}; "
+                "pass an ordered path such as ['a', 'b', 'a'], not a single job_id string"
+            )
+        self.cycle = list(cycle)
+        self.job_id = self.cycle[0] if self.cycle else ""
+        path = " -> ".join(self.cycle)
+        super().__init__(f"Cyclic dependency detected: {path}")
 
 
 # ---------------------------------------------------------------------------

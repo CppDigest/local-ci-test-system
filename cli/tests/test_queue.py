@@ -118,8 +118,13 @@ class TestDependencyResolver:
         resolver = DependencyResolver()
         resolver.add_job("a", ["b"])
         resolver.add_job("b", ["a"])
-        with pytest.raises(CyclicDependencyError):
+        with pytest.raises(CyclicDependencyError) as exc_info:
             resolver.resolve()
+        exc = exc_info.value
+        assert exc.cycle == ["a", "b", "a"]
+        assert exc.cycle[0] == exc.cycle[-1]
+        assert exc.job_id == "a"
+        assert "a -> b -> a" in str(exc)
 
     def test_all_dependencies_met(self):
         resolver = DependencyResolver()

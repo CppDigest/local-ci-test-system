@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from localci.errors import CyclicDependencyError
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -349,6 +350,34 @@ class TestDependencyOrder:
     def test_changelog_needs_build(self, sample_workflow):
         changelog = sample_workflow.jobs["changelog"]
         assert "build" in changelog.needs
+
+    def test_cyclic_dependency_raises(self, tmp_path):
+        workflow = Workflow(
+            name="cyclic",
+            file_path=tmp_path / "cyclic.yml",
+            events=["push"],
+            jobs={
+                "a": Job(
+                    id="a",
+                    name="A",
+                    runs_on="ubuntu-latest",
+                    needs=["b"],
+                ),
+                "b": Job(
+                    id="b",
+                    name="B",
+                    runs_on="ubuntu-latest",
+                    needs=["a"],
+                ),
+            },
+        )
+        with pytest.raises(CyclicDependencyError) as exc_info:
+            workflow.dependency_order()
+        exc = exc_info.value
+        assert exc.cycle == ["a", "b", "a"]
+        assert exc.cycle[0] == exc.cycle[-1]
+        assert exc.job_id == "a"
+        assert "a -> b -> a" in str(exc)
 
 
 # =====================================================================
