@@ -19,6 +19,7 @@ FIXTURE_PROJECT = (
 ACT_RUNNER_IMAGE = "catthehacker/ubuntu:act-24.04"
 INTEGRATION_JOB_ID = "test"
 INTEGRATION_TIMEOUT = 180
+DOCKER_PULL_TIMEOUT = 600
 
 
 def _act_available() -> bool:
@@ -49,7 +50,7 @@ def act_runner_image(require_act_and_docker: None) -> str:
         ["docker", "pull", ACT_RUNNER_IMAGE],
         capture_output=True,
         text=True,
-        timeout=600,
+        timeout=DOCKER_PULL_TIMEOUT,
     )
     if pull.returncode != 0:
         pytest.skip(
@@ -84,8 +85,8 @@ def capy_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
 
 
 @pytest.fixture
-def integration_project(tmp_path: Path) -> Path:
-    """Copy the integration fixture project into an isolated directory."""
+def integration_project(tmp_path: Path) -> tuple[Path, Path]:
+    """Copy fixture project and return (project_root, logs_dir)."""
     dest = tmp_path / "project"
     shutil.copytree(FIXTURE_PROJECT, dest)
 
@@ -95,13 +96,8 @@ def integration_project(tmp_path: Path) -> Path:
     config_path = dest / ".localci.yml"
     config = yaml.safe_load(config_path.read_text())
     config["logging"]["directory"] = str(logs_dir)
-    config_path.write_text(yaml.dump(config, default_flow_style=False))
+    config_path.write_text(
+        yaml.dump(config, default_flow_style=False, sort_keys=False)
+    )
 
-    return dest
-
-
-@pytest.fixture
-def integration_logs_dir(tmp_path: Path, integration_project: Path) -> Path:
-    """Logs directory configured for the copied integration project."""
-    _ = integration_project
-    return tmp_path / "logs"
+    return dest, logs_dir

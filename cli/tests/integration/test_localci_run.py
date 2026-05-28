@@ -42,19 +42,16 @@ def _run_localci(
 
 @pytest.mark.usefixtures("capy_image_tag")
 def test_run_success(
-    integration_project: Path,
-    integration_logs_dir: Path,
+    integration_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.chdir(integration_project)
-    result = _run_localci(
-        integration_project,
-        ".github/workflows/test.yml",
-    )
+    project, logs_dir = integration_project
+    monkeypatch.chdir(project)
+    result = _run_localci(project, ".github/workflows/test.yml")
 
     assert result.exit_code == 0, result.output
 
-    last_run = integration_logs_dir / "last-run.json"
+    last_run = logs_dir / "last-run.json"
     assert last_run.exists(), "expected last-run.json after successful run"
 
     summary = ExecutionSummary.load(last_run)
@@ -65,14 +62,12 @@ def test_run_success(
 
 @pytest.mark.usefixtures("capy_image_tag")
 def test_run_failure(
-    integration_project: Path,
+    integration_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.chdir(integration_project)
-    result = _run_localci(
-        integration_project,
-        ".github/workflows/test-fail.yml",
-    )
+    project, _logs_dir = integration_project
+    monkeypatch.chdir(project)
+    result = _run_localci(project, ".github/workflows/test-fail.yml")
 
     assert result.exit_code == 1, result.output
     assert "Traceback" not in result.output
@@ -82,15 +77,17 @@ def test_run_failure(
 
 
 def test_run_invalid_workflow(
-    integration_project: Path,
+    integration_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parse errors occur before act/Docker; no capy_image_tag fixture required."""
-    monkeypatch.chdir(integration_project)
-    result = _run_localci(
-        integration_project,
-        ".github/workflows/invalid.yml",
-    )
+    """Workflow parse fails before act/Docker; intentionally omits require_act_and_docker.
+
+    Kept in this package (not unit tests) to assert the full CLI path exits cleanly
+    without a traceback when given a malformed workflow file.
+    """
+    project, _logs_dir = integration_project
+    monkeypatch.chdir(project)
+    result = _run_localci(project, ".github/workflows/invalid.yml")
 
     assert result.exit_code == 1, result.output
     assert "Traceback" not in result.output

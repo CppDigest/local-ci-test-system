@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from localci.core.command_builder import ActCommandBuilder
-from localci.core.executor import JobExecutor, JobStatus
-from localci.core.workflow import WorkflowAnalyzer
+from localci.core.executor import JobExecutor, JobResult, JobStatus
+from localci.core.workflow import MatrixEntry, WorkflowAnalyzer
 
 from .conftest import INTEGRATION_JOB_ID, INTEGRATION_TIMEOUT
 
@@ -24,7 +24,7 @@ def _build_and_run(
     logs_dir: Path,
     act_runner_image: str,
     project_dir: Path,
-) -> tuple:
+) -> tuple[JobResult, MatrixEntry]:
     workflow_path = _workflow_path(workflow_name, project_dir)
     analyzer = WorkflowAnalyzer()
     workflow = analyzer.analyze(workflow_path)
@@ -48,14 +48,13 @@ def _build_and_run(
 
 
 def test_successful_job_execution(
-    integration_project: Path,
+    integration_project: tuple[Path, Path],
     act_runner_image: str,
     tmp_path: Path,
 ) -> None:
+    project, _ = integration_project
     logs_dir = tmp_path / "logs"
-    result, _ = _build_and_run(
-        "test.yml", logs_dir, act_runner_image, integration_project
-    )
+    result, _ = _build_and_run("test.yml", logs_dir, act_runner_image, project)
 
     assert result.status == JobStatus.PASSED
     assert result.exit_code == 0
@@ -65,13 +64,14 @@ def test_successful_job_execution(
 
 
 def test_failing_job_extract_error(
-    integration_project: Path,
+    integration_project: tuple[Path, Path],
     act_runner_image: str,
     tmp_path: Path,
 ) -> None:
+    project, _ = integration_project
     logs_dir = tmp_path / "logs"
     result, _ = _build_and_run(
-        "test-fail.yml", logs_dir, act_runner_image, integration_project
+        "test-fail.yml", logs_dir, act_runner_image, project
     )
 
     assert result.status == JobStatus.FAILED

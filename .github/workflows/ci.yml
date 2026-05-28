@@ -38,6 +38,8 @@ jobs:
   integration:
     name: Integration (act + Docker)
     runs-on: ubuntu-latest
+    needs: [test]
+    timeout-minutes: 30
 
     defaults:
       run:
@@ -59,10 +61,13 @@ jobs:
       - name: Install act
         env:
           ACT_VERSION: v0.2.76
+          # From https://github.com/nektos/act/releases/download/v0.2.76/checksums.txt
+          ACT_LINUX_X86_64_SHA256: d4720e05e73ce634239fc0e7fa6b552f9ac79b4e6c878a8756bbfacce3c56720
         run: |
-          curl -sSfL -o /tmp/act-install.sh \
-            "https://raw.githubusercontent.com/nektos/act/${ACT_VERSION}/install.sh"
-          bash /tmp/act-install.sh -b /usr/local/bin "${ACT_VERSION}"
+          curl -sSfL -o /tmp/act.tar.gz \
+            "https://github.com/nektos/act/releases/download/${ACT_VERSION}/act_Linux_x86_64.tar.gz"
+          echo "${ACT_LINUX_X86_64_SHA256}  /tmp/act.tar.gz" | sha256sum --check
+          sudo tar xzf /tmp/act.tar.gz -C /usr/local/bin act
           act --version
 
       - name: Pull act runner image
