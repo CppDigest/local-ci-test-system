@@ -10,22 +10,22 @@ from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import JobExecutor, JobStatus
 from localci.core.workflow import WorkflowAnalyzer
 
-from .conftest import FIXTURE_PROJECT, INTEGRATION_JOB_ID, INTEGRATION_TIMEOUT
+from .conftest import INTEGRATION_JOB_ID, INTEGRATION_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
 
-def _workflow_path(name: str) -> Path:
-    return FIXTURE_PROJECT / ".github/workflows" / name
+def _workflow_path(name: str, project_dir: Path) -> Path:
+    return project_dir / ".github/workflows" / name
 
 
 def _build_and_run(
     workflow_name: str,
     logs_dir: Path,
     act_runner_image: str,
+    project_dir: Path,
 ) -> tuple:
-    workflow_path = _workflow_path(workflow_name)
-    project_dir = FIXTURE_PROJECT
+    workflow_path = _workflow_path(workflow_name, project_dir)
     analyzer = WorkflowAnalyzer()
     workflow = analyzer.analyze(workflow_path)
     entry = workflow.jobs[INTEGRATION_JOB_ID].matrix[0]
@@ -48,11 +48,14 @@ def _build_and_run(
 
 
 def test_successful_job_execution(
+    integration_project: Path,
     act_runner_image: str,
     tmp_path: Path,
 ) -> None:
     logs_dir = tmp_path / "logs"
-    result, _ = _build_and_run("test.yml", logs_dir, act_runner_image)
+    result, _ = _build_and_run(
+        "test.yml", logs_dir, act_runner_image, integration_project
+    )
 
     assert result.status == JobStatus.PASSED
     assert result.exit_code == 0
@@ -62,11 +65,14 @@ def test_successful_job_execution(
 
 
 def test_failing_job_extract_error(
+    integration_project: Path,
     act_runner_image: str,
     tmp_path: Path,
 ) -> None:
     logs_dir = tmp_path / "logs"
-    result, _ = _build_and_run("test-fail.yml", logs_dir, act_runner_image)
+    result, _ = _build_and_run(
+        "test-fail.yml", logs_dir, act_runner_image, integration_project
+    )
 
     assert result.status == JobStatus.FAILED
     assert result.exit_code is not None
@@ -81,4 +87,3 @@ def test_failing_job_extract_error(
 
     lower = result.error_message.lower()
     assert any(kw in lower for kw in ("failed", "error", "exit"))
-
