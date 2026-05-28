@@ -1,0 +1,15 @@
+name: Integration Failure
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: "Hello"
+            runs-on: ubuntu-latest
+            compiler: gcc
+            version: "15"
+    steps:
+      - run: exit 1

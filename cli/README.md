@@ -105,11 +105,14 @@ cli/
 # Editable install with dev dependencies
 pip install -e ".[dev]"
 
-# Run tests
+# Run unit tests (default; integration tests are excluded)
 pytest
 
-# Run tests with coverage
-pytest --cov=localci
+# Run unit tests with coverage
+pytest --cov=localci -m "not integration"
+
+# Integration tests (requires act + Docker)
+pytest tests/integration -m integration
 ```
 
 ## License

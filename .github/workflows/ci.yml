@@ -31,4 +31,34 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest --cov=localci --cov-report=term-missing
+        run: pytest --cov=localci --cov-report=term-missing -m "not integration"
+
+  integration:
+    name: Integration (act + Docker)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: cli
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Install act
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/nektos/act/master/install.sh | bash -s -- -b /usr/local/bin v0.2.76
+          act --version
+
+      - name: Pull act runner image
+        run: docker pull catthehacker/ubuntu:act-24.04
+
+      - name: Run integration tests
+        run: pytest tests/integration -m integration -v --tb=short
