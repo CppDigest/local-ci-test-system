@@ -22,6 +22,9 @@ def crash_log_path() -> Path:
 def crash_log_display_path() -> str:
     """Return a short user-facing path for the crash log (e.g. ``~/.localci/crash.log``)."""
     path = crash_log_path()
+    # Canonical layout: always show ~/.localci/crash.log (avoids long paths / terminal wrap).
+    if path.name == CRASH_LOG_NAME and path.parent.name == ".localci":
+        return f"~/.localci/{CRASH_LOG_NAME}"
     try:
         rel = path.relative_to(Path.home())
         return "~/" + rel.as_posix()

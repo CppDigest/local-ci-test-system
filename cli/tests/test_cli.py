@@ -364,11 +364,7 @@ class TestCatchAllHandler:
         assert "RuntimeError" in result.output
         assert "test boom" in result.output
         assert "bug report" in result.output.lower()
-        output_no_newlines = result.output.replace("\n", " ")
-        assert (
-            CRASH_LOG_NAME in output_no_newlines
-            or f".localci/{CRASH_LOG_NAME}" in output_no_newlines
-        )
+        assert f"~/.localci/{CRASH_LOG_NAME}" in result.output.replace("\n", " ")
 
     @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
     def test_unhandled_exception_writes_crash_log(
