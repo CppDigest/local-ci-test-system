@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from localci.cli.main import cli
+from localci.errors import YqNotFoundError
 from localci.utils.crash import CRASH_LOG_NAME
 
 
@@ -323,8 +324,22 @@ class TestConfig:
 
 
 # ---------------------------------------------------------------------------
-# Catch-all exception handler (w4_issue_01)
+# Catch-all exception handler
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def isolated_localci_home(monkeypatch, tmp_path):
+    """Redirect ``localci_home()`` to a temp dir (Unix and Windows)."""
+    home = tmp_path / ".localci"
+    home.mkdir(parents=True, exist_ok=True)
+
+    def _home():
+        return home
+
+    monkeypatch.setattr("localci.utils.paths.localci_home", _home)
+    monkeypatch.setattr("localci.utils.crash.localci_home", _home)
+    return home
 
 
 class TestCatchAllHandler:
@@ -337,21 +352,18 @@ class TestCatchAllHandler:
         return wf
 
     @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
-    def test_unhandled_exception_friendly_output(self, mock_analyze, tmp_path):
+    def test_unhandled_exception_friendly_output(
+        self, mock_analyze, tmp_path, isolated_localci_home
+    ):
         mock_analyze.side_effect = RuntimeError("test boom")
         wf = self._workflow_file(tmp_path)
-        result = runner.invoke(
-            cli,
-            ["analyze", str(wf)],
-            env={"HOME": str(tmp_path)},
-        )
+        result = runner.invoke(cli, ["analyze", str(wf)])
         assert result.exit_code == 2
         assert "Traceback" not in result.output
         assert "unexpected internal error" in result.output.lower()
         assert "RuntimeError" in result.output
         assert "test boom" in result.output
         assert "bug report" in result.output.lower()
-        # Check for crash log path, resilient to text wrapping
         output_no_newlines = result.output.replace("\n", " ")
         assert (
             CRASH_LOG_NAME in output_no_newlines
@@ -359,38 +371,99 @@ class TestCatchAllHandler:
         )
 
     @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
-    def test_unhandled_exception_writes_crash_log(self, mock_analyze, tmp_path):
+    def test_unhandled_exception_writes_crash_log(
+        self, mock_analyze, tmp_path, isolated_localci_home
+    ):
         mock_analyze.side_effect = RuntimeError("test boom")
         wf = self._workflow_file(tmp_path)
-        runner.invoke(
-            cli,
-            ["analyze", str(wf)],
-            env={"HOME": str(tmp_path)},
-        )
-        log_path = tmp_path / ".localci" / CRASH_LOG_NAME
+        runner.invoke(cli, ["analyze", str(wf)])
+        log_path = isolated_localci_home / CRASH_LOG_NAME
         assert log_path.is_file()
         content = log_path.read_text(encoding="utf-8")
         assert "RuntimeError" in content
         assert "test boom" in content
         assert "traceback:" in content.lower()
         assert "localci_version:" in content
+        assert "python_version:" in content
+        assert "platform:" in content
+        assert content.split("python_version:", 1)[1].split("\n", 1)[0].strip()
+        assert content.split("platform:", 1)[1].split("\n", 1)[0].strip()
 
     @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
-    def test_debug_flag_reraises_exception(self, mock_analyze, tmp_path):
+    def test_debug_flag_reraises_exception(
+        self, mock_analyze, tmp_path, isolated_localci_home
+    ):
         mock_analyze.side_effect = RuntimeError("test boom")
         wf = self._workflow_file(tmp_path)
         with pytest.raises(RuntimeError, match="test boom"):
             runner.invoke(
                 cli,
                 ["--debug", "analyze", str(wf)],
-                env={"HOME": str(tmp_path)},
                 catch_exceptions=False,
             )
+
+    @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
+    def test_leaked_localci_error_exit_one_no_crash_log(
+        self, mock_analyze, tmp_path, isolated_localci_home
+    ):
+        mock_analyze.side_effect = YqNotFoundError()
+        wf = self._workflow_file(tmp_path)
+        result = runner.invoke(cli, ["analyze", str(wf)])
+        assert result.exit_code == 1
+        assert "unexpected internal error" not in result.output.lower()
+        assert "mikefarah/yq" in result.output.lower()
+        assert not (isolated_localci_home / CRASH_LOG_NAME).exists()
+
+    @patch("localci.cli.run.JobExecutor.check_act")
+    def test_run_unhandled_exception_uses_catch_all(
+        self, mock_check_act, isolated_localci_home, tmp_path
+    ):
+        mock_check_act.side_effect = RuntimeError("act subprocess failed")
+        if not Path(SAMPLE_WORKFLOW).exists():
+            pytest.skip("sample_workflow.yml not found")
+        logs_dir = tmp_path / "logs"
+        cache_dir = tmp_path / "cache"
+        images_registry = tmp_path / "images"
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text(
+            "logging:\n"
+            f"  directory: {logs_dir.as_posix()}\n"
+            "cache:\n"
+            f"  directory: {cache_dir.as_posix()}\n"
+            "  boost:\n"
+            "    enabled: false\n"
+            "images:\n"
+            f"  registry: {images_registry.as_posix()}\n"
+        )
+        result = runner.invoke(
+            cli,
+            ["-c", str(cfg_file), "run", "--workflow", SAMPLE_WORKFLOW],
+        )
+        assert result.exit_code == 2
+        assert "unexpected internal error" in result.output.lower()
+        assert "act subprocess failed" in result.output
+        mock_check_act.assert_called_once()
+        assert (isolated_localci_home / CRASH_LOG_NAME).is_file()
 
     def test_config_error_exit_code_unchanged(self, tmp_path):
         result = runner.invoke(
             cli,
             ["--config", str(tmp_path / "missing.yml"), "list"],
-            env={"HOME": str(tmp_path)},
         )
         assert result.exit_code == 1
+
+    @patch("localci.utils.crash.crash_log_path")
+    @patch("localci.cli.analyze.WorkflowAnalyzer.analyze")
+    def test_log_crash_write_failure_still_friendly(
+        self, mock_analyze, mock_crash_log_path, tmp_path, isolated_localci_home
+    ):
+        mock_analyze.side_effect = RuntimeError("test boom")
+        mock_path = MagicMock()
+        mock_path.write_text.side_effect = OSError("disk full")
+        mock_crash_log_path.return_value = mock_path
+        wf = self._workflow_file(tmp_path)
+        result = runner.invoke(cli, ["analyze", str(wf)])
+        assert result.exit_code == 2
+        assert "unexpected internal error" in result.output.lower()
+        assert "stderr" in result.output.lower()
+        assert not (isolated_localci_home / CRASH_LOG_NAME).exists()

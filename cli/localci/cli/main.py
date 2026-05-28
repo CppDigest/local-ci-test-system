@@ -19,8 +19,9 @@ from localci.errors import (
     ConfigFileNotFoundError,
     ConfigIOError,
     ConfigValidationError,
+    LocalCIError,
 )
-from localci.utils.crash import CRASH_LOG_NAME, log_crash
+from localci.utils.crash import crash_log_display_path, log_crash
 from localci.utils.output import configure_console, print_error
 
 # ---------------------------------------------------------------------------
@@ -36,31 +37,41 @@ class CatchAllGroup(click.Group):
             return super().invoke(ctx)
         except (click.exceptions.Exit, click.ClickException):
             raise
+        except LocalCIError as exc:
+            if _is_debug(ctx):
+                raise
+            print_error(str(exc))
+            ctx.exit(1)
         except Exception as exc:
             if _is_debug(ctx):
                 raise
-            log_crash(exc)
-            _print_unhandled_error(exc)
+            log_path = log_crash(exc)
+            _print_unhandled_error(exc, log_path is not None)
             ctx.exit(2)
 
 
 def _is_debug(ctx: click.Context) -> bool:
     """Return True when ``--debug`` was passed on the CLI."""
     obj = ctx.obj
-    if obj is not None and obj.get("debug"):
-        return True
-    return bool(ctx.params.get("debug"))
+    return bool(obj is not None and obj.get("debug"))
 
 
-def _print_unhandled_error(exc: BaseException) -> None:
+def _print_unhandled_error(exc: BaseException, crash_log_written: bool) -> None:
     """Print a user-friendly message for an unhandled internal error."""
-    # Stable short path for display (avoids terminal wrap on long temp dirs in CI).
-    display_path = f"~/.localci/{CRASH_LOG_NAME}"
+    if crash_log_written:
+        attach_hint = (
+            f"Please file a bug report and attach {crash_log_display_path()} "
+            "(contains the full traceback)."
+        )
+    else:
+        attach_hint = (
+            "Please file a bug report; the full traceback was printed to stderr "
+            "(crash log could not be written)."
+        )
     messages = [
         "An unexpected internal error occurred.",
         f"{type(exc).__name__}: {exc}",
-        f"Please file a bug report and attach {display_path} "
-        "(contains the full traceback).",
+        attach_hint,
     ]
     try:
         for msg in messages:
@@ -87,7 +98,7 @@ def _print_unhandled_error(exc: BaseException) -> None:
     default=None,
     help="Path to config file (.localci.yml).",
 )
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose/debug output.")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging.")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress non-essential output.")
 @click.option("--no-color", is_flag=True, help="Disable coloured output.")
 @click.option(
