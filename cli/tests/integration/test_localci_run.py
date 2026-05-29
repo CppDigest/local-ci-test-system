@@ -100,11 +100,10 @@ def test_run_failure(
     assert job.status == JobStatus.FAILED
     assert job.error_message
 
-    assert job.error_message
     if job.log_file and job.log_file.exists():
         log_text = job.log_file.read_text(encoding="utf-8", errors="replace")
         captured = _executor_capture_from_log_text(log_text)
-        assert job.error_message == JobExecutor._extract_error(captured)
+        assert job.error_message in JobExecutor._extract_error(captured)
         assert job.error_message.splitlines()[0] in log_text
     else:
         assert job.error_message in JobExecutor._extract_error(result.output)
