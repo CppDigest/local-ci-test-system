@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 
 from localci.cli.main import cli
-from localci.core.executor import JobStatus
+from localci.core.executor import JobExecutor, JobStatus
 from localci.core.results import ExecutionSummary
 
 from .conftest import INTEGRATION_TIMEOUT
@@ -65,15 +65,28 @@ def test_run_failure(
     integration_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    project, _logs_dir = integration_project
+    project, logs_dir = integration_project
     monkeypatch.chdir(project)
     result = _run_localci(project, ".github/workflows/test-fail.yml")
 
     assert result.exit_code == 1, result.output
     assert "Traceback" not in result.output
 
-    lower = result.output.lower()
-    assert any(kw in lower for kw in ("failed", "error", "exit"))
+    last_run = logs_dir / "last-run.json"
+    assert last_run.exists(), "expected last-run.json after failed run"
+
+    summary = ExecutionSummary.load(last_run)
+    assert summary.total == 1
+    job = summary.results[0]
+    assert job.status == JobStatus.FAILED
+    assert job.error_message
+
+    if job.log_file and job.log_file.exists():
+        captured = job.log_file.read_text(encoding="utf-8", errors="replace")
+    else:
+        captured = result.output
+
+    assert job.error_message == JobExecutor._extract_error(captured)
 
 
 def test_run_invalid_workflow(

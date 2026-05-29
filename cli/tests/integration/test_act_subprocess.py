@@ -50,10 +50,8 @@ def _build_and_run(
 def test_successful_job_execution(
     integration_project: tuple[Path, Path],
     act_runner_image: str,
-    tmp_path: Path,
 ) -> None:
-    project, _ = integration_project
-    logs_dir = tmp_path / "logs"
+    project, logs_dir = integration_project
     result, _ = _build_and_run("test.yml", logs_dir, act_runner_image, project)
 
     assert result.status == JobStatus.PASSED
@@ -66,10 +64,8 @@ def test_successful_job_execution(
 def test_failing_job_extract_error(
     integration_project: tuple[Path, Path],
     act_runner_image: str,
-    tmp_path: Path,
 ) -> None:
-    project, _ = integration_project
-    logs_dir = tmp_path / "logs"
+    project, logs_dir = integration_project
     result, _ = _build_and_run(
         "test-fail.yml", logs_dir, act_runner_image, project
     )

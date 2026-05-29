@@ -20,6 +20,7 @@ ACT_RUNNER_IMAGE = "catthehacker/ubuntu:act-24.04"
 INTEGRATION_JOB_ID = "test"
 INTEGRATION_TIMEOUT = 180
 DOCKER_PULL_TIMEOUT = 600
+DOCKER_TAG_TIMEOUT = 60
 
 
 def _act_available() -> bool:
@@ -46,12 +47,17 @@ def require_act_and_docker() -> None:
 @pytest.fixture(scope="session")
 def act_runner_image(require_act_and_docker: None) -> str:
     """Pull the act runner image used for ubuntu-latest jobs."""
-    pull = subprocess.run(
-        ["docker", "pull", ACT_RUNNER_IMAGE],
-        capture_output=True,
-        text=True,
-        timeout=DOCKER_PULL_TIMEOUT,
-    )
+    try:
+        pull = subprocess.run(
+            ["docker", "pull", ACT_RUNNER_IMAGE],
+            capture_output=True,
+            text=True,
+            timeout=DOCKER_PULL_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.skip(
+            f"timed out pulling {ACT_RUNNER_IMAGE} after {DOCKER_PULL_TIMEOUT}s"
+        )
     if pull.returncode != 0:
         pytest.skip(
             f"could not pull {ACT_RUNNER_IMAGE}: "
@@ -65,17 +71,24 @@ def capy_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
     """Tag the act runner image as the derived capy name for localci run."""
     from localci.core.workflow import WorkflowAnalyzer
 
+    # Derive tag from test.yml; test-fail.yml uses the same matrix.include shape today.
+    # If failure fixture matrix diverges, derive from that workflow (or both) instead.
     workflow_path = FIXTURE_PROJECT / ".github/workflows/test.yml"
     entry = WorkflowAnalyzer().analyze(workflow_path).jobs[INTEGRATION_JOB_ID].matrix[0]
     tag = derive_image_tag(entry)
     assert tag is not None
 
-    tag_result = subprocess.run(
-        ["docker", "tag", act_runner_image, tag],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    try:
+        tag_result = subprocess.run(
+            ["docker", "tag", act_runner_image, tag],
+            capture_output=True,
+            text=True,
+            timeout=DOCKER_TAG_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.skip(
+            f"timed out tagging {act_runner_image} as {tag} after {DOCKER_TAG_TIMEOUT}s"
+        )
     if tag_result.returncode != 0:
         pytest.skip(
             f"could not tag {act_runner_image} as {tag}: "

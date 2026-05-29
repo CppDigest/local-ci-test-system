@@ -105,13 +105,15 @@ cli/
 # Editable install with dev dependencies
 pip install -e ".[dev]"
 
-# Run unit tests (default; integration tests are excluded)
+# Run unit tests (default). Integration tests are excluded via norecursedirs
+# (pytest does not enter tests/integration/). Use -m "not integration" for
+# coverage or if integration tests move outside that directory name.
 pytest
 
-# Run unit tests with coverage
+# Run unit tests with coverage (CI unit job uses this marker)
 pytest --cov=localci -m "not integration"
 
-# Integration tests (requires act + Docker)
+# Integration tests (requires act + Docker; path + marker required)
 pytest tests/integration -m integration
 ```
 

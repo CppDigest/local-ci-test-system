@@ -70,8 +70,5 @@ jobs:
           sudo tar xzf /tmp/act.tar.gz -C /usr/local/bin act
           act --version
 
-      - name: Pull act runner image
-        run: docker pull catthehacker/ubuntu:act-24.04
-
       - name: Run integration tests
         run: pytest tests/integration -m integration -v --tb=short
