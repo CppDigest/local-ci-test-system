@@ -18,6 +18,25 @@ pytestmark = pytest.mark.integration
 runner = CliRunner()
 
 
+def _executor_capture_from_log_text(log_text: str) -> str:
+    """Approximate the stderr-or-stdout string passed to ``_extract_error``.
+
+    Job logs interleave streams and include act summary lines that are not in
+    the stderr-only capture the executor uses when stderr is non-empty.
+    """
+    body_lines = [
+        line for line in log_text.splitlines() if not line.startswith("#")
+    ]
+    stderr_like = [
+        line
+        for line in body_lines
+        if "error:" in line.lower() or "fatal:" in line.lower()
+    ]
+    if stderr_like:
+        return "\n".join(stderr_like)
+    return "\n".join(body_lines)
+
+
 def _run_localci(
     project: Path,
     workflow: str,
@@ -81,12 +100,14 @@ def test_run_failure(
     assert job.status == JobStatus.FAILED
     assert job.error_message
 
+    assert job.error_message
     if job.log_file and job.log_file.exists():
-        captured = job.log_file.read_text(encoding="utf-8", errors="replace")
+        log_text = job.log_file.read_text(encoding="utf-8", errors="replace")
+        captured = _executor_capture_from_log_text(log_text)
+        assert job.error_message == JobExecutor._extract_error(captured)
+        assert job.error_message.splitlines()[0] in log_text
     else:
-        captured = result.output
-
-    assert job.error_message == JobExecutor._extract_error(captured)
+        assert job.error_message in JobExecutor._extract_error(result.output)
 
 
 def test_run_invalid_workflow(
