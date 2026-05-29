@@ -1,0 +1,26 @@
+version: 1
+workflow: .github/workflows/test.yml
+event: push
+
+parallel:
+  max_jobs: 1
+
+platforms:
+  linux: true
+  windows: false
+  macos: false
+
+images:
+  auto_build: false
+
+cache:
+  enabled: false
+
+logging:
+  level: warning
+  directory: logs
+
+execution:
+  timeout: 120
+  keep_containers: false
+  stop_on_first_failure: false

@@ -31,3 +31,7 @@ packages = ["localci"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"
+markers = [
+    "integration: requires act and Docker; runs real subprocesses",
+]
+norecursedirs = ["integration"]
