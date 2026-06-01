@@ -609,6 +609,14 @@ class TestJobExecutor:
         assert "line 2" in extracted
         assert "line 3" in extracted
 
+    @patch("shutil.which")
+    def test_extract_error_http_401(self, mock_which):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        output = "fetching action\nHTTP 401: Bad credentials\nend"
+        extracted = executor._extract_error(output)
+        assert "401" in extracted
+
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")
@@ -674,6 +682,8 @@ class TestActCommandBuilder:
         assert cmd.env["BOOST_ROOT"] == "/opt/boost"
 
     def test_default_secrets(self, tmp_path):
+        from localci.core.github_token import SENTINEL_GITHUB_TOKEN
+
         wf = tmp_path / "ci.yml"
         wf.write_text("name: CI")
 
@@ -681,7 +691,7 @@ class TestActCommandBuilder:
         entry = _make_entry()
         cmd = builder.build(entry)
 
-        assert "GITHUB_TOKEN" in cmd.secrets
+        assert cmd.secrets["GITHUB_TOKEN"] == SENTINEL_GITHUB_TOKEN
 
     def test_custom_default_secrets(self, tmp_path):
         wf = tmp_path / "ci.yml"

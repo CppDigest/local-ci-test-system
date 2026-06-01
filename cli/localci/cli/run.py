@@ -29,6 +29,11 @@ from localci.core.queue import PriorityConfig
 from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform, WorkflowAnalyzer
+from localci.core.github_token import (
+    format_sentinel_github_token_warning,
+    is_sentinel_github_token,
+    resolve_github_token,
+)
 from localci.core.boost_cache import ensure_boost_cache
 from localci.core.ccache_stats import get_ccache_stats
 from localci.core.config import resolve_cache_paths
@@ -156,7 +161,9 @@ def run(
     workflow_path = Path(workflow) if workflow else cfg.workflow
     project_dir = Path(".").resolve()
 
-    gh_token = github_token or os.environ.get("GITHUB_TOKEN") or "local-ci-token"
+    gh_token = resolve_github_token(github_token)
+    if is_sentinel_github_token(gh_token):
+        print_warning(format_sentinel_github_token_warning())
 
     # ── 1. Parse the workflow ──────────────────────────────────────
     try:

@@ -23,6 +23,22 @@ from localci.errors import ActNotFoundError, DockerNotAvailableError
 
 logger = logging.getLogger(__name__)
 
+# Substrings (matched case-insensitively) for summarizing failed job output.
+_ERROR_EXTRACT_KEYWORDS = (
+    "error:",
+    "fatal:",
+    "failed",
+    "error[",
+    "undefined reference",
+    "no such file",
+    "cannot find",
+    "compilation failed",
+    "401",
+    "unauthorized",
+    "forbidden",
+    "rate limit",
+)
+
 
 # =====================================================================
 # Enums
@@ -629,19 +645,7 @@ class JobExecutor:
         error_lines: list[str] = []
         for line in lines:
             lower = line.lower()
-            if any(
-                kw in lower
-                for kw in (
-                    "error:",
-                    "fatal:",
-                    "failed",
-                    "error[",
-                    "undefined reference",
-                    "no such file",
-                    "cannot find",
-                    "compilation failed",
-                )
-            ):
+            if any(kw in lower for kw in _ERROR_EXTRACT_KEYWORDS):
                 error_lines.append(line.strip())
 
         if error_lines:
