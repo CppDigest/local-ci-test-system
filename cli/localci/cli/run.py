@@ -29,11 +29,7 @@ from localci.core.queue import PriorityConfig
 from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform, WorkflowAnalyzer
-from localci.core.github_token import (
-    format_sentinel_github_token_warning,
-    is_sentinel_github_token,
-    resolve_github_token,
-)
+from localci.core.github_token import resolve_github_token, warn_sentinel_github_token
 from localci.core.boost_cache import ensure_boost_cache
 from localci.core.ccache_stats import get_ccache_stats
 from localci.core.config import resolve_cache_paths
@@ -162,8 +158,6 @@ def run(
     project_dir = Path(".").resolve()
 
     gh_token = resolve_github_token(github_token)
-    if is_sentinel_github_token(gh_token):
-        print_warning(format_sentinel_github_token_warning())
 
     # ── 1. Parse the workflow ──────────────────────────────────────
     try:
@@ -278,6 +272,7 @@ def run(
 
     # ── 4. Dry-run mode ───────────────────────────────────────────
     if dry_run:
+        warn_sentinel_github_token(gh_token)
         _print_execution_plan(queue, workflow_path, effective_timeout)
         return
 
@@ -309,6 +304,7 @@ def run(
     orch_config.max_parallel = effective_parallel
     orch_config.job_timeout = effective_timeout
     orch_config.keep_containers = effective_keep_containers
+    warn_sentinel_github_token(gh_token)
     orch_config.default_secrets = {"GITHUB_TOKEN": gh_token}
     # Match feature/cache-main-install behavior: noninteractive apt so "Install packages" never hangs
     orch_config.default_env = {"DEBIAN_FRONTEND": "noninteractive"}

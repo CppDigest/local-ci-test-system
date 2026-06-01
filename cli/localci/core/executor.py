@@ -24,6 +24,12 @@ from localci.errors import ActNotFoundError, DockerNotAvailableError
 logger = logging.getLogger(__name__)
 
 # Substrings (matched case-insensitively) for summarizing failed job output.
+_AUTH_ERROR_EXTRACT_KEYWORDS = (
+    "401",
+    "unauthorized",
+    "forbidden",
+    "rate limit",
+)
 _ERROR_EXTRACT_KEYWORDS = (
     "error:",
     "fatal:",
@@ -33,10 +39,7 @@ _ERROR_EXTRACT_KEYWORDS = (
     "no such file",
     "cannot find",
     "compilation failed",
-    "401",
-    "unauthorized",
-    "forbidden",
-    "rate limit",
+    *_AUTH_ERROR_EXTRACT_KEYWORDS,
 )
 
 

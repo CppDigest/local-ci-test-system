@@ -1,8 +1,15 @@
-"""GitHub token resolution for act and workflow action downloads."""
+"""GitHub token resolution for act and workflow action downloads.
+
+Part of the token slice of the Silent Failure Chain (T9 defaults + T10 error
+extraction): missing tokens previously produced opaque act 401s with no
+upfront warning.
+"""
 
 from __future__ import annotations
 
 import os
+
+from localci.utils.output import print_warning
 
 SENTINEL_GITHUB_TOKEN = "local-ci-token"
 
@@ -31,3 +38,9 @@ def format_sentinel_github_token_warning() -> str:
         "localci run --github-token ghp_... , "
         "or use --offline if actions are already cached."
     )
+
+
+def warn_sentinel_github_token(token: str) -> None:
+    """Emit a Rich console warning when *token* is :data:`SENTINEL_GITHUB_TOKEN`."""
+    if is_sentinel_github_token(token):
+        print_warning(format_sentinel_github_token_warning())

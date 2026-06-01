@@ -15,7 +15,9 @@ from localci.core.github_token import (
     format_sentinel_github_token_warning,
     is_sentinel_github_token,
     resolve_github_token,
+    warn_sentinel_github_token,
 )
+from localci.core.executor import _AUTH_ERROR_EXTRACT_KEYWORDS
 
 runner = CliRunner()
 SAMPLE_WORKFLOW = str(Path(__file__).parent / "fixtures" / "sample_workflow.yml")
@@ -44,6 +46,25 @@ class TestResolveGithubToken:
         assert "--github-token" in msg
         assert "--offline" in msg
         assert "401" in msg
+
+    def test_warn_sentinel_emits_rich_warning(self, capsys: pytest.CaptureFixture[str]) -> None:
+        warn_sentinel_github_token(SENTINEL_GITHUB_TOKEN)
+        out = capsys.readouterr().out
+        assert "No GitHub token provided" in out
+
+    def test_warn_sentinel_skips_real_token(self, capsys: pytest.CaptureFixture[str]) -> None:
+        warn_sentinel_github_token("ghp_real")
+        assert "No GitHub token provided" not in capsys.readouterr().out
+
+
+class TestAuthErrorExtractKeywords:
+    def test_auth_keywords_registered(self) -> None:
+        assert _AUTH_ERROR_EXTRACT_KEYWORDS == (
+            "401",
+            "unauthorized",
+            "forbidden",
+            "rate limit",
+        )
 
 
 class TestExtractErrorAuthKeywords:
