@@ -7,11 +7,11 @@ Execute selected jobs locally via the parallel execution manager
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 
 import click
-import re
 
 from localci.core.executor import (
     ActNotFoundError,
@@ -29,6 +29,7 @@ from localci.core.queue import PriorityConfig
 from localci.core.queue_builder import QueueBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform, WorkflowAnalyzer
+from localci.core.github_token import resolve_github_token, warn_sentinel_github_token
 from localci.core.boost_cache import ensure_boost_cache
 from localci.core.ccache_stats import get_ccache_stats
 from localci.core.config import resolve_cache_paths
@@ -156,7 +157,9 @@ def run(
     workflow_path = Path(workflow) if workflow else cfg.workflow
     project_dir = Path(".").resolve()
 
-    gh_token = github_token or os.environ.get("GITHUB_TOKEN") or "local-ci-token"
+    gh_token = resolve_github_token(github_token)
+    if not offline:
+        warn_sentinel_github_token(gh_token)
 
     # ── 1. Parse the workflow ──────────────────────────────────────
     try:

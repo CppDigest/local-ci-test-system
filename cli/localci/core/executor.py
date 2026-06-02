@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,28 @@ from typing import IO, Callable, Optional
 from localci.errors import ActNotFoundError, DockerNotAvailableError
 
 logger = logging.getLogger(__name__)
+
+# Substrings (matched case-insensitively) for summarizing failed job output.
+_ERROR_EXTRACT_KEYWORDS = (
+    "error:",
+    "fatal:",
+    "failed",
+    "error[",
+    "undefined reference",
+    "no such file",
+    "cannot find",
+    "compilation failed",
+)
+
+# Public for tests: substring signals for auth/API failures in act output.
+# HTTP 4xx status codes use _HTTP_STATUS_PATTERN (word-boundary) to avoid
+# false positives such as "4010" or "port 40100".
+AUTH_ERROR_EXTRACT_KEYWORDS = (
+    "unauthorized",
+    "forbidden",
+    "rate limit",
+)
+_HTTP_STATUS_PATTERN = re.compile(r"\b4\d{2}\b")
 
 
 # =====================================================================
@@ -622,26 +645,23 @@ class JobExecutor:
         return self.logs_dir / filename
 
     @staticmethod
+    def _line_indicates_error(line: str) -> bool:
+        """Return True if *line* looks like a failed-job error summary."""
+        lower = line.lower()
+        if any(kw in lower for kw in _ERROR_EXTRACT_KEYWORDS):
+            return True
+        if any(kw in lower for kw in AUTH_ERROR_EXTRACT_KEYWORDS):
+            return True
+        return _HTTP_STATUS_PATTERN.search(line) is not None
+
+    @staticmethod
     def _extract_error(output: str, max_lines: int = 10) -> str:
         """Extract error summary from output."""
         lines = output.strip().split("\n")
 
         error_lines: list[str] = []
         for line in lines:
-            lower = line.lower()
-            if any(
-                kw in lower
-                for kw in (
-                    "error:",
-                    "fatal:",
-                    "failed",
-                    "error[",
-                    "undefined reference",
-                    "no such file",
-                    "cannot find",
-                    "compilation failed",
-                )
-            ):
+            if JobExecutor._line_indicates_error(line):
                 error_lines.append(line.strip())
 
         if error_lines:

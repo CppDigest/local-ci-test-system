@@ -455,16 +455,21 @@ class TestJobResult:
 class TestJobExecutor:
     """Test executor with mocked subprocess."""
 
+    @pytest.fixture(autouse=True)
+    def _logs_dir(self, tmp_path: Path) -> None:
+        self.logs_dir = tmp_path / "logs"
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+
     @patch("shutil.which")
     def test_has_act_true(self, mock_which):
         mock_which.return_value = "/usr/bin/act"
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         assert executor.has_act is True
 
     @patch("shutil.which")
     def test_has_act_false(self, mock_which):
         mock_which.return_value = None
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         assert executor.has_act is False
 
     @patch("sys.platform", "win32")
@@ -479,7 +484,7 @@ class TestJobExecutor:
             return None
         
         mock_which.side_effect = which_side_effect
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         assert executor.has_act is True
         assert executor._act_path == "C:\\ProgramData\\chocolatey\\bin\\act-cli.exe"
 
@@ -490,14 +495,14 @@ class TestJobExecutor:
         mock_run.return_value = MagicMock(
             returncode=0, stdout="act version 0.2.68"
         )
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         version = executor.check_act()
         assert "0.2.68" in version
 
     @patch("shutil.which")
     def test_check_act_not_installed(self, mock_which):
         mock_which.return_value = None
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         with pytest.raises(ActNotFoundError, match="act is not installed"):
             executor.check_act()
 
@@ -506,7 +511,7 @@ class TestJobExecutor:
     def test_check_docker_success(self, mock_which, mock_run):
         mock_which.side_effect = lambda name: f"/usr/bin/{name}"
         mock_run.return_value = MagicMock(returncode=0)
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         # Should not raise
         executor.check_docker()
 
@@ -515,7 +520,7 @@ class TestJobExecutor:
         mock_which.side_effect = (
             lambda name: "/usr/bin/act" if name == "act" else None
         )
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         with pytest.raises(
             DockerNotAvailableError, match="not installed"
         ):
@@ -526,14 +531,14 @@ class TestJobExecutor:
     def test_check_docker_not_running(self, mock_which, mock_run):
         mock_which.side_effect = lambda name: f"/usr/bin/{name}"
         mock_run.return_value = MagicMock(returncode=1)
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         with pytest.raises(DockerNotAvailableError, match="not running"):
             executor.check_docker()
 
     @patch("shutil.which")
     def test_run_dryrun(self, mock_which):
         mock_which.side_effect = lambda name: f"/usr/bin/{name}"
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
 
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
@@ -555,7 +560,7 @@ class TestJobExecutor:
     @patch("shutil.which")
     def test_run_preflight_act_fails(self, mock_which):
         mock_which.return_value = None
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
 
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
@@ -570,7 +575,7 @@ class TestJobExecutor:
         mock_which.side_effect = (
             lambda name: "/usr/bin/act" if name == "act" else None
         )
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
 
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
@@ -588,7 +593,7 @@ class TestJobExecutor:
     @patch("shutil.which")
     def test_extract_error_finds_keywords(self, mock_which):
         mock_which.return_value = "/usr/bin/act"
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         output = textwrap.dedent("""\
             Step 1: setup
             Step 2: build
@@ -603,11 +608,61 @@ class TestJobExecutor:
     @patch("shutil.which")
     def test_extract_error_fallback(self, mock_which):
         mock_which.return_value = "/usr/bin/act"
-        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        executor = JobExecutor(logs_dir=self.logs_dir)
         output = "line 1\nline 2\nline 3"
         extracted = executor._extract_error(output, max_lines=2)
         assert "line 2" in extracted
         assert "line 3" in extracted
+
+    @patch("shutil.which")
+    def test_extract_error_http_401(self, mock_which):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        # Auth line not in last two lines so max_lines=2 fallback cannot pass alone.
+        output = (
+            "setup: resolving action\n"
+            "HTTP 401: unauthorized - Bad credentials\n"
+            "middle: post-download\n"
+            "all done\n"
+            "finished ok"
+        )
+        extracted = executor._extract_error(output, max_lines=2)
+        assert "401" in extracted
+        assert "unauthorized" in extracted.lower()
+        assert "finished ok" not in extracted
+
+    @patch("shutil.which")
+    def test_extract_error_http_403(self, mock_which):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        output = (
+            "setup: resolving action\n"
+            "received HTTP status: 403 forbidden for this resource\n"
+            "middle: post-download\n"
+            "all done\n"
+            "finished ok"
+        )
+        extracted = executor._extract_error(output, max_lines=2)
+        assert "403" in extracted
+        assert "forbidden" in extracted.lower()
+        assert "finished ok" not in extracted
+
+    @patch("shutil.which")
+    def test_extract_error_ignores_401_false_positive(self, mock_which):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        # 4010 line must not be in the last two lines so max_lines=2 fallback
+        # differs from wrongly treating "401" inside "4010" as an error line.
+        output = (
+            "progress: fetched 4010 bytes from cache\n"
+            "middle: still running\n"
+            "all done\n"
+            "finished ok"
+        )
+        extracted = executor._extract_error(output, max_lines=2)
+        assert "4010" not in extracted
+        assert "all done" in extracted
+        assert "finished ok" in extracted
 
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
@@ -674,6 +729,8 @@ class TestActCommandBuilder:
         assert cmd.env["BOOST_ROOT"] == "/opt/boost"
 
     def test_default_secrets(self, tmp_path):
+        from localci.core.github_token import SENTINEL_GITHUB_TOKEN
+
         wf = tmp_path / "ci.yml"
         wf.write_text("name: CI")
 
@@ -681,7 +738,7 @@ class TestActCommandBuilder:
         entry = _make_entry()
         cmd = builder.build(entry)
 
-        assert "GITHUB_TOKEN" in cmd.secrets
+        assert cmd.secrets["GITHUB_TOKEN"] == SENTINEL_GITHUB_TOKEN
 
     def test_custom_default_secrets(self, tmp_path):
         wf = tmp_path / "ci.yml"

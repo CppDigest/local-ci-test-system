@@ -6,6 +6,8 @@ colour/style toggles (``--no-color``, ``--quiet``) are respected globally.
 
 from __future__ import annotations
 
+import sys
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -28,17 +30,28 @@ LOCALCI_THEME = Theme(
     }
 )
 
-# Module-level console (reconfigured by ``configure_console``).
-console = Console(theme=LOCALCI_THEME)
+# Module-level consoles (reconfigured by ``configure_console``).
+console = Console(theme=LOCALCI_THEME, no_color=False)
+# High-severity messages (e.g. missing GitHub token) bypass ``--quiet``.
+# Bind to sys.stdout so each print uses the current stream (pytest, CliRunner).
+_important_console = Console(
+    theme=LOCALCI_THEME, file=sys.stdout, no_color=False, quiet=False
+)
 
 
 def configure_console(*, no_color: bool = False, quiet: bool = False) -> None:
     """Reconfigure the global *console* based on CLI flags."""
-    global console
+    global console, _important_console
     console = Console(
         theme=LOCALCI_THEME,
         no_color=no_color,
         quiet=quiet,
+    )
+    _important_console = Console(
+        theme=LOCALCI_THEME,
+        file=sys.stdout,
+        no_color=no_color,
+        quiet=False,
     )
 
 
@@ -62,6 +75,11 @@ def print_error(message: str) -> None:
 
 def print_warning(message: str) -> None:
     console.print(f"[warning]![/warning] {message}")
+
+
+def print_important_warning(message: str) -> None:
+    """Print a warning that is still shown when ``--quiet`` is set."""
+    _important_console.print(f"[warning]![/warning] {message}")
 
 
 def print_info(message: str) -> None:
