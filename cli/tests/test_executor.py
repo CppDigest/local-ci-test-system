@@ -618,17 +618,34 @@ class TestJobExecutor:
     def test_extract_error_http_401(self, mock_which):
         mock_which.return_value = "/usr/bin/act"
         executor = JobExecutor(logs_dir=self.logs_dir)
-        output = "fetching action\nHTTP 401: Bad credentials\nend"
-        extracted = executor._extract_error(output)
+        # Auth line not in last two lines so max_lines=2 fallback cannot pass alone.
+        output = (
+            "setup: resolving action\n"
+            "HTTP 401: unauthorized - Bad credentials\n"
+            "middle: post-download\n"
+            "all done\n"
+            "finished ok"
+        )
+        extracted = executor._extract_error(output, max_lines=2)
         assert "401" in extracted
+        assert "unauthorized" in extracted.lower()
+        assert "finished ok" not in extracted
 
     @patch("shutil.which")
     def test_extract_error_http_403(self, mock_which):
         mock_which.return_value = "/usr/bin/act"
         executor = JobExecutor(logs_dir=self.logs_dir)
-        output = "fetching action\nreceived HTTP status: 403\nend"
-        extracted = executor._extract_error(output)
+        output = (
+            "setup: resolving action\n"
+            "received HTTP status: 403 forbidden for this resource\n"
+            "middle: post-download\n"
+            "all done\n"
+            "finished ok"
+        )
+        extracted = executor._extract_error(output, max_lines=2)
         assert "403" in extracted
+        assert "forbidden" in extracted.lower()
+        assert "finished ok" not in extracted
 
     @patch("shutil.which")
     def test_extract_error_ignores_401_false_positive(self, mock_which):
