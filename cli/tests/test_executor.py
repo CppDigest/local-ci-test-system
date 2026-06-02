@@ -617,6 +617,14 @@ class TestJobExecutor:
         extracted = executor._extract_error(output)
         assert "401" in extracted
 
+    @patch("shutil.which")
+    def test_extract_error_http_403(self, mock_which):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        output = "fetching action\nreceived HTTP status: 403\nend"
+        extracted = executor._extract_error(output)
+        assert "403" in extracted
+
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")

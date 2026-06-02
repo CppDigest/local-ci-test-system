@@ -158,6 +158,7 @@ def run(
     project_dir = Path(".").resolve()
 
     gh_token = resolve_github_token(github_token)
+    warn_sentinel_github_token(gh_token)
 
     # ── 1. Parse the workflow ──────────────────────────────────────
     try:
@@ -272,7 +273,6 @@ def run(
 
     # ── 4. Dry-run mode ───────────────────────────────────────────
     if dry_run:
-        warn_sentinel_github_token(gh_token)
         _print_execution_plan(queue, workflow_path, effective_timeout)
         return
 
@@ -304,7 +304,6 @@ def run(
     orch_config.max_parallel = effective_parallel
     orch_config.job_timeout = effective_timeout
     orch_config.keep_containers = effective_keep_containers
-    warn_sentinel_github_token(gh_token)
     orch_config.default_secrets = {"GITHUB_TOKEN": gh_token}
     # Match feature/cache-main-install behavior: noninteractive apt so "Install packages" never hangs
     orch_config.default_env = {"DEBIAN_FRONTEND": "noninteractive"}
