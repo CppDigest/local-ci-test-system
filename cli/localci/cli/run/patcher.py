@@ -1,8 +1,4 @@
-"""``localci run`` command.
-
-Execute selected jobs locally via the parallel execution manager
-(queue + orchestrator) with Docker containers.
-"""
+"""Workflow patcher and dry-run plan output for `localci run`."""
 
 from __future__ import annotations
 
@@ -41,6 +37,7 @@ from localci.utils.output import (
     print_success,
     print_warning,
 )
+
 
 
 @click.command()
