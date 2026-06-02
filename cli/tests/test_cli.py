@@ -410,7 +410,7 @@ class TestCatchAllHandler:
         assert "mikefarah/yq" in result.output.lower()
         assert not (isolated_localci_home / CRASH_LOG_NAME).exists()
 
-    @patch("localci.cli.run.JobExecutor.check_act")
+    @patch("localci.core.executor.JobExecutor.check_act")
     def test_run_unhandled_exception_uses_catch_all(
         self, mock_check_act, isolated_localci_home, tmp_path
     ):
