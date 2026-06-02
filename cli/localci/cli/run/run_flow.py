@@ -315,7 +315,7 @@ def _print_ccache_stats(
 
 
 def _save_execution_results(summary: ExecutionSummary, cfg: LocalCIConfig) -> None:
-    logs_dir = cfg.logging.directory
+    logs_dir = Path(cfg.logging.directory)
     last_run_file = logs_dir / "last-run.json"
     execution_file = logs_dir / f"{summary.execution_id}.json"
     try:
