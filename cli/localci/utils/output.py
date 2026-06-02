@@ -6,6 +6,8 @@ colour/style toggles (``--no-color``, ``--quiet``) are respected globally.
 
 from __future__ import annotations
 
+import sys
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -28,11 +30,13 @@ LOCALCI_THEME = Theme(
     }
 )
 
-# Module-level console (reconfigured by ``configure_console``).
-console = Console(theme=LOCALCI_THEME)
-
+# Module-level consoles (reconfigured by ``configure_console``).
+console = Console(theme=LOCALCI_THEME, no_color=False)
 # High-severity messages (e.g. missing GitHub token) bypass ``--quiet``.
-_important_console = Console(theme=LOCALCI_THEME)
+# Bind to sys.stdout so each print uses the current stream (pytest, CliRunner).
+_important_console = Console(
+    theme=LOCALCI_THEME, file=sys.stdout, no_color=False, quiet=False
+)
 
 
 def configure_console(*, no_color: bool = False, quiet: bool = False) -> None:
@@ -45,6 +49,7 @@ def configure_console(*, no_color: bool = False, quiet: bool = False) -> None:
     )
     _important_console = Console(
         theme=LOCALCI_THEME,
+        file=sys.stdout,
         no_color=no_color,
         quiet=False,
     )

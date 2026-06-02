@@ -7,11 +7,11 @@ Execute selected jobs locally via the parallel execution manager
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 
 import click
-import re
 
 from localci.core.executor import (
     ActNotFoundError,

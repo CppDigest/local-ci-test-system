@@ -1,8 +1,8 @@
 """GitHub token resolution for act and workflow action downloads.
 
-Part of the token slice of the Silent Failure Chain (T9 defaults + T10 error
-extraction): missing tokens previously produced opaque act 401s with no
-upfront warning.
+When no GitHub token is provided, act falls back to a non-functional
+placeholder, which produces opaque HTTP 401 errors during action downloads.
+This module surfaces that condition as an early, visible warning.
 """
 
 from __future__ import annotations

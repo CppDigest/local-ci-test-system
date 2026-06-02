@@ -625,6 +625,15 @@ class TestJobExecutor:
         extracted = executor._extract_error(output)
         assert "403" in extracted
 
+    @patch("shutil.which")
+    def test_extract_error_ignores_401_false_positive(self, mock_which):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
+        output = "progress: fetched 4010 bytes from cache\nall done"
+        extracted = executor._extract_error(output, max_lines=2)
+        assert "4010" in extracted
+        assert "401" not in extracted.split()
+
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")

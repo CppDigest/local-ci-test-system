@@ -176,7 +176,8 @@ class ActCommandBuilder:
             if resolved_cache_paths.b2_source_host is not None:
                 env["LOCALCI_B2_SOURCE_DIR"] = resolved_cache_paths.b2_source_container
 
-        # Secrets
+        # Secrets: copy caller-provided secrets; only fill GITHUB_TOKEN when absent
+        # (setdefault — never override a real token from the orchestrator path).
         secrets = {**self.default_secrets}
         secrets.setdefault("GITHUB_TOKEN", SENTINEL_GITHUB_TOKEN)
 
