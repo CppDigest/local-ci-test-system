@@ -80,7 +80,6 @@ class TestExtractErrorAuthKeywords:
             "403 Forbidden: resource not accessible",
             "received HTTP status: 403",
             "API rate limit exceeded for user",
-            "received HTTP status: 403",
         ],
     )
     def test_extract_error_matches_auth_keywords(self, line: str) -> None:
