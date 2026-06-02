@@ -25,13 +25,6 @@ from localci.errors import ActNotFoundError, DockerNotAvailableError
 logger = logging.getLogger(__name__)
 
 # Substrings (matched case-insensitively) for summarizing failed job output.
-AUTH_ERROR_EXTRACT_KEYWORDS = (
-    "401",
-    "403",
-    "unauthorized",
-    "forbidden",
-    "rate limit",
-)
 _ERROR_EXTRACT_KEYWORDS = (
     "error:",
     "fatal:",
@@ -41,9 +34,7 @@ _ERROR_EXTRACT_KEYWORDS = (
     "no such file",
     "cannot find",
     "compilation failed",
-    *AUTH_ERROR_EXTRACT_KEYWORDS,
 )
-
 
 # Public for tests: substring signals for auth/API failures in act output.
 # HTTP 4xx status codes use _HTTP_STATUS_PATTERN (word-boundary) to avoid
@@ -670,8 +661,7 @@ class JobExecutor:
 
         error_lines: list[str] = []
         for line in lines:
-            lower = line.lower()
-            if any(kw in lower for kw in _ERROR_EXTRACT_KEYWORDS):
+            if JobExecutor._line_indicates_error(line):
                 error_lines.append(line.strip())
 
         if error_lines:

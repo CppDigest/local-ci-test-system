@@ -38,9 +38,6 @@ _important_console = Console(
     theme=LOCALCI_THEME, file=sys.stdout, no_color=False, quiet=False
 )
 
-# High-severity messages (e.g. missing GitHub token) bypass ``--quiet``.
-_important_console = Console(theme=LOCALCI_THEME)
-
 
 def configure_console(*, no_color: bool = False, quiet: bool = False) -> None:
     """Reconfigure the global *console* based on CLI flags."""
