@@ -148,6 +148,25 @@ class TestRunSentinelWarning:
         assert result.exit_code == 0, result.output
         assert "No GitHub token provided" in result.output
 
+    def test_dry_run_no_warning_when_offline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                "--workflow",
+                SAMPLE_WORKFLOW,
+                "--dry-run",
+                "--platform",
+                "linux",
+                "--offline",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert "No GitHub token provided" not in result.output
+
     def test_dry_run_no_warning_with_cli_token(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -158,7 +158,8 @@ def run(
     project_dir = Path(".").resolve()
 
     gh_token = resolve_github_token(github_token)
-    warn_sentinel_github_token(gh_token)
+    if not offline:
+        warn_sentinel_github_token(gh_token)
 
     # ── 1. Parse the workflow ──────────────────────────────────────
     try:
