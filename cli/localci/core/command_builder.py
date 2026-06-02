@@ -16,6 +16,7 @@ from typing import Optional
 
 from localci.core.config import CacheConfig, ResolvedCachePaths
 from localci.core.executor import ActCommand
+from localci.core.github_token import SENTINEL_GITHUB_TOKEN
 from localci.core.workflow import MatrixEntry
 
 logger = logging.getLogger(__name__)
@@ -177,7 +178,7 @@ class ActCommandBuilder:
 
         # Secrets
         secrets = {**self.default_secrets}
-        secrets.setdefault("GITHUB_TOKEN", "local-ci-token")
+        secrets.setdefault("GITHUB_TOKEN", SENTINEL_GITHUB_TOKEN)
 
         # Architecture: request linux/386 only when using a generic image
         # (e.g. ubuntu:24.04). Our capy x86 image is amd64 with multilib, so

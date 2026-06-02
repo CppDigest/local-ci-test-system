@@ -15,12 +15,11 @@ from localci.core.progress import ProgressTracker
 from localci.core.queue import PriorityConfig
 from localci.core.queue_builder import QueueBuilder
 from localci.core.workflow import WorkflowAnalyzer
-from localci.cli.run.patcher import _write_patched_workflow
 
 
 @dataclass
 class RunDependencies:
-    """Injectable collaborators for run orchestration (defaults match production)."""
+    """Injectable collaborators for ``execute_run`` (pass via ``deps=`` in tests)."""
 
     workflow_analyzer: WorkflowAnalyzer
     queue_builder_factory: Callable[..., QueueBuilder]
@@ -36,7 +35,9 @@ class RunDependencies:
 
 
 def build_run_container() -> RunDependencies:
-    """Construct the default production dependency graph."""
+    """Construct the default production dependency graph for ``localci run``."""
+    from localci.cli.run.patcher import _write_patched_workflow
+
     return RunDependencies(
         workflow_analyzer=WorkflowAnalyzer(),
         queue_builder_factory=QueueBuilder,
