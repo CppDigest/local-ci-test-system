@@ -1,23 +1,20 @@
-"""Testable orchestration logic for ``localci run``."""
+"""Testable orchestration logic for ``localci run`` (not ``localci.core.orchestrator``)."""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-
-import click
 
 from localci.cli.run.container import RunDependencies, build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.patcher import _print_execution_plan
 from localci.core.config import LocalCIConfig
 from localci.core.executor import ActNotFoundError, DockerNotAvailableError
+from localci.core.github_token import resolve_github_token, warn_sentinel_github_token
 from localci.core.models import JobEvent, JobEventType
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import MatrixEntry, Platform
 from localci.errors import WorkflowError
 from localci.utils.output import print_error, print_info, print_warning
-
 
 _PLATFORM_MAP = {
     "linux": Platform.LINUX,
@@ -28,12 +25,11 @@ _PLATFORM_MAP = {
 
 def execute_run(
     *,
-    ctx: click.Context,
     cfg: LocalCIConfig,
     options: RunOptions,
     deps: RunDependencies | None = None,
-) -> None:
-    """Run the full ``localci run`` flow (parse, filter, queue, preflight, execute, summarize)."""
+) -> int:
+    """Run the full ``localci run`` flow; return process exit code (0 = success)."""
     container = deps or build_run_container()
 
     effective_timeout = options.timeout or cfg.execution.timeout
@@ -45,21 +41,20 @@ def execute_run(
     )
     workflow_path = Path(options.workflow) if options.workflow else cfg.workflow
     project_dir = Path(".").resolve()
-    gh_token = (
-        options.github_token or os.environ.get("GITHUB_TOKEN") or "local-ci-token"
-    )
+    gh_token = resolve_github_token(options.github_token)
+    if not options.offline:
+        warn_sentinel_github_token(gh_token)
 
     try:
         wf = container.workflow_analyzer.analyze(workflow_path)
     except WorkflowError as exc:
         print_error(str(exc))
-        ctx.exit(1)
-        return
+        return 1
 
     all_pairs = _collect_matrix_pairs(wf)
     if not all_pairs:
         print_warning("No matrix entries found in workflow.")
-        return
+        return 0
 
     if options.rebuild_image:
         print_warning("--rebuild-image is not yet implemented; ignoring.")
@@ -74,7 +69,7 @@ def execute_run(
     )
     if not selected:
         print_warning("No jobs match the given filters.")
-        return
+        return 0
 
     priority_config = container.priority_config_factory(cfg)
     registry_path = project_dir / "image-registry.yml"
@@ -100,12 +95,13 @@ def execute_run(
 
     if options.dry_run:
         _print_execution_plan(queue, workflow_path, effective_timeout)
-        return
+        return 0
 
     logs_dir = Path(cfg.logging.directory)
     executor = container.job_executor_factory(logs_dir)
-    if not _run_preflight(ctx, executor):
-        return
+    preflight_code = _run_preflight(executor)
+    if preflight_code != 0:
+        return preflight_code
 
     if (
         not options.no_cache
@@ -179,8 +175,7 @@ def execute_run(
 
     _save_execution_results(summary, cfg)
 
-    if not summary.all_passed:
-        ctx.exit(1)
+    return 0 if summary.all_passed else 1
 
 
 def _collect_matrix_pairs(wf) -> list[tuple[str, MatrixEntry]]:
@@ -264,23 +259,21 @@ def _resolve_matrix_filters(
     return matrix_include, matrix_exclude
 
 
-def _run_preflight(ctx: click.Context, executor) -> bool:
+def _run_preflight(executor) -> int:
     try:
         act_version = executor.check_act()
         print_info(f"Using {act_version}")
     except ActNotFoundError as exc:
         print_error(str(exc))
-        ctx.exit(1)
-        return False
+        return 1
 
     try:
         executor.check_docker()
     except DockerNotAvailableError as exc:
         print_error(str(exc))
-        ctx.exit(1)
-        return False
+        return 1
 
-    return True
+    return 0
 
 
 def _print_cache_enabled_message(cfg: LocalCIConfig, no_cache: bool) -> None:
