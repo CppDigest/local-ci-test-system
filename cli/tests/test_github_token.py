@@ -16,6 +16,7 @@ from localci.core.github_token import (
     is_sentinel_github_token,
     resolve_github_token,
 )
+
 runner = CliRunner()
 SAMPLE_WORKFLOW = str(Path(__file__).parent / "fixtures" / "sample_workflow.yml")
 
