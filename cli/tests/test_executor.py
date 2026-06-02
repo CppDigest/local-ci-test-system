@@ -629,10 +629,18 @@ class TestJobExecutor:
     def test_extract_error_ignores_401_false_positive(self, mock_which):
         mock_which.return_value = "/usr/bin/act"
         executor = JobExecutor(logs_dir=Path("/tmp/localci-test"))
-        output = "progress: fetched 4010 bytes from cache\nall done"
+        # 4010 line must not be in the last two lines so max_lines=2 fallback
+        # differs from wrongly treating "401" inside "4010" as an error line.
+        output = (
+            "progress: fetched 4010 bytes from cache\n"
+            "middle: still running\n"
+            "all done\n"
+            "finished ok"
+        )
         extracted = executor._extract_error(output, max_lines=2)
-        assert "4010" in extracted
-        assert "401" not in extracted.split()
+        assert "4010" not in extracted
+        assert "all done" in extracted
+        assert "finished ok" in extracted
 
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
