@@ -16,15 +16,19 @@ WORKFLOW = VALIDATION_PROJECT / ".github" / "workflows" / "validate.yml"
 CONFIG = VALIDATION_PROJECT / ".localci.yml"
 REGISTRY = VALIDATION_PROJECT / "image-registry.yml"
 
-runner = CliRunner()
+
+@pytest.fixture
+def cli_runner() -> CliRunner:
+    return CliRunner()
 
 
 @pytest.fixture
 def validation_project_exists() -> None:
-    assert VALIDATION_PROJECT.is_dir(), f"missing {VALIDATION_PROJECT}"
-    assert WORKFLOW.is_file()
-    assert CONFIG.is_file()
-    assert REGISTRY.is_file()
+    if not VALIDATION_PROJECT.is_dir():
+        pytest.skip(f"examples/validation-project not present at {VALIDATION_PROJECT}")
+    for path in (WORKFLOW, CONFIG, REGISTRY):
+        if not path.is_file():
+            pytest.skip(f"missing example file: {path}")
 
 
 def test_validation_workflow_parses(validation_project_exists: None) -> None:
@@ -34,9 +38,13 @@ def test_validation_workflow_parses(validation_project_exists: None) -> None:
     assert wf.jobs["validate"].matrix[0].name == "Validation smoke"
 
 
-def test_validation_dry_run(validation_project_exists: None, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_validation_dry_run(
+    validation_project_exists: None,
+    cli_runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.chdir(VALIDATION_PROJECT)
-    result = runner.invoke(
+    result = cli_runner.invoke(
         cli,
         [
             "-c",

@@ -6,7 +6,7 @@
 images:
   - name: validation-ubuntu-24.04-gcc15
     docker_tag: capy-ubuntu-latest-gcc15:latest
-    file: images/validation-ubuntu-24.04-gcc15.tar
+    # No file/tarball — tag the image manually (see examples/README.md).
     os: ubuntu:24.04
     architecture: x86_64
     compilers: [gcc-15]
