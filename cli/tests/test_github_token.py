@@ -16,6 +16,7 @@ from localci.core.github_token import (
     is_sentinel_github_token,
     resolve_github_token,
 )
+
 runner = CliRunner()
 SAMPLE_WORKFLOW = str(Path(__file__).parent / "fixtures" / "sample_workflow.yml")
 
@@ -59,6 +60,7 @@ class TestResolveGithubToken:
         assert "--github-token" in msg
         assert "--offline" in msg
         assert "401" in msg
+
 
 class TestAuthErrorExtractKeywords:
     def test_auth_keywords_registered(self) -> None:
