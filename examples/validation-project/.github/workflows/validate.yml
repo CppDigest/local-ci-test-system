@@ -5,6 +5,7 @@ on: [push]
 
 jobs:
   validate:
+    runs-on: ${{ matrix.runs-on }}
     strategy:
       matrix:
         include:

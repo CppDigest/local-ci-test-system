@@ -34,8 +34,15 @@ def validation_project_exists() -> None:
 def test_validation_workflow_parses(validation_project_exists: None) -> None:
     wf = WorkflowAnalyzer().analyze(WORKFLOW)
     assert "validate" in wf.jobs
-    assert len(wf.jobs["validate"].matrix) == 1
-    assert wf.jobs["validate"].matrix[0].name == "Validation smoke"
+    job = wf.jobs["validate"]
+    assert len(job.matrix) == 1
+    assert job.matrix[0].name == "Validation smoke"
+    # runs-on must be present at the job level so act actually executes the container
+    raw_workflow = WORKFLOW.read_text()
+    assert "runs-on: ${{ matrix.runs-on }}" in raw_workflow, (
+        "validate job must declare runs-on at the job level; "
+        "without it act skips container execution"
+    )
 
 
 def test_validation_dry_run(

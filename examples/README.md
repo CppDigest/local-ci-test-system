@@ -84,6 +84,13 @@ docker pull catthehacker/ubuntu:act-24.04
 docker tag catthehacker/ubuntu:act-24.04 capy-ubuntu-latest-gcc15:latest
 ```
 
+If `act-24.04` is not yet available locally, `act-latest` is an acceptable substitute:
+
+```bash
+docker pull catthehacker/ubuntu:act-latest
+docker tag catthehacker/ubuntu:act-latest capy-ubuntu-latest-gcc15:latest
+```
+
 This matches how integration tests bootstrap images without building full capy layers.
 
 ### 5. Run the example
