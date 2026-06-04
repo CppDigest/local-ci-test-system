@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -37,9 +38,13 @@ def test_validation_workflow_parses(validation_project_exists: None) -> None:
     job = wf.jobs["validate"]
     assert len(job.matrix) == 1
     assert job.matrix[0].name == "Validation smoke"
-    # runs-on must be present at the job level so act actually executes the container
+    # runs-on must be present at the job level so act actually executes the container;
+    # use a regex so equivalent quoting/spacing variants still pass.
     raw_workflow = WORKFLOW.read_text()
-    assert "runs-on: ${{ matrix.runs-on }}" in raw_workflow, (
+    assert re.search(
+        r"runs-on:\s*['\"]?\$\{\{\s*matrix\.runs-on\s*\}\}['\"]?",
+        raw_workflow,
+    ), (
         "validate job must declare runs-on at the job level; "
         "without it act skips container execution"
     )
