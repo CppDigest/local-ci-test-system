@@ -1,0 +1,21 @@
+# Minimal image registry for the validation example.
+#
+# Local CI matches matrix jobs to registry entries (see repo image-registry.yml
+# for the full schema). This example does not ship Docker tarballs; before
+# `localci run`, tag an act runner image as docker_tag (see examples/README.md).
+images:
+  - name: validation-ubuntu-24.04-gcc15
+    docker_tag: capy-ubuntu-latest-gcc15:latest
+    # No file/tarball — tag the image manually (see examples/README.md).
+    os: ubuntu:24.04
+    architecture: x86_64
+    compilers: [gcc-15]
+    variants: [validation]
+    packages: []
+    boost_preinstalled: false
+    b2_preinstalled: false
+    ccache_enabled: false
+    created: 2026-06-01T00:00:00Z
+    usage_count: 0
+    last_used: null
+    size_mb: null

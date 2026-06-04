@@ -1,0 +1,20 @@
+# Minimal workflow for Local CI installation validation.
+# Single job, single matrix row, one step — finishes in seconds under act.
+name: Local CI Validation
+on: [push]
+
+jobs:
+  validate:
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      matrix:
+        include:
+          - name: "Validation smoke"
+            runs-on: ubuntu-latest
+            compiler: gcc
+            version: "15"
+    steps:
+      - name: Smoke step
+        run: |
+          echo "Local CI validation succeeded"
+          echo "config -> workflow -> act -> results"

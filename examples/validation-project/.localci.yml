@@ -1,0 +1,27 @@
+# Local CI config for the validation example (see examples/README.md).
+version: 1
+workflow: .github/workflows/validate.yml
+event: push
+
+parallel:
+  max_jobs: 1
+
+platforms:
+  linux: true
+  windows: false
+  macos: false
+
+images:
+  auto_build: false
+
+cache:
+  enabled: false
+
+logging:
+  level: info
+  directory: logs
+
+execution:
+  timeout: 300
+  keep_containers: false
+  stop_on_first_failure: true

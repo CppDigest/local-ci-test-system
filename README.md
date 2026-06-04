@@ -53,6 +53,16 @@ cd cli/
 pip install -e ".[dev]"
 ```
 
+## Validate your installation
+
+A minimal runnable sample lives under [`examples/`](examples/README.md). It runs one Linux job end-to-end (config → workflow → act → results) and documents prerequisite checks, including **mikefarah/yq v4+**:
+
+```bash
+cd cli && pip install .
+cd ../examples/validation-project
+# See examples/README.md for docker tag + localci run steps
+```
+
 ## Quick Start
 
 ```bash
@@ -97,6 +107,7 @@ local-ci-test-system/
 ├── cli/                 # localci Python package and CLI
 │   ├── localci/         # Source
 │   └── Usage Guide.md   # Full usage and config reference
+├── examples/            # Installation validation sample (see examples/README.md)
 ├── docs/                # Design and planning
 │   ├── Design Guide.md
 │   └── Preparation and Plan.md   # Issue breakdown and roadmap

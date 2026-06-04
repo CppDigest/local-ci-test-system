@@ -32,6 +32,18 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
+      - name: Install yq
+        env:
+          YQ_VERSION: v4.53.2
+          # From https://github.com/mikefarah/yq/releases/download/v4.53.2/checksums (SHA-256 column)
+          YQ_LINUX_AMD64_SHA256: d56bf5c6819e8e696340c312bd70f849dc1678a7cda9c2ad63eebd906371d56b
+        run: |
+          curl -sSfL -o /tmp/yq_linux_amd64 \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_LINUX_AMD64_SHA256}  /tmp/yq_linux_amd64" | sha256sum --check
+          sudo install -m 755 /tmp/yq_linux_amd64 /usr/local/bin/yq
+          yq --version
+
       - name: Run tests
         run: pytest --cov=localci --cov-report=term-missing -m "not integration"
 

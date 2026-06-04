@@ -1,6 +1,9 @@
 # IDEs
 .idea/
 
+# local dev tools (not committed)
+.tools/
+
 # image 
 *.tar
 images/capy/dist/
