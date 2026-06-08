@@ -203,8 +203,8 @@ def _write_patched_workflow(
                 step_start -= 1
             # Idempotency: skip if already patched
             already_patched = any(
-                "LOCALCI_B2_SOURCE_DIR" in lines[j] and "bootstrap" in lines[j]
-                for j in range(max(0, step_start - 10), step_start)
+                "Skip b2 bootstrap (b2 binary cached)" in lines[j]
+                for j in range(max(0, step_start - 15), step_start)
             )
             if not already_patched:
                 new_step = [

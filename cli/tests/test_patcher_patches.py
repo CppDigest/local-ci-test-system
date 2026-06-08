@@ -115,13 +115,15 @@ class TestContainerImagePatch:
 
 class TestContainerMountPatch:
     @pytest.mark.parametrize(
-        ("fixture_name", "expect_inserted"),
+        ("fixture_name", "has_existing_options"),
         [
-            ("container_mount.yml", False),
-            ("container_mount_no_options.yml", True),
+            ("container_mount.yml", True),
+            ("container_mount_no_options.yml", False),
         ],
     )
-    def test_positive_injects_mount_options(self, patcher_paths, fixture_name, expect_inserted):
+    def test_positive_injects_mount_options(
+        self, patcher_paths, fixture_name, has_existing_options
+    ):
         mounts = "-v /host/boost:/tmp/localci-cache/boost"
         workflow = FIXTURES_DIR / fixture_name
         patched = patcher_paths(
@@ -132,7 +134,8 @@ class TestContainerMountPatch:
         content = _assert_valid_yaml(patched)
 
         assert mounts in content
-        if not expect_inserted:
+        assert "options:" in content
+        if has_existing_options:
             assert "--privileged" in content
 
     def test_negative_skips_without_job_id(self, patcher_paths):
@@ -217,7 +220,7 @@ class TestCapyCopyPatch:
         assert "sha256sum" in content
         assert 'cp -r "$workspace_root"' not in content
 
-    def test_negative_leaves_workflow_without_capy_copy_unchanged(self, patcher_paths):
+    def test_negative_no_cp_rp_injected_when_capy_copy_line_absent(self, patcher_paths):
         workflow = FIXTURES_DIR / "boost_cache.yml"
         patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
@@ -263,12 +266,11 @@ class TestCodecovPatch:
 
     def test_negative_leaves_workflow_without_codecov_unchanged(self, patcher_paths):
         workflow = FIXTURES_DIR / "boost_cache.yml"
-        original = workflow.read_text(encoding="utf-8")
         patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
         assert "codecov.io" not in content
         assert "ACT" not in content
-        assert original.splitlines()[0] in content
+        assert "LOCALCI_B2_SOURCE_DIR" in content
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +305,8 @@ class TestPatcherEdgeCases:
         b2_workflow = FIXTURES_DIR / "b2_workflow.yml"
         first_b2 = patcher_paths(b2_workflow)
         second_b2 = patcher_paths(first_b2, _make_entry())
-        _assert_valid_yaml(second_b2)
+        b2_content = _assert_valid_yaml(second_b2)
+        assert b2_content.count("Skip b2 bootstrap (b2 binary cached)") == 1
 
 
 @pytest.mark.parametrize(
@@ -311,10 +314,17 @@ class TestPatcherEdgeCases:
     [
         ("container_image.yml", {"image_tag": "localci/test:latest"}),
         ("container_mount.yml", {"job_id": "build", "container_mount_options": "-v /cache:/cache"}),
+        (
+            "container_mount_no_options.yml",
+            {"job_id": "build", "container_mount_options": "-v /cache:/cache"},
+        ),
         ("boost_cache.yml", {}),
         ("capy_copy.yml", {}),
         ("b2_workflow.yml", {}),
         ("codecov.yml", {}),
+        ("already_patched.yml", {}),
+        ("empty_matrix.yml", {}),
+        ("no_runs_on.yml", {}),
     ],
 )
 def test_all_fixtures_produce_valid_yaml(patcher_paths, fixture_name, patch_kwargs):
