@@ -179,6 +179,41 @@ class ExecutionConfig(BaseModel):
     stop_on_first_failure: bool = False
 
 
+# Known workflow patch steps (order matches default pipeline sequence).
+PATCH_STEP_NAMES: tuple[str, ...] = (
+    "container_mounts",
+    "b2_source_cache",
+    "restore_capy_timestamps",
+    "capy_copy_preservation",
+    "b2_bootstrap_skip",
+    "image_substitution",
+    "codecov_skip",
+)
+
+
+class PatchesConfig(BaseModel):
+    """Workflow patch pipeline settings (enable/disable individual patch types)."""
+
+    container_mounts: bool = True
+    b2_source_cache: bool = True
+    restore_capy_timestamps: bool = True
+    capy_copy_preservation: bool = True
+    b2_bootstrap_skip: bool = True
+    image_substitution: bool = True
+    codecov_skip: bool = True
+    order: Optional[list[str]] = None
+
+    @field_validator("order")
+    @classmethod
+    def validate_order(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        unknown = set(v) - set(PATCH_STEP_NAMES)
+        if unknown:
+            raise ValueError(f"Unknown patch steps: {sorted(unknown)}")
+        return v
+
+
 # ---------------------------------------------------------------------------
 # Root configuration model
 # ---------------------------------------------------------------------------
@@ -208,6 +243,7 @@ class LocalCIConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    patches: PatchesConfig = Field(default_factory=PatchesConfig)
 
 
 # ---------------------------------------------------------------------------

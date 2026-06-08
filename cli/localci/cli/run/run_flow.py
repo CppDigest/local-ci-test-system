@@ -126,13 +126,20 @@ def execute_run(
     orch_config.offline = options.offline
     orch_config.auto_build = cfg.images.auto_build
 
+    if deps is None:
+        from localci.cli.run.patcher import make_workflow_patcher
+
+        workflow_patcher = make_workflow_patcher(cfg)
+    else:
+        workflow_patcher = container.workflow_patcher
+
     parallel_manager = container.parallel_manager_factory(
         queue=queue,
         workflow_file=workflow_path,
         project_dir=project_dir,
         config=orch_config,
         logs_dir=logs_dir,
-        workflow_patcher=container.workflow_patcher,
+        workflow_patcher=workflow_patcher,
         cache_config=cfg.cache,
         no_cache=options.no_cache,
         cache_dir_override=options.cache_dir,

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
-import re
 import tempfile
 from pathlib import Path
+from typing import Callable
 
+from localci.core.config import LocalCIConfig
+from localci.core.patch_pipeline import PatchContext, PatchPipeline
 from localci.core.workflow import MatrixEntry
 from localci.utils.output import console, print_info, print_key_value
 
@@ -52,28 +54,15 @@ def _write_patched_workflow(
     image_tag: str | None = None,
     job_id: str | None = None,
     container_mount_options: str | None = None,
+    config: LocalCIConfig | None = None,
 ) -> Path:
     """Write a copy of the workflow with optional container and Codecov patches.
 
-    Patches applied (all text-only, no YAML round-trip):
-
-    * **container image** – replaces ``container: ${{ matrix.container }}`` with
-      *image_tag* so act uses the locally-built image instead of the raw base image.
-    * **Patch Boost step** – when LOCALCI_B2_SOURCE_DIR is set, replaces
-      ``cp -rL boost-source boost-root`` with cache-hit/miss logic:
-      cache-hit: boost-root is a symlink to the stable cached tree so b2's
-      bin.v2 artifacts survive across runs (incremental builds);
-      cache-miss: standard cp -rL, then seed the cache from the dereferenced copy.
-    * **b2 bootstrap skip** – injects a step before ``b2-workflow`` that stubs
-      out ``bootstrap.sh`` when the b2 binary is already in the cache
-      (mirrors https://github.com/iTinkerBell/cpp-actions/commit/671009a).
-    * **container options** – injects bind-mount ``-v`` flags into the job's
-      ``container.options`` so the job container gets the cache mounts (act does
-      not forward ``--container-options`` to the job container when the workflow
-      declares ``container:``).
-    * **Codecov** – skips the codecov upload when running under act (codecov.io
-      often returns 403 in local runs).
+    Patches are applied via :class:`~localci.core.patch_pipeline.PatchPipeline`
+    using steps configured in ``.localci.yml`` (``patches:`` section).  All
+    patches are text-only (no YAML round-trip).
     """
+    cfg = config or LocalCIConfig()
     with open(workflow_path, encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -278,8 +267,39 @@ def _write_patched_workflow(
                 act_check = 'if [ -z "${ACT:-}" ] || [ "$ACT" != "true" ]; then '
                 lines[i] = f"{indent}{act_check}{rest}; else echo \"Skipping Codecov upload (running under act).\"; fi\n"
             break
+    ctx = PatchContext(
+        lines=lines,
+        entry=entry,
+        config=cfg,
+        image_tag=image_tag,
+        job_id=job_id,
+        container_mount_options=container_mount_options,
+    )
+    PatchPipeline.from_config(cfg).apply(ctx)
 
     fd, path = tempfile.mkstemp(suffix=".yml", prefix="localci-workflow-")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+        f.writelines(ctx.lines)
     return Path(path)
+
+
+def make_workflow_patcher(config: LocalCIConfig) -> Callable[..., Path]:
+    """Return a workflow patcher callable bound to *config* patch settings."""
+
+    def patcher(
+        workflow_path: Path,
+        entry: MatrixEntry,
+        image_tag: str | None = None,
+        job_id: str | None = None,
+        container_mount_options: str | None = None,
+    ) -> Path:
+        return _write_patched_workflow(
+            workflow_path,
+            entry,
+            image_tag=image_tag,
+            job_id=job_id,
+            container_mount_options=container_mount_options,
+            config=config,
+        )
+
+    return patcher
