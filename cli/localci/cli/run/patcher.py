@@ -203,7 +203,7 @@ def _write_patched_workflow(
                 step_start -= 1
             # Idempotency: skip if already patched
             already_patched = any(
-                "Skip b2 bootstrap (b2 binary cached)" in lines[j]
+                "Skip b2 bootstrap" in lines[j]
                 for j in range(max(0, step_start - 15), step_start)
             )
             if not already_patched:

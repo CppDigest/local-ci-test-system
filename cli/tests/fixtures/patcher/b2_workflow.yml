@@ -3,6 +3,7 @@ on:
   push:
 jobs:
   build:
+    runs-on: ubuntu-latest
     steps:
       - name: B2 Build
         uses: alandefreitas/cpp-actions/b2-workflow@v1.9.0

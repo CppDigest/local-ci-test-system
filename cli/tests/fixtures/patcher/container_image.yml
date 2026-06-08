@@ -12,5 +12,6 @@ jobs:
           - name: "GCC 12: C++20"
             container: "ubuntu:22.04"
             runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - run: echo build
