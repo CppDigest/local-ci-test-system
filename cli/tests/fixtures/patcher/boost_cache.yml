@@ -1,0 +1,9 @@
+name: Boost Cache Patch
+on:
+  push:
+jobs:
+  build:
+    steps:
+      - name: Patch Boost
+        run: |
+          cp -rL boost-source boost-root

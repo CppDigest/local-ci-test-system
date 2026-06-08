@@ -1,0 +1,11 @@
+name: No Runs On
+on:
+  push:
+env:
+  KEEP_ME: unchanged
+jobs:
+  build:
+    steps:
+      - name: Patch Boost
+        run: |
+          cp -rL boost-source boost-root
