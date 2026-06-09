@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from localci.core.config import PATCH_STEP_NAMES, LocalCIConfig
-
-logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from localci.core.workflow import MatrixEntry
@@ -68,8 +65,10 @@ class PatchPipeline:
                 continue
             step_cls = PATCH_STEP_REGISTRY.get(name)
             if step_cls is None:
-                logger.warning("Patch step %r is not registered; skipping", name)
-                continue
+                raise ValueError(
+                    f"Patch step {name!r} is enabled but not registered; "
+                    "check PATCH_STEP_NAMES / PATCH_STEP_REGISTRY alignment"
+                )
             steps.append(step_cls())
         return cls(steps)
 

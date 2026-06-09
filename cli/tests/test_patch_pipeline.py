@@ -166,6 +166,23 @@ def test_patches_config_rejects_empty_order() -> None:
         PatchesConfig(order=[])
 
 
+def test_from_config_raises_when_step_missing_from_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from localci.core.patch_steps import PATCH_STEP_REGISTRY
+
+    incomplete = {
+        name: cls
+        for name, cls in PATCH_STEP_REGISTRY.items()
+        if name != "b2_source_cache"
+    }
+    monkeypatch.setattr(
+        "localci.core.patch_steps.PATCH_STEP_REGISTRY", incomplete
+    )
+    with pytest.raises(ValueError, match="b2_source_cache"):
+        PatchPipeline.from_config(LocalCIConfig())
+
+
 def test_patches_config_rejects_enabled_step_missing_from_order() -> None:
     with pytest.raises(ValueError, match="missing from 'order'"):
         PatchesConfig(
