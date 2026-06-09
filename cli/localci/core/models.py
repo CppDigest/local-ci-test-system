@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from localci.core.workflow import MatrixEntry
@@ -65,11 +65,13 @@ class QueuedJob:
     """A single job (job_id + matrix entry) in the priority queue."""
 
     job_id: str
-    matrix_entry: "MatrixEntry"
+    matrix_entry: MatrixEntry
     priority: int
     dependencies: list[str]  # queue_key of dependent jobs
-    image_tag: Optional[str] = None
-    base_image_tag: Optional[str] = None  # When needs_build, tag of base image to build from
+    image_tag: str | None = None
+    base_image_tag: str | None = (
+        None  # When needs_build, tag of base image to build from
+    )
     needs_build: bool = False
     status: QueuedJobStatus = field(default=QueuedJobStatus.QUEUED)
 
@@ -86,4 +88,4 @@ class JobEvent:
     event_type: JobEventType
     job: QueuedJob
     data: dict[str, Any] = field(default_factory=dict)
-    timestamp: Optional[datetime] = field(default_factory=datetime.now)
+    timestamp: datetime | None = field(default_factory=datetime.now)

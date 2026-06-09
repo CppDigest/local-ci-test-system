@@ -3,7 +3,6 @@
 import threading
 import time
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
@@ -30,7 +29,6 @@ from localci.core.workflow import (
     PackageRequirements,
     Platform,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers (self-contained to avoid cross-module import / reference issues)
@@ -160,9 +158,7 @@ class TestJobProgress:
 
 class TestPriorityLevelProgress:
     def test_complete(self):
-        level = PriorityLevelProgress(
-            priority=1, total=3, passed=2, failed=1
-        )
+        level = PriorityLevelProgress(priority=1, total=3, passed=2, failed=1)
         assert level.complete == 3
         assert level.is_done is True
 
@@ -175,16 +171,12 @@ class TestPriorityLevelProgress:
         assert level.status_icon == "●"
 
     def test_all_passed(self):
-        level = PriorityLevelProgress(
-            priority=1, total=2, passed=2
-        )
+        level = PriorityLevelProgress(priority=1, total=2, passed=2)
         assert level.is_done is True
         assert level.status_icon == "✓"
 
     def test_has_failures(self):
-        level = PriorityLevelProgress(
-            priority=1, total=2, passed=1, failed=1
-        )
+        level = PriorityLevelProgress(priority=1, total=2, passed=1, failed=1)
         assert level.status_icon == "✗"
 
 
@@ -222,19 +214,13 @@ class TestProgressTracker:
     def test_track_job_lifecycle(self, tracker):
         job = make_job("GCC 15", priority=1)
 
-        tracker.on_event(
-            JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-        )
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
         assert tracker._jobs[job.queue_key].status == QueuedJobStatus.QUEUED
 
-        tracker.on_event(
-            JobEvent(event_type=JobEventType.JOB_PREPARING, job=job)
-        )
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_PREPARING, job=job))
         assert tracker._jobs[job.queue_key].status == QueuedJobStatus.PREPARING
 
-        tracker.on_event(
-            JobEvent(event_type=JobEventType.JOB_STARTED, job=job)
-        )
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_STARTED, job=job))
         assert tracker._jobs[job.queue_key].status == QueuedJobStatus.RUNNING
         assert tracker._jobs[job.queue_key].started_at is not None
 
@@ -259,9 +245,7 @@ class TestProgressTracker:
     def test_track_failure(self, tracker):
         job = make_job("Fail", priority=1)
 
-        tracker.on_event(
-            JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-        )
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
 
         result = JobResult(
             job_id="build",
@@ -286,9 +270,7 @@ class TestProgressTracker:
 
     def test_track_timeout(self, tracker):
         job = make_job("Timeout", priority=1)
-        tracker.on_event(
-            JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-        )
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
         result = JobResult(
             job_id="build",
             matrix_index=0,
@@ -309,20 +291,18 @@ class TestProgressTracker:
         assert progress.error_message == "Timed out"
 
     def test_get_status_dict(self, tracker):
-        for i, (name, status_event) in enumerate([
-            ("Passed", JobEventType.JOB_COMPLETED),
-            ("Failed", JobEventType.JOB_FAILED),
-            ("Running", JobEventType.JOB_STARTED),
-        ]):
+        for i, (name, status_event) in enumerate(
+            [
+                ("Passed", JobEventType.JOB_COMPLETED),
+                ("Failed", JobEventType.JOB_FAILED),
+                ("Running", JobEventType.JOB_STARTED),
+            ]
+        ):
             job = make_job(name, priority=1, index=i)
-            tracker.on_event(
-                JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-            )
+            tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
 
             if status_event == JobEventType.JOB_STARTED:
-                tracker.on_event(
-                    JobEvent(event_type=status_event, job=job)
-                )
+                tracker.on_event(JobEvent(event_type=status_event, job=job))
             elif status_event == JobEventType.JOB_COMPLETED:
                 result = JobResult(
                     job_id="build",
@@ -367,15 +347,15 @@ class TestProgressTracker:
         assert status["failed_jobs"][0]["error_message"] == "error"
 
     def test_priority_levels(self, tracker):
-        for i, (name, priority) in enumerate([
-            ("P1-A", 1),
-            ("P1-B", 1),
-            ("P2-A", 2),
-        ]):
+        for i, (name, priority) in enumerate(
+            [
+                ("P1-A", 1),
+                ("P1-B", 1),
+                ("P2-A", 2),
+            ]
+        ):
             job = make_job(name, priority=priority, index=i)
-            tracker.on_event(
-                JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-            )
+            tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
 
         levels = tracker._get_priority_levels()
         assert len(levels) == 2
@@ -387,9 +367,7 @@ class TestProgressTracker:
     def test_eta_estimation(self, tracker):
         for i in range(3):
             job = make_job(f"Job {i}", priority=1, index=i)
-            tracker.on_event(
-                JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-            )
+            tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
             result = JobResult(
                 job_id="build",
                 matrix_index=i,
@@ -406,9 +384,7 @@ class TestProgressTracker:
             )
         for i in range(3, 6):
             job = make_job(f"Job {i}", priority=2, index=i)
-            tracker.on_event(
-                JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-            )
+            tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
 
         eta = tracker._estimate_eta()
         assert eta > 0
@@ -417,9 +393,7 @@ class TestProgressTracker:
         def emit_events(start, count):
             for i in range(start, start + count):
                 job = make_job(f"Job {i}", priority=1, index=i)
-                tracker.on_event(
-                    JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-                )
+                tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
 
         threads = [
             threading.Thread(target=emit_events, args=(0, 50)),

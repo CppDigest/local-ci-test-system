@@ -93,9 +93,7 @@ class TestExtractErrorAuthKeywords:
 
 
 class TestRunSentinelWarning:
-    def test_dry_run_warns_when_no_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_dry_run_warns_when_no_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("GITHUB_TOKEN", raising=False)
         result = runner.invoke(
             cli,

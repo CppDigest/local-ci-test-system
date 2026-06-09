@@ -161,7 +161,9 @@ class TestCompilerDetection:
 
     def test_gcc_entries(self, analyzer, workflow):
         gcc = analyzer.filter_by_compiler(workflow, CompilerFamily.GCC)
-        assert len(gcc) == 6  # GCC 15, GCC 15 asan, GCC 12, GCC 13 cov, GCC 15 valgrind, GCC 13 shared
+        assert (
+            len(gcc) == 6
+        )  # GCC 15, GCC 15 asan, GCC 12, GCC 13 cov, GCC 15 valgrind, GCC 13 shared
 
     def test_clang_entries(self, analyzer, workflow):
         clang = analyzer.filter_by_compiler(workflow, CompilerFamily.CLANG)
@@ -489,8 +491,15 @@ class TestJsonOutput:
         data = json.loads(workflow_to_json(workflow))
         entry = data["jobs"]["build"]["matrix"][0]
         required_fields = [
-            "index", "name", "platform", "compiler", "container",
-            "variant", "packages", "runs_on", "build_system",
+            "index",
+            "name",
+            "platform",
+            "compiler",
+            "container",
+            "variant",
+            "packages",
+            "runs_on",
+            "build_system",
             "architecture",
         ]
         for field in required_fields:
@@ -668,16 +677,12 @@ class TestCLIIntegration:
 
     def test_list_platform_linux(self):
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["list", "-w", str(FULL_WORKFLOW), "-p", "linux"]
-        )
+        result = runner.invoke(cli, ["list", "-w", str(FULL_WORKFLOW), "-p", "linux"])
         assert result.exit_code == 0
 
     def test_list_platform_windows(self):
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["list", "-w", str(FULL_WORKFLOW), "-p", "windows"]
-        )
+        result = runner.invoke(cli, ["list", "-w", str(FULL_WORKFLOW), "-p", "windows"])
         assert result.exit_code == 0
 
     def test_list_compiler_gcc(self):
@@ -689,9 +694,7 @@ class TestCLIIntegration:
 
     def test_list_json(self):
         runner = CliRunner()
-        result = runner.invoke(
-            cli, ["list", "-w", str(FULL_WORKFLOW), "-f", "json"]
-        )
+        result = runner.invoke(cli, ["list", "-w", str(FULL_WORKFLOW), "-f", "json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert isinstance(data, list)

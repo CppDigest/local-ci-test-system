@@ -25,7 +25,6 @@ from localci.utils.output import (
     print_info,
 )
 
-
 # =====================================================================
 # Helpers
 # =====================================================================
@@ -173,7 +172,9 @@ def list_cmd(
     if compiler:
         target_family = _COMPILER_MAP.get(compiler.lower())
         if target_family is None:
-            print_error(f"Unknown compiler: {compiler!r}. Valid: {', '.join(sorted(_COMPILER_MAP))}.")
+            print_error(
+                f"Unknown compiler: {compiler!r}. Valid: {', '.join(sorted(_COMPILER_MAP))}."
+            )
             ctx.exit(1)
             return
         entries = [e for e in entries if e.compiler.family == target_family]
@@ -193,13 +194,21 @@ def list_cmd(
 
             if enabled:
                 if include_names:
-                    entries = [e for e in entries if _entry_matches_list(e.name, include_names)]
+                    entries = [
+                        e for e in entries if _entry_matches_list(e.name, include_names)
+                    ]
                 elif exclude_names:
-                    entries = [e for e in entries if not _entry_matches_list(e.name, exclude_names)]
+                    entries = [
+                        e
+                        for e in entries
+                        if not _entry_matches_list(e.name, exclude_names)
+                    ]
 
             if disabled:
                 if exclude_names:
-                    entries = [e for e in entries if _entry_matches_list(e.name, exclude_names)]
+                    entries = [
+                        e for e in entries if _entry_matches_list(e.name, exclude_names)
+                    ]
                 else:
                     entries = []
         else:

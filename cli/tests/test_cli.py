@@ -17,7 +17,6 @@ from localci.cli.main import cli
 from localci.errors import YqNotFoundError
 from localci.utils.crash import CRASH_LOG_NAME
 
-
 runner = CliRunner()
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

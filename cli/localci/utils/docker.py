@@ -11,7 +11,6 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional
 
 from localci.errors import DockerNotAvailableError
 
@@ -32,7 +31,7 @@ class DockerManager:
     """
 
     def __init__(self) -> None:
-        self._docker_path: Optional[str] = shutil.which("docker")
+        self._docker_path: str | None = shutil.which("docker")
         self._check_docker()
 
     # -----------------------------------------------------------------
@@ -134,12 +133,10 @@ class DockerManager:
         )
         return result.returncode == 0
 
-    def image_size(self, name: str) -> Optional[float]:
+    def image_size(self, name: str) -> float | None:
         """Get image size in MB, or ``None`` if unavailable."""
         result = subprocess.run(
-            self._docker_cmd(
-                "image", "inspect", name, "--format", "{{.Size}}"
-            ),
+            self._docker_cmd("image", "inspect", name, "--format", "{{.Size}}"),
             capture_output=True,
             text=True,
             timeout=10,
@@ -158,19 +155,13 @@ class DockerManager:
     def list_containers(self, label: str = "localci") -> list[str]:
         """List container IDs with a specific label."""
         result = subprocess.run(
-            self._docker_cmd(
-                "ps", "-a", "--filter", f"label={label}", "-q"
-            ),
+            self._docker_cmd("ps", "-a", "--filter", f"label={label}", "-q"),
             capture_output=True,
             text=True,
             timeout=10,
         )
         if result.returncode == 0:
-            return [
-                c.strip()
-                for c in result.stdout.strip().split("\n")
-                if c.strip()
-            ]
+            return [c.strip() for c in result.stdout.strip().split("\n") if c.strip()]
         return []
 
     def cleanup_act_containers(self) -> int:
@@ -190,9 +181,7 @@ class DockerManager:
             return 0
 
         container_ids = [
-            c.strip()
-            for c in result.stdout.strip().split("\n")
-            if c.strip()
+            c.strip() for c in result.stdout.strip().split("\n") if c.strip()
         ]
 
         if container_ids:
@@ -213,9 +202,7 @@ class DockerManager:
     def disk_usage(self) -> dict:
         """Get Docker disk usage summary."""
         result = subprocess.run(
-            self._docker_cmd(
-                "system", "df", "--format", "{{json .}}"
-            ),
+            self._docker_cmd("system", "df", "--format", "{{json .}}"),
             capture_output=True,
             text=True,
             timeout=10,

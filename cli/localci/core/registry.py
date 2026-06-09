@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -41,9 +41,9 @@ class RegistryEntry:
     packages: list[str] = field(default_factory=list)
     compilers: list[str] = field(default_factory=list)  # e.g. ["gcc-15", "clang-17"]
     tools: list[str] = field(default_factory=list)  # build tools e.g. ["cmake", "lcov"]
-    size_mb: Optional[int] = None
-    created: Optional[str] = None
-    last_used: Optional[str] = None
+    size_mb: int | None = None
+    created: str | None = None
+    last_used: str | None = None
     usage_count: int = 0
     # Optional fields from existing registry (preserved on load/save)
     variants: list[str] = field(default_factory=list)
@@ -68,7 +68,26 @@ class RegistryEntry:
             last_used=d.get("last_used"),
             usage_count=int(d.get("usage_count", 0)),
             variants=d.get("variants") or [],
-            raw={k: v for k, v in d.items() if k not in {"name", "file", "docker_tag", "os", "architecture", "packages", "compilers", "tools", "size_mb", "created", "last_used", "usage_count", "variants"}},
+            raw={
+                k: v
+                for k, v in d.items()
+                if k
+                not in {
+                    "name",
+                    "file",
+                    "docker_tag",
+                    "os",
+                    "architecture",
+                    "packages",
+                    "compilers",
+                    "tools",
+                    "size_mb",
+                    "created",
+                    "last_used",
+                    "usage_count",
+                    "variants",
+                }
+            },
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -96,14 +115,14 @@ class RegistryEntry:
 class MatchResult:
     """Result of image selection for a matrix entry."""
 
-    use_image: Optional[RegistryEntry] = None  # Use this image (essential=100)
+    use_image: RegistryEntry | None = None  # Use this image (essential=100)
     needs_build: bool = False
-    base_image: Optional[RegistryEntry] = None  # When needs_build, use this as base
+    base_image: RegistryEntry | None = None  # When needs_build, use this as base
     essential_marks: int = 0
     extra_marks: int = 0
 
 
-def _entry_os_arch(entry: "MatrixEntry") -> tuple[str, str]:
+def _entry_os_arch(entry: MatrixEntry) -> tuple[str, str]:
     """(os_string, architecture) for matrix entry. e.g. ('ubuntu:25.04', 'x86_64')."""
     if entry.container.image:
         os_str = entry.container.image.strip().lower()
@@ -120,14 +139,14 @@ def _entry_os_arch(entry: "MatrixEntry") -> tuple[str, str]:
     return os_str, arch
 
 
-def _entry_compiler_key(entry: "MatrixEntry") -> str:
+def _entry_compiler_key(entry: MatrixEntry) -> str:
     """Compiler key for matrix entry, e.g. 'gcc-15', 'clang-17'."""
     family = entry.compiler.family.value
     version = entry.compiler.version or "*"
     return f"{family}-{version}"
 
 
-def essential_marks(entry: "MatrixEntry", reg: RegistryEntry) -> int:
+def essential_marks(entry: MatrixEntry, reg: RegistryEntry) -> int:
     """Compute essential marks (0, 70, or 100) for registry image vs matrix entry.
 
     - 0: OS+version+architecture mismatch (cannot use).
@@ -152,7 +171,7 @@ def essential_marks(entry: "MatrixEntry", reg: RegistryEntry) -> int:
     return marks
 
 
-def extra_marks(entry: "MatrixEntry", reg: RegistryEntry) -> int:
+def extra_marks(entry: MatrixEntry, reg: RegistryEntry) -> int:
     """Compute extra marks (packages +10 each, build tools +20 each). Only meaningful when essential_marks > 0."""
     total = 0
     req_apt = set(
@@ -180,11 +199,16 @@ def extra_marks(entry: "MatrixEntry", reg: RegistryEntry) -> int:
 
 def _tie_break(best: RegistryEntry, other: RegistryEntry) -> RegistryEntry:
     """Prefer most recently used, then highest usage_count, then smallest size_mb."""
+
     def key(r: RegistryEntry) -> tuple[int, int, int]:
         # last_used: prefer later (higher timestamp value for sorting desc)
         try:
             lu = r.last_used or ""
-            ts = int(datetime.fromisoformat(lu.replace("Z", "+00:00")).timestamp()) if lu else 0
+            ts = (
+                int(datetime.fromisoformat(lu.replace("Z", "+00:00")).timestamp())
+                if lu
+                else 0
+            )
         except Exception:
             ts = 0
         # usage_count: higher better
@@ -192,10 +216,13 @@ def _tie_break(best: RegistryEntry, other: RegistryEntry) -> RegistryEntry:
         # size_mb: smaller better (negate so higher is better for max)
         sz = -(r.size_mb or 0)
         return (ts, uc, sz)
+
     return best if key(best) >= key(other) else other
 
 
-def select_image(entry: "MatrixEntry", registry_entries: list[RegistryEntry]) -> MatchResult:
+def select_image(
+    entry: MatrixEntry, registry_entries: list[RegistryEntry]
+) -> MatchResult:
     """Select best image for this matrix entry using two-mark algorithm.
 
     - If any image has essential_marks == 100: choose one with highest extra_marks (tie-break).
@@ -247,12 +274,12 @@ def select_image(entry: "MatrixEntry", registry_entries: list[RegistryEntry]) ->
 class ImageRegistry:
     """In-memory image registry with load/save and CRUD."""
 
-    def __init__(self, path: Optional[Path] = None) -> None:
+    def __init__(self, path: Path | None = None) -> None:
         self.path = Path(path) if path else None
         self.entries: list[RegistryEntry] = []
         self._version = REGISTRY_VERSION
 
-    def load(self, path: Optional[Path] = None) -> None:
+    def load(self, path: Path | None = None) -> None:
         p = path or self.path
         if not p or not p.exists():
             self.entries = []
@@ -261,9 +288,11 @@ class ImageRegistry:
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
         self._version = str(data.get("version", REGISTRY_VERSION))
         images = data.get("images") or []
-        self.entries = [RegistryEntry.from_dict(i) for i in images if isinstance(i, dict)]
+        self.entries = [
+            RegistryEntry.from_dict(i) for i in images if isinstance(i, dict)
+        ]
 
-    def save(self, path: Optional[Path] = None) -> None:
+    def save(self, path: Path | None = None) -> None:
         p = path or self.path
         if not p:
             raise ValueError("No path set for registry save")
@@ -273,9 +302,12 @@ class ImageRegistry:
             "version": self._version,
             "images": [e.to_dict() for e in self.entries],
         }
-        p.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False), encoding="utf-8")
+        p.write_text(
+            yaml.safe_dump(data, sort_keys=False, default_flow_style=False),
+            encoding="utf-8",
+        )
 
-    def find_by_name(self, name: str) -> Optional[RegistryEntry]:
+    def find_by_name(self, name: str) -> RegistryEntry | None:
         for e in self.entries:
             if e.name == name:
                 return e
@@ -286,10 +318,17 @@ class ImageRegistry:
             raise ValueError(f"Registry already has an image named {entry.name!r}")
         self.entries.append(entry)
 
-    ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset({
-        "docker_tag", "file", "size_mb", "packages",
-        "last_used", "usage_count", "build_date",
-    })
+    ALLOWED_UPDATE_FIELDS: frozenset[str] = frozenset(
+        {
+            "docker_tag",
+            "file",
+            "size_mb",
+            "packages",
+            "last_used",
+            "usage_count",
+            "build_date",
+        }
+    )
 
     def update(self, name: str, **kwargs: Any) -> None:
         e = self.find_by_name(name)
@@ -318,6 +357,6 @@ class ImageRegistry:
                 return True
         return False
 
-    def select(self, entry: "MatrixEntry") -> MatchResult:
+    def select(self, entry: MatrixEntry) -> MatchResult:
         """Select best image for this matrix entry."""
         return select_image(entry, self.entries)

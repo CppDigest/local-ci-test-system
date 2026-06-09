@@ -10,8 +10,9 @@ from __future__ import annotations
 import fnmatch
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from localci.core.models import (
     JobEvent,
@@ -72,7 +73,7 @@ class PriorityConfig:
         return self.default_priority
 
     @classmethod
-    def from_config(cls, config: "LocalCIConfig") -> PriorityConfig:
+    def from_config(cls, config: LocalCIConfig) -> PriorityConfig:
         return cls(
             default_priority=5,
             explicit=dict(getattr(config, "priorities", {}) or {}),
@@ -164,7 +165,7 @@ class PriorityJobQueue:
         self._jobs: dict[str, QueuedJob] = {}
         self._by_priority: dict[int, list[str]] = {}
         self._priority_levels: list[int] = []
-        self._current_priority: Optional[int] = None
+        self._current_priority: int | None = None
         self._completed_keys: set[str] = set()
         self._failed_keys: set[str] = set()
         self._running_keys: set[str] = set()
@@ -215,7 +216,7 @@ class PriorityJobQueue:
             len(self._priority_levels),
         )
 
-    def next_ready(self) -> Optional[QueuedJob]:
+    def next_ready(self) -> QueuedJob | None:
         with self._lock:
             if self._current_priority is None:
                 return None
@@ -365,9 +366,7 @@ class PriorityJobQueue:
 
     @property
     def passed_count(self) -> int:
-        return sum(
-            1 for j in self._jobs.values() if j.status == QueuedJobStatus.PASSED
-        )
+        return sum(1 for j in self._jobs.values() if j.status == QueuedJobStatus.PASSED)
 
     @property
     def failed_count(self) -> int:
@@ -383,7 +382,7 @@ class PriorityJobQueue:
         )
 
     @property
-    def current_priority(self) -> Optional[int]:
+    def current_priority(self) -> int | None:
         return self._current_priority
 
     def get_all_jobs(self) -> list[QueuedJob]:
@@ -431,8 +430,6 @@ class PriorityJobQueue:
                     "preparing": sum(
                         1 for j in jobs if j.status == QueuedJobStatus.PREPARING
                     ),
-                    "pending": sum(
-                        1 for j in jobs if j.status in pending_statuses
-                    ),
+                    "pending": sum(1 for j in jobs if j.status in pending_statuses),
                 }
             return summary

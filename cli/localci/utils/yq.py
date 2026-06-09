@@ -19,11 +19,11 @@ import subprocess
 import sys
 import warnings
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
-from localci.errors import YqError, YqNotFoundError
+from localci.errors import YqError
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +52,8 @@ class YqWrapper:
         self._is_linux: bool = sys.platform.startswith("linux")
         self._file_cache: dict[Path, dict] = {}
 
-        raw_path: Optional[str] = shutil.which("yq")
-        self._yq_path: Optional[str] = None
+        raw_path: str | None = shutil.which("yq")
+        self._yq_path: str | None = None
 
         if raw_path:
             flavour = self._detect_yq_flavour(raw_path)
@@ -62,7 +62,8 @@ class YqWrapper:
                 logger.debug("yq (mikefarah) found at %s", raw_path)
             else:
                 install_hint = (
-                    "sudo snap install yq" if self._is_linux
+                    "sudo snap install yq"
+                    if self._is_linux
                     else "https://github.com/mikefarah/yq/releases"
                 )
                 detail = (
@@ -194,7 +195,7 @@ class YqWrapper:
         """
         resolved = file.resolve()
         if resolved not in self._file_cache:
-            with open(file, "r", encoding="utf-8") as fh:
+            with open(file, encoding="utf-8") as fh:
                 data = yaml.safe_load(fh)
             if not isinstance(data, dict):
                 logger.warning(
@@ -293,7 +294,7 @@ class YqWrapper:
     # Misc
     # -----------------------------------------------------------------
 
-    def version(self) -> Optional[str]:
+    def version(self) -> str | None:
         """Return ``yq --version`` string, or *None* if yq is absent."""
         if not self._yq_path:
             return None
@@ -341,7 +342,7 @@ class YqWrapper:
             return {str(k): str(v) for k, v in env.items()}
         return {}
 
-    def concurrency(self, file: Path) -> Optional[dict]:
+    def concurrency(self, file: Path) -> dict | None:
         """Extract concurrency configuration."""
         return self.query(file, ".concurrency")
 
@@ -364,15 +365,15 @@ class YqWrapper:
             return [needs]
         return []
 
-    def job_condition(self, file: Path, job_id: str) -> Optional[str]:
+    def job_condition(self, file: Path, job_id: str) -> str | None:
         """Extract job ``if`` condition."""
         return self.query(file, f".jobs.{job_id}.if")
 
     def job_runs_on(self, file: Path, job_id: str) -> str:
         """Extract job ``runs-on``."""
-        return self.query(file, f'.jobs.{job_id}.runs-on') or "ubuntu-latest"
+        return self.query(file, f".jobs.{job_id}.runs-on") or "ubuntu-latest"
 
-    def job_container(self, file: Path, job_id: str) -> Optional[dict]:
+    def job_container(self, file: Path, job_id: str) -> dict | None:
         """Extract job container configuration."""
         container = self.query(file, f".jobs.{job_id}.container")
         if isinstance(container, str):
@@ -383,7 +384,7 @@ class YqWrapper:
         """Extract job timeout in minutes."""
         return self.query(file, f".jobs.{job_id}.timeout-minutes") or 60
 
-    def job_defaults(self, file: Path, job_id: str) -> Optional[dict]:
+    def job_defaults(self, file: Path, job_id: str) -> dict | None:
         """Extract job defaults."""
         return self.query(file, f".jobs.{job_id}.defaults")
 
@@ -394,7 +395,7 @@ class YqWrapper:
             return {str(k): str(v) for k, v in env.items()}
         return {}
 
-    def matrix_strategy(self, file: Path, job_id: str) -> Optional[dict]:
+    def matrix_strategy(self, file: Path, job_id: str) -> dict | None:
         """Extract matrix strategy."""
         return self.query(file, f".jobs.{job_id}.strategy")
 
@@ -405,16 +406,12 @@ class YqWrapper:
 
     def matrix_entry(self, file: Path, job_id: str, index: int) -> dict:
         """Extract specific matrix entry by *index*."""
-        result = self.query(
-            file, f".jobs.{job_id}.strategy.matrix.include[{index}]"
-        )
+        result = self.query(file, f".jobs.{job_id}.strategy.matrix.include[{index}]")
         return result if isinstance(result, dict) else {}
 
     def matrix_count(self, file: Path, job_id: str) -> int:
         """Count matrix entries."""
-        result = self.query(
-            file, f".jobs.{job_id}.strategy.matrix.include | length"
-        )
+        result = self.query(file, f".jobs.{job_id}.strategy.matrix.include | length")
         return result if isinstance(result, int) else 0
 
     def matrix_filter_by_field(

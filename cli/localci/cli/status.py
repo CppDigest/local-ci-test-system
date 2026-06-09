@@ -105,9 +105,7 @@ def status(
                 f"Expected file: {results_file}"
             )
         else:
-            print_warning(
-                "No previous execution found. Run `localci run` first."
-            )
+            print_warning("No previous execution found. Run `localci run` first.")
         return
 
     try:
@@ -118,7 +116,9 @@ def status(
         return
 
     if follow:
-        print_warning("--follow only works with a live last-status.json (running execution); showing current state only.")
+        print_warning(
+            "--follow only works with a live last-status.json (running execution); showing current state only."
+        )
     if output_format == "json":
         click.echo(json.dumps(summary.to_dict(), indent=2))
         return
@@ -129,10 +129,16 @@ def status(
     console.print()
 
     table = make_table(
-        "#", "Name", "Status", "Duration", "Image",
+        "#",
+        "Name",
+        "Status",
+        "Duration",
+        "Image",
         title="Job Results",
     )
-    for r in sorted(summary.results, key=lambda x: (x.matrix_index is None, x.matrix_index)):
+    for r in sorted(
+        summary.results, key=lambda x: (x.matrix_index is None, x.matrix_index)
+    ):
         status_style = {
             "passed": "[green]passed[/green]",
             "failed": "[red]failed[/red]",
@@ -193,9 +199,7 @@ def _print_status_table(data: object) -> None:
         return
 
     console.print()
-    console.print(
-        f"[bold]Execution:[/bold] {data.get('execution_id', 'unknown')}"
-    )
+    console.print(f"[bold]Execution:[/bold] {data.get('execution_id', 'unknown')}")
     console.print(f"[bold]Progress:[/bold]  {data.get('progress', '')}")
     console.print(
         f"[bold]Elapsed:[/bold]   {_safe_float(data.get('elapsed_seconds')):.0f}s"
@@ -217,9 +221,7 @@ def _print_status_table(data: object) -> None:
 
     completed = _job_list(data, "completed_jobs")
     if completed:
-        console.print(
-            f"[bold green]Completed ({len(completed)}):[/bold green]"
-        )
+        console.print(f"[bold green]Completed ({len(completed)}):[/bold green]")
         for job in completed:
             name = job.get("name", "<unknown>")
             dur = _safe_float(job.get("duration_seconds"))

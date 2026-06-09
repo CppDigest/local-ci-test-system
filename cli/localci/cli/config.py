@@ -12,9 +12,9 @@ import yaml
 
 from localci.core.config import (
     LocalCIConfig,
+    _stringify_paths,
     default_config_yaml,
     find_config_file,
-    _stringify_paths,
 )
 from localci.utils.output import (
     console,
@@ -37,7 +37,9 @@ def config(ctx: click.Context) -> None:
 
 
 @config.command("show")
-@click.option("--effective", is_flag=True, help="Show effective (merged) configuration.")
+@click.option(
+    "--effective", is_flag=True, help="Show effective (merged) configuration."
+)
 @click.pass_context
 def config_show(ctx: click.Context, effective: bool) -> None:
     """Show current configuration."""
@@ -72,8 +74,7 @@ def config_init(ctx: click.Context, force: bool) -> None:
 
     if target.exists() and not force:
         print_error(
-            f"Config file already exists: {target}\n"
-            "  Use --force to overwrite."
+            f"Config file already exists: {target}\n  Use --force to overwrite."
         )
         ctx.exit(1)
 
@@ -101,7 +102,7 @@ def config_set(ctx: click.Context, key: str, value: str) -> None:
         print_error("No config file found. Run 'localci config init' first.")
         ctx.exit(1)
 
-    with open(config_path, "r", encoding="utf-8") as fh:
+    with open(config_path, encoding="utf-8") as fh:
         data: dict = yaml.safe_load(fh) or {}
 
     # Navigate dot-notation key.

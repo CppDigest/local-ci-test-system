@@ -24,9 +24,7 @@ def _executor_capture_from_log_text(log_text: str) -> str:
     Job logs interleave streams and include act summary lines that are not in
     the stderr-only capture the executor uses when stderr is non-empty.
     """
-    body_lines = [
-        line for line in log_text.splitlines() if not line.startswith("#")
-    ]
+    body_lines = [line for line in log_text.splitlines() if not line.startswith("#")]
     stderr_like = [
         line
         for line in body_lines

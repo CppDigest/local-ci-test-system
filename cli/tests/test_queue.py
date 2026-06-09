@@ -9,7 +9,6 @@ import pytest
 from localci.core.models import (
     JobEventType,
     QueuedJob,
-    QueuedJobStatus,
 )
 from localci.core.queue import (
     CyclicDependencyError,
@@ -277,9 +276,7 @@ class TestPriorityJobQueue:
 
 class TestPriorityConfig:
     def test_explicit_mapping(self):
-        config = PriorityConfig(
-            explicit={"GCC 15: C++20": 1, "Clang 20: C++20-23": 2}
-        )
+        config = PriorityConfig(explicit={"GCC 15: C++20": 1, "Clang 20: C++20-23": 2})
         job = make_job("GCC 15: C++20")
         assert config.resolve_priority(job) == 1
 
@@ -381,7 +378,9 @@ class TestQueueBuilderIntegration:
     def test_build_queue_with_priorities(self):
         analyzer = WorkflowAnalyzer()
         workflow = analyzer.analyze(FULL_WORKFLOW)
-        config = type("Config", (), {"priorities": {"GCC 15: C++20": 1, "GCC 12: C++20": 2}})()
+        config = type(
+            "Config", (), {"priorities": {"GCC 15: C++20": 1, "GCC 12: C++20": 2}}
+        )()
         priority_config = PriorityConfig.from_config(config)
         builder = QueueBuilder(workflow, priority_config=priority_config)
         queue = builder.build(platform_filter=Platform.LINUX)

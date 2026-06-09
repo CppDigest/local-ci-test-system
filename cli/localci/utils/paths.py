@@ -9,7 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def resolve_workflow(path: str | Path | None, config_workflow: Path | None = None) -> Path:
+def resolve_workflow(
+    path: str | Path | None, config_workflow: Path | None = None
+) -> Path:
     """Resolve a workflow file path.
 
     Priority:

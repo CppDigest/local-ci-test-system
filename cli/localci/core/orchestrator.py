@@ -8,18 +8,19 @@ import signal
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from threading import Event as ThreadEvent
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
+from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.config import resolve_cache_paths
-from localci.core.cmake_cache import compute_cmake_input_digest
-from localci.core.workflow import MatrixEntry
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
 from localci.core.queue import PriorityJobQueue
@@ -62,18 +63,20 @@ class OrchestratorConfig:
     stop_on_first_failure: bool = False
     resource_check_interval: float = 5.0
     dispatch_interval: float = 0.1
-    default_secrets: Optional[dict[str, str]] = None
-    default_env: Optional[dict[str, str]] = None
-    image_registry_path: Optional[Path] = None
+    default_secrets: dict[str, str] | None = None
+    default_env: dict[str, str] | None = None
+    image_registry_path: Path | None = None
     verbose: bool = False
     offline: bool = False
     auto_build: bool = True
 
     @classmethod
-    def from_config(cls, config: "LocalCIConfig") -> OrchestratorConfig:
+    def from_config(cls, config: LocalCIConfig) -> OrchestratorConfig:
         rl = getattr(config.parallel, "resource_limit", None) or {}
         cpu = getattr(rl, "cpu_percent", 90) if hasattr(rl, "cpu_percent") else 90.0
-        mem = getattr(rl, "memory_percent", 85) if hasattr(rl, "memory_percent") else 85.0
+        mem = (
+            getattr(rl, "memory_percent", 85) if hasattr(rl, "memory_percent") else 85.0
+        )
         disk_gb = float(getattr(rl, "disk_min_free_gb", 10.0))
         images = getattr(config, "images", None)
         registry_path = getattr(images, "registry", None) if images else None
@@ -98,7 +101,7 @@ class ExecutionRun:
 
     execution_id: str
     started_at: datetime
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
     state: OrchestratorState = OrchestratorState.IDLE
     results: dict[str, JobResult] = field(default_factory=dict)
 
@@ -108,9 +111,7 @@ class ExecutionRun:
 
     @property
     def passed(self) -> int:
-        return sum(
-            1 for r in self.results.values() if r.status == JobStatus.PASSED
-        )
+        return sum(1 for r in self.results.values() if r.status == JobStatus.PASSED)
 
     @property
     def failed(self) -> int:
@@ -143,14 +144,13 @@ class ParallelExecutionManager:
         queue: PriorityJobQueue,
         workflow_file: Path,
         project_dir: Path = Path("."),
-        config: Optional[OrchestratorConfig] = None,
-        logs_dir: Optional[Path] = None,
-        workflow_patcher: Optional[
-            Callable[..., Path]
-        ] = None,  # (workflow_path, entry, image_tag, job_id=..., container_mount_options=...) -> Path
-        cache_config: Optional["CacheConfig"] = None,
+        config: OrchestratorConfig | None = None,
+        logs_dir: Path | None = None,
+        workflow_patcher: Callable[..., Path]
+        | None = None,  # (workflow_path, entry, image_tag, job_id=..., container_mount_options=...) -> Path
+        cache_config: CacheConfig | None = None,
         no_cache: bool = False,
-        cache_dir_override: Optional[Path] = None,
+        cache_dir_override: Path | None = None,
     ):
         self.queue = queue
         self.workflow_file = Path(workflow_file)
@@ -172,8 +172,8 @@ class ParallelExecutionManager:
         self._resource_monitor = ResourceMonitor()
 
         self._state = OrchestratorState.IDLE
-        self._run: Optional[ExecutionRun] = None
-        self._pool: Optional[ThreadPoolExecutor] = None
+        self._run: ExecutionRun | None = None
+        self._pool: ThreadPoolExecutor | None = None
         self._futures: dict[str, Future] = {}
         self._shutdown_event = ThreadEvent()
         self._listeners: list[Callable[[JobEvent], None]] = []
@@ -244,10 +244,8 @@ class ParallelExecutionManager:
             self._state = OrchestratorState.FAILED
         finally:
             if original_sigint is not None and hasattr(signal, "SIGINT"):
-                try:
+                with suppress(ValueError, AttributeError):
                     signal.signal(signal.SIGINT, original_sigint)
-                except (ValueError, AttributeError):
-                    pass
             if self._pool:
                 self._pool.shutdown(wait=True)
             if not self.config.keep_containers:
@@ -280,16 +278,11 @@ class ParallelExecutionManager:
             if self._state == OrchestratorState.PAUSED:
                 time.sleep(self.config.dispatch_interval)
                 continue
-            active_count = len(
-                [f for f in self._futures.values() if not f.done()]
-            )
+            active_count = len([f for f in self._futures.values() if not f.done()])
             if active_count >= self.config.max_parallel:
                 time.sleep(self.config.dispatch_interval)
                 continue
-            if (
-                self.config.stop_on_first_failure
-                and self.queue.failed_count > 0
-            ):
+            if self.config.stop_on_first_failure and self.queue.failed_count > 0:
                 logger.warning("Stopping: first failure detected")
                 self.queue.cancel_all()
                 break
@@ -300,9 +293,7 @@ class ParallelExecutionManager:
             logger.info("Dispatching: %s", job.matrix_entry.name)
             future = self._pool.submit(self._execute_job, job)
             self._futures[job.queue_key] = future
-            future.add_done_callback(
-                lambda f, j=job: self._on_job_done(j, f)
-            )
+            future.add_done_callback(lambda f, j=job: self._on_job_done(j, f))
 
     def _wait_for_completion(self) -> None:
         for key, future in list(self._futures.items()):
@@ -327,7 +318,7 @@ class ParallelExecutionManager:
             self.queue.mark_running(job)
             # Phase 2: resolve cache paths before patcher (patcher may inject mounts into workflow)
             resolved_cache_paths = None
-            container_mount_options: Optional[str] = None
+            container_mount_options: str | None = None
             if self._cache_config is not None:
                 cmake_digest = None
                 if (
@@ -339,9 +330,7 @@ class ParallelExecutionManager:
                         self.project_dir,
                         job.matrix_entry,
                         self._cache_config.cmake,
-                        boost_enabled=(
-                            self._cache_config.boost.enabled
-                        ),
+                        boost_enabled=(self._cache_config.boost.enabled),
                     )
                 resolved_cache_paths = resolve_cache_paths(
                     self._cache_config,
@@ -394,7 +383,11 @@ class ParallelExecutionManager:
                         job.matrix_entry.name,
                         ", ".join(parts),
                     )
-            elif self._cache_config is not None and not self._no_cache and self._cache_config.enabled:
+            elif (
+                self._cache_config is not None
+                and not self._no_cache
+                and self._cache_config.enabled
+            ):
                 logger.debug(
                     "Cache enabled in config but no paths resolved for %s (check job_id/queue_key and cache sub-options)",
                     job.matrix_entry.name,
@@ -410,11 +403,13 @@ class ParallelExecutionManager:
                     container_mount_options=container_mount_options,
                 )
 
-            event_file_to_clean: Optional[Path] = None
+            event_file_to_clean: Path | None = None
             try:
                 # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
                 # (causes "remove ... no such file or directory" when one job cleans cache)
-                act_cache_dir = self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
+                act_cache_dir = (
+                    self.logs_dir / "act-cache" / job.queue_key.replace(":", "-")
+                )
                 act_cache_dir.mkdir(parents=True, exist_ok=True)
 
                 builder = ActCommandBuilder(
@@ -448,16 +443,27 @@ class ParallelExecutionManager:
                 )
                 return result
             finally:
-                if self._workflow_patcher is not None and workflow_file != self.workflow_file:
+                if (
+                    self._workflow_patcher is not None
+                    and workflow_file != self.workflow_file
+                ):
                     try:
                         workflow_file.unlink(missing_ok=True)
                     except OSError as unlink_err:
-                        logger.debug("Could not remove patched workflow temp file %s: %s", workflow_file, unlink_err)
+                        logger.debug(
+                            "Could not remove patched workflow temp file %s: %s",
+                            workflow_file,
+                            unlink_err,
+                        )
                 if event_file_to_clean is not None:
                     try:
                         event_file_to_clean.unlink(missing_ok=True)
                     except OSError as unlink_err:
-                        logger.debug("Could not remove event temp file %s: %s", event_file_to_clean, unlink_err)
+                        logger.debug(
+                            "Could not remove event temp file %s: %s",
+                            event_file_to_clean,
+                            unlink_err,
+                        )
         except Exception as e:
             logger.exception(
                 "Job execution error: %s: %s",
@@ -472,7 +478,7 @@ class ParallelExecutionManager:
                 error_message=str(e),
             )
 
-    def _prepare_image(self, job: QueuedJob) -> Optional[str]:
+    def _prepare_image(self, job: QueuedJob) -> str | None:
         if not job.image_tag:
             logger.warning("No image tag for %s", job.matrix_entry.name)
             return None
@@ -495,7 +501,9 @@ class ParallelExecutionManager:
             else:
                 logger.debug("No tar at %s for %s", tar_path, job.image_tag)
         else:
-            logger.debug("No image registry path; image must be pre-loaded: %s", job.image_tag)
+            logger.debug(
+                "No image registry path; image must be pre-loaded: %s", job.image_tag
+            )
         # If still missing and job.needs_build, build synchronously (Design Guide: "jobs are never skipped due to missing images")
         if (
             not self._docker.image_exists(job.image_tag)
@@ -513,27 +521,43 @@ class ParallelExecutionManager:
                         text=True,
                         timeout=3600,
                     )
-                    if result.returncode == 0 and self._docker.image_exists(job.image_tag):
-                        logger.info("Built image for %s: %s", job.matrix_entry.name, job.image_tag)
+                    if result.returncode == 0 and self._docker.image_exists(
+                        job.image_tag
+                    ):
+                        logger.info(
+                            "Built image for %s: %s",
+                            job.matrix_entry.name,
+                            job.image_tag,
+                        )
                         return job.image_tag
                     if result.returncode != 0:
                         logger.warning(
                             "Build failed for %s (exit %s): %s",
                             job.image_tag,
                             result.returncode,
-                            (result.stderr or result.stdout or "").strip() or "(no output)",
+                            (result.stderr or result.stdout or "").strip()
+                            or "(no output)",
                         )
                 except subprocess.TimeoutExpired:
                     logger.warning("Build timed out for %s", job.image_tag)
                 except (OSError, FileNotFoundError) as e:
-                    logger.warning("Could not run build script for %s: %s", job.image_tag, e)
+                    logger.warning(
+                        "Could not run build script for %s: %s", job.image_tag, e
+                    )
             else:
-                logger.debug("No build script at %s; cannot build %s", build_script, job.image_tag)
+                logger.debug(
+                    "No build script at %s; cannot build %s",
+                    build_script,
+                    job.image_tag,
+                )
 
         # Only return tag if image is now present (e.g. after load or build); else None so job fails clearly
         if self._docker.image_exists(job.image_tag):
             return job.image_tag
-        logger.warning("Image not available (not in cache, load from tar failed or not attempted, and build skipped or failed): %s", job.image_tag)
+        logger.warning(
+            "Image not available (not in cache, load from tar failed or not attempted, and build skipped or failed): %s",
+            job.image_tag,
+        )
         return None
 
     def _on_job_done(self, job: QueuedJob, future: Future) -> None:
@@ -615,7 +639,7 @@ class ParallelExecutionManager:
         return self._state
 
     @property
-    def execution_id(self) -> Optional[str]:
+    def execution_id(self) -> str | None:
         return self._run.execution_id if self._run else None
 
     @property

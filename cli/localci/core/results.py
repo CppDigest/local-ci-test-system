@@ -10,7 +10,6 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from localci.core.executor import JobResult, JobStatus
 
@@ -21,7 +20,7 @@ class ExecutionSummary:
 
     execution_id: str
     started_at: datetime
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
     results: list[JobResult] = field(default_factory=list)
 
     # -----------------------------------------------------------------
@@ -43,9 +42,7 @@ class ExecutionSummary:
     @property
     def errors(self) -> int:
         return sum(
-            1
-            for r in self.results
-            if r.status in (JobStatus.ERROR, JobStatus.TIMEOUT)
+            1 for r in self.results if r.status in (JobStatus.ERROR, JobStatus.TIMEOUT)
         )
 
     @property
@@ -72,11 +69,7 @@ class ExecutionSummary:
         intentional -- an empty run has no failures -- but callers should
         check :attr:`total` separately when a zero-job run is unexpected.
         """
-        return (
-            self.failed == 0
-            and self.errors == 0
-            and self.completed == self.total
-        )
+        return self.failed == 0 and self.errors == 0 and self.completed == self.total
 
     # -----------------------------------------------------------------
     # Timing
@@ -89,13 +82,13 @@ class ExecutionSummary:
         return sum(r.duration_seconds for r in self.results)
 
     @property
-    def longest_job(self) -> Optional[JobResult]:
+    def longest_job(self) -> JobResult | None:
         if not self.results:
             return None
         return max(self.results, key=lambda r: r.duration_seconds)
 
     @property
-    def shortest_job(self) -> Optional[JobResult]:
+    def shortest_job(self) -> JobResult | None:
         completed = [r for r in self.results if r.duration_seconds > 0]
         if not completed:
             return None
@@ -150,9 +143,7 @@ class ExecutionSummary:
         if self.all_passed:
             lines.append("RESULT: ALL PASSED ✓")
         else:
-            lines.append(
-                f"RESULT: {self.failed} FAILED, {self.errors} ERRORS ✗"
-            )
+            lines.append(f"RESULT: {self.failed} FAILED, {self.errors} ERRORS ✗")
 
         return "\n".join(lines)
 
@@ -165,9 +156,7 @@ class ExecutionSummary:
         return {
             "execution_id": self.execution_id,
             "started_at": self.started_at.isoformat(),
-            "finished_at": (
-                self.finished_at.isoformat() if self.finished_at else None
-            ),
+            "finished_at": (self.finished_at.isoformat() if self.finished_at else None),
             "total": self.total,
             "passed": self.passed,
             "failed": self.failed,
@@ -195,7 +184,7 @@ class ExecutionSummary:
         path.write_text(json.dumps(self.to_dict(), indent=2))
 
     @classmethod
-    def load(cls, path: Path) -> "ExecutionSummary":
+    def load(cls, path: Path) -> ExecutionSummary:
         """Load a previously-saved summary from JSON.
 
         Returns a minimal :class:`ExecutionSummary` with results
@@ -223,9 +212,7 @@ class ExecutionSummary:
                     exit_code=r.get("exit_code"),
                     duration_seconds=r.get("duration", 0.0),
                     image_used=r.get("image_used"),
-                    log_file=(
-                        Path(r["log_file"]) if r.get("log_file") else None
-                    ),
+                    log_file=(Path(r["log_file"]) if r.get("log_file") else None),
                     error_message=r.get("error_message"),
                 )
             )

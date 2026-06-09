@@ -20,6 +20,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import (
     ActCommand,
     ActNotFoundError,
@@ -28,7 +29,6 @@ from localci.core.executor import (
     JobResult,
     JobStatus,
 )
-from localci.core.command_builder import ActCommandBuilder
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import (
     BuildSystem,
@@ -40,7 +40,6 @@ from localci.core.workflow import (
     PackageRequirements,
     Platform,
 )
-
 
 # =====================================================================
 # Fixtures
@@ -312,7 +311,7 @@ class TestActCommand:
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
-            container_options='-v /host/ccache:/tmp/localci-cache/ccache',
+            container_options="-v /host/ccache:/tmp/localci-cache/ccache",
         )
         args = cmd.build()
         assert "--container-options" in args
@@ -476,13 +475,14 @@ class TestJobExecutor:
     @patch("shutil.which")
     def test_has_act_cli_windows(self, mock_which):
         """On Windows, should find act-cli.exe when act.exe is not available."""
+
         def which_side_effect(name):
             if name == "act":
                 return None
             if name == "act-cli":
                 return "C:\\ProgramData\\chocolatey\\bin\\act-cli.exe"
             return None
-        
+
         mock_which.side_effect = which_side_effect
         executor = JobExecutor(logs_dir=self.logs_dir)
         assert executor.has_act is True
@@ -492,9 +492,7 @@ class TestJobExecutor:
     @patch("shutil.which")
     def test_check_act_success(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/act"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="act version 0.2.68"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="act version 0.2.68")
         executor = JobExecutor(logs_dir=self.logs_dir)
         version = executor.check_act()
         assert "0.2.68" in version
@@ -517,13 +515,9 @@ class TestJobExecutor:
 
     @patch("shutil.which")
     def test_check_docker_not_installed(self, mock_which):
-        mock_which.side_effect = (
-            lambda name: "/usr/bin/act" if name == "act" else None
-        )
+        mock_which.side_effect = lambda name: "/usr/bin/act" if name == "act" else None
         executor = JobExecutor(logs_dir=self.logs_dir)
-        with pytest.raises(
-            DockerNotAvailableError, match="not installed"
-        ):
+        with pytest.raises(DockerNotAvailableError, match="not installed"):
             executor.check_docker()
 
     @patch("subprocess.run")
@@ -547,12 +541,14 @@ class TestJobExecutor:
         )
 
         # Mock preflight checks
-        with patch.object(executor, "check_act", return_value="act 0.2.68"):
-            with patch.object(executor, "check_docker"):
-                result = executor.run(
-                    cmd,
-                    matrix_name="GCC 15: C++20",
-                )
+        with (
+            patch.object(executor, "check_act", return_value="act 0.2.68"),
+            patch.object(executor, "check_docker"),
+        ):
+            result = executor.run(
+                cmd,
+                matrix_name="GCC 15: C++20",
+            )
 
         assert result.status == JobStatus.SKIPPED
         assert "DRY RUN" in result.stdout
@@ -572,9 +568,7 @@ class TestJobExecutor:
 
     @patch("shutil.which")
     def test_run_preflight_docker_fails(self, mock_which):
-        mock_which.side_effect = (
-            lambda name: "/usr/bin/act" if name == "act" else None
-        )
+        mock_which.side_effect = lambda name: "/usr/bin/act" if name == "act" else None
         executor = JobExecutor(logs_dir=self.logs_dir)
 
         cmd = ActCommand(
@@ -582,9 +576,7 @@ class TestJobExecutor:
             job_id="build",
         )
 
-        with patch.object(
-            executor, "check_act", return_value="act 0.2.68"
-        ):
+        with patch.object(executor, "check_act", return_value="act 0.2.68"):
             result = executor.run(cmd, matrix_name="test")
 
         assert result.status == JobStatus.ERROR
@@ -832,9 +824,7 @@ class TestActCommandBuilder:
         wf.write_text("name: CI")
 
         builder = ActCommandBuilder(workflow_file=wf)
-        entry = _make_entry(
-            raw={"name": "GCC 15", "compiler": "gcc", "version": "15"}
-        )
+        entry = _make_entry(raw={"name": "GCC 15", "compiler": "gcc", "version": "15"})
         cmd = builder.build(entry)
 
         assert cmd.matrix_filters["compiler"] == "gcc"
@@ -859,13 +849,15 @@ class TestActCommandBuilder:
 
     def test_ccache_env_and_compress(self, tmp_path):
         """Issue 9: CCACHE_DIR, CCACHE_MAXSIZE, CCACHE_COMPRESS when cache enabled."""
-        from localci.core.config import CcacheConfig, CacheConfig, ResolvedCachePaths
+        from localci.core.config import CacheConfig, CcacheConfig, ResolvedCachePaths
 
         wf = tmp_path / "ci.yml"
         wf.write_text("name: CI")
         ccache_dir = tmp_path / "ccache"
         ccache_dir.mkdir()
-        paths = ResolvedCachePaths(ccache_host=ccache_dir, boost_host=None, cmake_host=None)
+        paths = ResolvedCachePaths(
+            ccache_host=ccache_dir, boost_host=None, cmake_host=None
+        )
         cfg = CacheConfig(
             ccache=CcacheConfig(enabled=True, max_size="2G", compress=True),
         )
@@ -897,9 +889,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_image_exists_true(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -911,9 +901,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_image_exists_false(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -925,9 +913,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_load_image_missing_file(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -940,9 +926,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_load_image_success(self, mock_which, mock_run, tmp_path):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -962,18 +946,14 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_image_size(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
         dm = DockerManager()
 
         # 100 MB
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout=str(100 * 1024 * 1024)
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout=str(100 * 1024 * 1024))
         size = dm.image_size("test:latest")
         assert size is not None
         assert abs(size - 100.0) < 0.1
@@ -982,9 +962,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_tag_image(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -997,9 +975,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_remove_image(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -1012,17 +988,13 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_cleanup_act_containers(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
         dm = DockerManager()
 
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="abc123\ndef456\n"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="abc123\ndef456\n")
         count = dm.cleanup_act_containers()
         assert count == 2
 
@@ -1030,9 +1002,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_cleanup_no_containers(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -1066,9 +1036,7 @@ class TestDockerManager:
     @patch("shutil.which")
     def test_has_docker_property(self, mock_which, mock_run):
         mock_which.return_value = "/usr/bin/docker"
-        mock_run.return_value = MagicMock(
-            returncode=0, stdout="docker 24.0"
-        )
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
         from localci.utils.docker import DockerManager
 
@@ -1265,6 +1233,7 @@ class TestCLIRunCommand:
 
     def test_run_help(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1278,6 +1247,7 @@ class TestCLIRunCommand:
     def test_run_dry_run(self):
         """Dry run should show the execution plan without running."""
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1287,9 +1257,7 @@ class TestCLIRunCommand:
         if not sample.exists():
             pytest.skip("sample_workflow.yml not found")
 
-        result = runner.invoke(
-            cli, ["run", "--workflow", str(sample), "--dry-run"]
-        )
+        result = runner.invoke(cli, ["run", "--workflow", str(sample), "--dry-run"])
         # Should show dry-run output (may fail if no entries found)
         assert result.exit_code == 0 or "No matrix entries" in result.output
 
@@ -1299,6 +1267,7 @@ class TestCLIStatusCommand:
 
     def test_status_help(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1309,6 +1278,7 @@ class TestCLIStatusCommand:
 
     def test_status_no_results(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1322,6 +1292,7 @@ class TestCLILogsCommand:
 
     def test_logs_help(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1332,11 +1303,9 @@ class TestCLILogsCommand:
 
     def test_logs_no_results(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
         result = runner.invoke(cli, ["logs", "0"])
-        assert (
-            "No previous execution" in result.output
-            or result.exit_code == 0
-        )
+        assert "No previous execution" in result.output or result.exit_code == 0

@@ -109,8 +109,6 @@ def integration_project(tmp_path: Path) -> tuple[Path, Path]:
     config_path = dest / ".localci.yml"
     config = yaml.safe_load(config_path.read_text())
     config["logging"]["directory"] = str(logs_dir)
-    config_path.write_text(
-        yaml.dump(config, default_flow_style=False, sort_keys=False)
-    )
+    config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
 
     return dest, logs_dir

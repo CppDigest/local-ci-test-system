@@ -13,11 +13,10 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from localci.core.queue import DependencyResolver
 from localci.errors import (
-    LocalCIError,
     MissingFieldError,
     UnsupportedMatrixError,
     WorkflowError,
@@ -72,11 +71,11 @@ class CompilerInfo:
 
     family: CompilerFamily
     version: str  # "15", "20", "14.42", "*"
-    cc: Optional[str] = None
-    cxx: Optional[str] = None
+    cc: str | None = None
+    cxx: str | None = None
     cxxstd: list[str] = field(default_factory=lambda: ["20"])
-    latest_cxxstd: Optional[str] = None
-    b2_toolset: Optional[str] = None
+    latest_cxxstd: str | None = None
+    b2_toolset: str | None = None
 
     @property
     def display_name(self) -> str:
@@ -96,11 +95,11 @@ class CompilerInfo:
 class ContainerInfo:
     """Container specification."""
 
-    image: Optional[str] = None
-    options: Optional[str] = None
+    image: str | None = None
+    options: str | None = None
 
     @property
-    def os_name(self) -> Optional[str]:
+    def os_name(self) -> str | None:
         """Extract OS name from image, e.g. 'ubuntu'.
 
         Handles registry-prefixed images (e.g. ghcr.io/owner/ubuntu:25.04)
@@ -112,7 +111,7 @@ class ContainerInfo:
         return name_part.split(":", 1)[0] if name_part else None
 
     @property
-    def os_version(self) -> Optional[str]:
+    def os_version(self) -> str | None:
         """Extract OS version from image, e.g. '25.04'.
 
         Handles registry-prefixed images by isolating the name:tag part
@@ -172,10 +171,10 @@ class PackageRequirements:
     """Required system packages and tools."""
 
     apt_packages: list[str] = field(default_factory=list)
-    apt_add_architecture: Optional[str] = None  # e.g. "i386"
+    apt_add_architecture: str | None = None  # e.g. "i386"
     build_tools: list[str] = field(default_factory=list)
-    cxxflags: Optional[str] = None
-    ccflags: Optional[str] = None
+    cxxflags: str | None = None
+    ccflags: str | None = None
 
     @property
     def all_packages(self) -> list[str]:
@@ -196,7 +195,7 @@ class MatrixEntry:
     runs_on: str
     build_system: BuildSystem
     architecture: str = "x86_64"
-    generator: Optional[str] = None
+    generator: str | None = None
     is_latest: bool = False
     is_earliest: bool = False
     timeout_minutes: int = 120
@@ -218,9 +217,9 @@ class StepInfo:
     """Workflow step information."""
 
     name: str
-    uses: Optional[str] = None
-    run: Optional[str] = None
-    condition: Optional[str] = None
+    uses: str | None = None
+    run: str | None = None
+    condition: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     with_: dict[str, Any] = field(default_factory=dict)
 
@@ -229,7 +228,7 @@ class StepInfo:
         return self.uses is not None
 
     @property
-    def action_name(self) -> Optional[str]:
+    def action_name(self) -> str | None:
         """Extract action name, e.g. 'b2-workflow' from the uses path."""
         if self.uses:
             parts = self.uses.split("/")
@@ -245,15 +244,15 @@ class Job:
     id: str
     name: str
     runs_on: str
-    container: Optional[ContainerInfo] = None
+    container: ContainerInfo | None = None
     needs: list[str] = field(default_factory=list)
-    condition: Optional[str] = None
-    strategy: Optional[dict] = None
+    condition: str | None = None
+    strategy: dict | None = None
     matrix: list[MatrixEntry] = field(default_factory=list)
     steps: list[StepInfo] = field(default_factory=list)
     timeout_minutes: int = 60
     env: dict[str, str] = field(default_factory=dict)
-    defaults: Optional[dict] = None
+    defaults: dict | None = None
 
     @property
     def has_matrix(self) -> bool:
@@ -278,7 +277,7 @@ class Workflow:
     file_path: Path
     events: list[str]
     env: dict[str, str] = field(default_factory=dict)
-    concurrency: Optional[dict] = None
+    concurrency: dict | None = None
     jobs: dict[str, Job] = field(default_factory=dict)
 
     @property
@@ -347,7 +346,7 @@ class WorkflowAnalyzer:
     # Main entry point
     # -----------------------------------------------------------------
 
-    def analyze(self, workflow_path: Path, event: Optional[str] = None) -> Workflow:
+    def analyze(self, workflow_path: Path, event: str | None = None) -> Workflow:
         """Parse a workflow file and return a structured :class:`Workflow`.
 
         Parameters
@@ -385,8 +384,7 @@ class WorkflowAnalyzer:
         # workflow's trigger list but still parse everything.
         if event and events and event not in events:
             logger.warning(
-                "Workflow %s does not trigger on event '%s' "
-                "(triggers: %s)",
+                "Workflow %s does not trigger on event '%s' (triggers: %s)",
                 workflow_path,
                 event,
                 ", ".join(events),
@@ -423,7 +421,9 @@ class WorkflowAnalyzer:
         # When event filter is provided, keep only jobs that run on that event
         if event is not None:
             workflow = self._filter_workflow_by_event(workflow, event)
-            logger.debug("Filtered to %d jobs for event '%s'", workflow.total_jobs, event)
+            logger.debug(
+                "Filtered to %d jobs for event '%s'", workflow.total_jobs, event
+            )
 
         logger.info(
             "Analysis complete: %d jobs, %d matrix entries",
@@ -532,9 +532,7 @@ class WorkflowAnalyzer:
                 try:
                     matrix.append(self._parse_matrix_entry(i, entry, job_data))
                 except Exception as exc:
-                    raise UnsupportedMatrixError(
-                        entry, str(exc)
-                    ) from exc
+                    raise UnsupportedMatrixError(entry, str(exc)) from exc
 
         steps = [self._parse_step(s) for s in job_data.get("steps", [])]
 
@@ -633,9 +631,7 @@ class WorkflowAnalyzer:
     def _parse_packages(self, entry: dict) -> PackageRequirements:
         install_str = entry.get("install", "")
         apt_packages = (
-            [p.strip() for p in install_str.split() if p.strip()]
-            if install_str
-            else []
+            [p.strip() for p in install_str.split() if p.strip()] if install_str else []
         )
 
         build_tools: list[str] = []
@@ -668,15 +664,12 @@ class WorkflowAnalyzer:
     # Classification helpers
     # -----------------------------------------------------------------
 
-    def _classify_platform(
-        self, runs_on: str, container: ContainerInfo
-    ) -> Platform:
+    def _classify_platform(self, runs_on: str, container: ContainerInfo) -> Platform:
         # Container-based jobs
         if container.image:
             img = container.image.lower()
             if any(
-                kw in img
-                for kw in ("ubuntu", "debian", "fedora", "centos", "alpine")
+                kw in img for kw in ("ubuntu", "debian", "fedora", "centos", "alpine")
             ):
                 return Platform.LINUX
             if "windows" in img:
@@ -726,15 +719,13 @@ class WorkflowAnalyzer:
             if "cmake-workflow" in uses:
                 condition = step.get("if", "")
                 if any(
-                    kw in condition
-                    for kw in ("coverage", "build-cmake", "is-earliest")
+                    kw in condition for kw in ("coverage", "build-cmake", "is-earliest")
+                ) and (
+                    entry.get("coverage")
+                    or entry.get("build-cmake")
+                    or entry.get("is-earliest")
                 ):
-                    if (
-                        entry.get("coverage")
-                        or entry.get("build-cmake")
-                        or entry.get("is-earliest")
-                    ):
-                        has_cmake = True
+                    has_cmake = True
 
         # Default: most entries run B2
         if not has_b2 and not has_cmake:
@@ -783,23 +774,15 @@ class WorkflowAnalyzer:
         self, workflow: Workflow, platform: Platform
     ) -> list[MatrixEntry]:
         """Return matrix entries matching *platform*."""
-        return [
-            e for e in workflow.all_matrix_entries() if e.platform == platform
-        ]
+        return [e for e in workflow.all_matrix_entries() if e.platform == platform]
 
     def filter_by_compiler(
         self, workflow: Workflow, family: CompilerFamily
     ) -> list[MatrixEntry]:
         """Return matrix entries matching *family*."""
-        return [
-            e
-            for e in workflow.all_matrix_entries()
-            if e.compiler.family == family
-        ]
+        return [e for e in workflow.all_matrix_entries() if e.compiler.family == family]
 
-    def filter_by_variant(
-        self, workflow: Workflow, **kwargs: Any
-    ) -> list[MatrixEntry]:
+    def filter_by_variant(self, workflow: Workflow, **kwargs: Any) -> list[MatrixEntry]:
         """Filter by variant flags.
 
         Example::
@@ -808,18 +791,12 @@ class WorkflowAnalyzer:
         """
         entries = workflow.all_matrix_entries()
         for key, value in kwargs.items():
-            entries = [
-                e for e in entries if getattr(e.variant, key, None) == value
-            ]
+            entries = [e for e in entries if getattr(e.variant, key, None) == value]
         return entries
 
-    def search(
-        self, workflow: Workflow, query: str
-    ) -> list[MatrixEntry]:
+    def search(self, workflow: Workflow, query: str) -> list[MatrixEntry]:
         """Search matrix entries by name pattern (case-insensitive)."""
         query_lower = query.lower()
         return [
-            e
-            for e in workflow.all_matrix_entries()
-            if query_lower in e.name.lower()
+            e for e in workflow.all_matrix_entries() if query_lower in e.name.lower()
         ]

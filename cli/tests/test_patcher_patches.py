@@ -89,11 +89,15 @@ class TestContainerImagePatch:
         assert 'container: "localci/gcc-15:custom"' in content
         assert 'container: "ubuntu:22.04"' in content
         assert "runs-on: ubuntu-latest" in content
-        assert original.count("runs-on: ubuntu-latest") == content.count("runs-on: ubuntu-latest")
+        assert original.count("runs-on: ubuntu-latest") == content.count(
+            "runs-on: ubuntu-latest"
+        )
 
     def test_negative_raises_when_matrix_entry_name_missing(self, patcher_paths):
         workflow = FIXTURES_DIR / "container_image.yml"
-        with pytest.raises(ValueError, match="Matrix entry name 'No Such Entry' not found"):
+        with pytest.raises(
+            ValueError, match="Matrix entry name 'No Such Entry' not found"
+        ):
             patcher_paths(
                 workflow,
                 _make_entry("No Such Entry"),
@@ -172,7 +176,9 @@ class TestBoostCachePatch:
         assert "ln -sfn" in content
         assert "cp -a boost-root/." in content
 
-    def test_negative_leaves_workflow_unchanged_without_boost_copy_line(self, patcher_paths):
+    def test_negative_leaves_workflow_unchanged_without_boost_copy_line(
+        self, patcher_paths
+    ):
         workflow = FIXTURES_DIR / "container_image.yml"
         original = workflow.read_text(encoding="utf-8")
         patched = patcher_paths(workflow)
@@ -195,7 +201,9 @@ class TestCapyTimestampsPatch:
 
         assert "Restore capy source file timestamps" in content
         assert ".capy-file-stats" in content
-        assert content.index("Restore capy source file timestamps") < content.index("Patch Boost")
+        assert content.index("Restore capy source file timestamps") < content.index(
+            "Patch Boost"
+        )
 
     def test_negative_skips_duplicate_on_already_patched_workflow(self, patcher_paths):
         workflow = FIXTURES_DIR / "already_patched.yml"
@@ -313,7 +321,10 @@ class TestPatcherEdgeCases:
     ("fixture_name", "patch_kwargs"),
     [
         ("container_image.yml", {"image_tag": "localci/test:latest"}),
-        ("container_mount.yml", {"job_id": "build", "container_mount_options": "-v /cache:/cache"}),
+        (
+            "container_mount.yml",
+            {"job_id": "build", "container_mount_options": "-v /cache:/cache"},
+        ),
         (
             "container_mount_no_options.yml",
             {"job_id": "build", "container_mount_options": "-v /cache:/cache"},

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -63,11 +63,11 @@ class JobsConfig(BaseModel):
 class MatrixFilter(BaseModel):
     """Single matrix filter entry."""
 
-    compiler: Optional[str] = None
-    version: Optional[str] = None
-    name: Optional[str] = None
-    asan: Optional[bool] = None
-    ubsan: Optional[bool] = None
+    compiler: str | None = None
+    version: str | None = None
+    name: str | None = None
+    asan: bool | None = None
+    ubsan: bool | None = None
 
 
 class MatrixConfig(BaseModel):
@@ -95,6 +95,7 @@ class ImagesConfig(BaseModel):
     @classmethod
     def expand_registry(cls, v: Path) -> Path:
         return _expand_path(v)
+
     cleanup: ImageCleanupConfig = Field(default_factory=ImageCleanupConfig)
 
 
@@ -104,7 +105,7 @@ class CcacheConfig(BaseModel):
     enabled: bool = True
     max_size: str = "5G"
     compress: bool = True  # CCACHE_COMPRESS
-    dir: Optional[Path] = None  # default: cache.directory / "ccache"
+    dir: Path | None = None  # default: cache.directory / "ccache"
 
 
 class BoostCacheConfig(BaseModel):
@@ -112,9 +113,9 @@ class BoostCacheConfig(BaseModel):
 
     enabled: bool = True
     branch: str = "develop"
-    dir: Optional[Path] = None  # default: cache.directory / "boost"
+    dir: Path | None = None  # default: cache.directory / "boost"
     shallow: bool = True
-    remote: Optional[str] = None  # default: https://github.com/boostorg/boost.git
+    remote: str | None = None  # default: https://github.com/boostorg/boost.git
     # When True, cache b2 build artifacts (bin.v2) per job so b2 does incremental builds
     build_dir: bool = True
 
@@ -123,9 +124,11 @@ class CmakeCacheConfig(BaseModel):
     """CMake configuration cache settings (per job/matrix)."""
 
     enabled: bool = True
-    dir: Optional[Path] = None  # base dir; per-job path is dir / <job_matrix_key>[_<input_digest>]
+    dir: Path | None = (
+        None  # base dir; per-job path is dir / <job_matrix_key>[_<input_digest>]
+    )
     # Optional: paths/globs relative to project root included in change detection (default: CMakeLists.txt, cmake/*.cmake)
-    inputs: Optional[list[str]] = None
+    inputs: list[str] | None = None
 
 
 class AptCacheConfig(BaseModel):
@@ -137,7 +140,9 @@ class AptCacheConfig(BaseModel):
     """
 
     enabled: bool = True
-    dir: Optional[Path] = None  # default: cache.directory / "apt"; per-job: dir / <queue_key>
+    dir: Path | None = (
+        None  # default: cache.directory / "apt"; per-job: dir / <queue_key>
+    )
 
 
 class CacheConfig(BaseModel):
@@ -280,11 +285,13 @@ APT_ARCHIVES_CONTAINER = "/var/cache/apt/archives"
 class ResolvedCachePaths:
     """Resolved host paths and container paths for Phase 2 caches."""
 
-    ccache_host: Optional[Path] = None
-    boost_host: Optional[Path] = None
-    cmake_host: Optional[Path] = None  # per-job: cache_base / job_id / matrix_key
-    b2_source_host: Optional[Path] = None  # per-job: persistent boost-root (source + bin.v2 artifacts)
-    apt_host: Optional[Path] = None  # per-job: apt .deb cache for "Install packages" step
+    ccache_host: Path | None = None
+    boost_host: Path | None = None
+    cmake_host: Path | None = None  # per-job: cache_base / job_id / matrix_key
+    b2_source_host: Path | None = (
+        None  # per-job: persistent boost-root (source + bin.v2 artifacts)
+    )
+    apt_host: Path | None = None  # per-job: apt .deb cache for "Install packages" step
 
     @property
     def ccache_container(self) -> str:
@@ -325,11 +332,11 @@ class ResolvedCachePaths:
 def resolve_cache_paths(
     cache_config: CacheConfig,
     no_cache: bool,
-    cache_dir_override: Optional[Path] = None,
-    job_id: Optional[str] = None,
-    queue_key: Optional[str] = None,
-    cmake_input_digest: Optional[str] = None,
-) -> Optional[ResolvedCachePaths]:
+    cache_dir_override: Path | None = None,
+    job_id: str | None = None,
+    queue_key: str | None = None,
+    cmake_input_digest: str | None = None,
+) -> ResolvedCachePaths | None:
     """Resolve host cache paths for use with act bind mounts.
 
     Returns None if caching is disabled (no_cache, or cache.enabled or
@@ -361,10 +368,7 @@ def resolve_cache_paths(
         base = cache_config.cmake.dir or root / "cmake"
         base = Path(base).expanduser().resolve()
         safe_key = queue_key.replace(":", "-")
-        if cmake_input_digest:
-            subdir = f"{safe_key}_{cmake_input_digest}"
-        else:
-            subdir = safe_key
+        subdir = f"{safe_key}_{cmake_input_digest}" if cmake_input_digest else safe_key
         r.cmake_host = base / subdir
     if cache_config.apt.enabled and job_id and queue_key:
         base = cache_config.apt.dir or root / "apt"
@@ -439,7 +443,7 @@ def load_config(path: Path | str | None = None) -> LocalCIConfig:
 
     logger.debug("Loading config from %s", config_path)
     try:
-        with open(config_path, "r", encoding="utf-8") as fh:
+        with open(config_path, encoding="utf-8") as fh:
             raw: dict[str, Any] = yaml.safe_load(fh) or {}
     except (OSError, yaml.YAMLError) as exc:
         raise ConfigIOError(config_path, exc) from exc
@@ -468,9 +472,7 @@ def _stringify_paths(obj: Any) -> None:
         for key, value in obj.items():
             if isinstance(value, Path):
                 obj[key] = str(value)
-            elif isinstance(value, dict):
-                _stringify_paths(value)
-            elif isinstance(value, list):
+            elif isinstance(value, (dict, list)):
                 _stringify_paths(value)
     elif isinstance(obj, list):
         for item in obj:

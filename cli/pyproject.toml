@@ -21,6 +21,7 @@ dev = [
     "mypy>=1.10.0",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "ruff>=0.5",
     "types-PyYAML>=6.0.0",
     "types-psutil>=5.9.0",  # for localci.utils.resources when it leaves ignore_errors
 ]
@@ -73,3 +74,12 @@ module = [
     "localci.utils.yq",
 ]
 ignore_errors = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# E501 is handled by ruff format; avoid duplicate line-length enforcement.
+ignore = ["E501"]

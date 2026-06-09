@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -10,13 +9,13 @@ import yaml
 
 from localci.core.registry import (
     ImageRegistry,
-    MatchResult,
     RegistryEntry,
     essential_marks,
     extra_marks,
     select_image,
 )
 from localci.core.workflow import (
+    BuildSystem,
     BuildVariant,
     CompilerFamily,
     CompilerInfo,
@@ -24,7 +23,6 @@ from localci.core.workflow import (
     MatrixEntry,
     PackageRequirements,
     Platform,
-    BuildSystem,
 )
 
 
@@ -104,8 +102,12 @@ class TestEssentialMarks:
         assert essential_marks(entry, reg) == 0
 
     def test_arch_mismatch(self):
-        entry = _make_entry("ubuntu:25.04", CompilerFamily.GCC, "15", architecture="x86")
-        reg = _make_reg("x64", os="ubuntu:25.04", architecture="x86_64", compilers=["gcc-15"])
+        entry = _make_entry(
+            "ubuntu:25.04", CompilerFamily.GCC, "15", architecture="x86"
+        )
+        reg = _make_reg(
+            "x64", os="ubuntu:25.04", architecture="x86_64", compilers=["gcc-15"]
+        )
         assert essential_marks(entry, reg) == 0
 
     def test_clang_match(self):
@@ -160,7 +162,9 @@ class TestSelectImage:
     def test_full_match_highest_extra_wins(self):
         entry = _make_entry(apt_packages=["libssl-dev"])
         reg_lo = _make_reg("lo", os="ubuntu:25.04", compilers=["gcc-15"], packages=[])
-        reg_hi = _make_reg("hi", os="ubuntu:25.04", compilers=["gcc-15"], packages=["libssl-dev"])
+        reg_hi = _make_reg(
+            "hi", os="ubuntu:25.04", compilers=["gcc-15"], packages=["libssl-dev"]
+        )
         result = select_image(entry, [reg_lo, reg_hi])
         assert result.use_image is reg_hi
         assert result.extra_marks == 10
@@ -176,8 +180,18 @@ class TestSelectImage:
 
     def test_tie_break_prefer_recently_used(self):
         entry = _make_entry("ubuntu:25.04", CompilerFamily.GCC, "15")
-        reg_old = _make_reg("a", os="ubuntu:25.04", compilers=["gcc-15"], last_used="2020-01-01T00:00:00Z")
-        reg_new = _make_reg("b", os="ubuntu:25.04", compilers=["gcc-15"], last_used="2026-01-01T00:00:00Z")
+        reg_old = _make_reg(
+            "a",
+            os="ubuntu:25.04",
+            compilers=["gcc-15"],
+            last_used="2020-01-01T00:00:00Z",
+        )
+        reg_new = _make_reg(
+            "b",
+            os="ubuntu:25.04",
+            compilers=["gcc-15"],
+            last_used="2026-01-01T00:00:00Z",
+        )
         result = select_image(entry, [reg_old, reg_new])
         assert result.use_image is reg_new
 
@@ -186,7 +200,13 @@ class TestRegistryEntryRoundtrip:
     """RegistryEntry from_dict / to_dict preserves schema."""
 
     def test_from_dict_minimal(self):
-        d = {"name": "x", "file": "x.tar", "docker_tag": "x:latest", "os": "ubuntu:25.04", "architecture": "x86_64"}
+        d = {
+            "name": "x",
+            "file": "x.tar",
+            "docker_tag": "x:latest",
+            "os": "ubuntu:25.04",
+            "architecture": "x86_64",
+        }
         e = RegistryEntry.from_dict(d)
         assert e.name == "x"
         assert e.os == "ubuntu:25.04"
@@ -252,24 +272,28 @@ class TestQueueBuilderWithRegistry:
     """QueueBuilder with registry_path sets image_tag, base_image_tag, needs_build."""
 
     def test_with_registry_full_match(self, tmp_path: Path):
-        from localci.core.queue_builder import QueueBuilder, _resolve_image_tag_and_build
+        from localci.core.queue_builder import (
+            QueueBuilder,
+        )
         from localci.core.workflow import WorkflowAnalyzer
 
         registry_path = tmp_path / "image-registry.yml"
         registry_path.write_text(
-            yaml.safe_dump({
-                "version": "1.0",
-                "images": [
-                    {
-                        "name": "capy-ubuntu-25.04-gcc15",
-                        "docker_tag": "capy-ubuntu-25.04-gcc15:latest",
-                        "file": "images/capy-ubuntu-25.04-gcc15.tar",
-                        "os": "ubuntu:25.04",
-                        "architecture": "x86_64",
-                        "compilers": ["gcc-15"],
-                    },
-                ],
-            }),
+            yaml.safe_dump(
+                {
+                    "version": "1.0",
+                    "images": [
+                        {
+                            "name": "capy-ubuntu-25.04-gcc15",
+                            "docker_tag": "capy-ubuntu-25.04-gcc15:latest",
+                            "file": "images/capy-ubuntu-25.04-gcc15.tar",
+                            "os": "ubuntu:25.04",
+                            "architecture": "x86_64",
+                            "compilers": ["gcc-15"],
+                        },
+                    ],
+                }
+            ),
             encoding="utf-8",
         )
         # Create a minimal workflow with one job/entry
@@ -369,4 +393,6 @@ jobs:
         jobs = list(queue.get_all_jobs())
         assert len(jobs) == 1
         assert jobs[0].image_tag is None
-        assert jobs[0].needs_build is False or jobs[0].needs_build is True  # no image to build
+        assert (
+            jobs[0].needs_build is False or jobs[0].needs_build is True
+        )  # no image to build

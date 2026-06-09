@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from localci.core.workflow import (
-    Platform,
     Workflow,
 )
 
