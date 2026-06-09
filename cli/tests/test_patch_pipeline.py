@@ -21,7 +21,7 @@ from localci.core.workflow import (
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-CAPY_WORKFLOW = FIXTURES_DIR / "capy" / ".github" / "workflows" / "ci.yml"
+PIPELINE_WORKFLOW = FIXTURES_DIR / "patcher" / "pipeline_minimal.yml"
 
 
 @pytest.fixture
@@ -43,15 +43,14 @@ def sample_entry() -> MatrixEntry:
 
 
 @pytest.fixture
-def capy_workflow_path() -> Path:
-    if not CAPY_WORKFLOW.exists():
-        pytest.skip("capy workflow fixture not found")
-    return CAPY_WORKFLOW
+def workflow_path() -> Path:
+    assert PIPELINE_WORKFLOW.is_file(), f"missing fixture: {PIPELINE_WORKFLOW}"
+    return PIPELINE_WORKFLOW
 
 
-def test_pipeline_default_enables_all_steps(capy_workflow_path, sample_entry) -> None:
+def test_pipeline_default_enables_all_steps(workflow_path, sample_entry) -> None:
     """Default config runs the full patch pipeline (baseline behaviour)."""
-    patched = _write_patched_workflow(capy_workflow_path, sample_entry)
+    patched = _write_patched_workflow(workflow_path, sample_entry)
     try:
         content = patched.read_text()
         assert "LOCALCI_B2_SOURCE_DIR" in content
@@ -61,7 +60,7 @@ def test_pipeline_default_enables_all_steps(capy_workflow_path, sample_entry) ->
         patched.unlink(missing_ok=True)
 
 
-def test_pipeline_disable_b2_patches(capy_workflow_path, sample_entry) -> None:
+def test_pipeline_disable_b2_patches(workflow_path, sample_entry) -> None:
     """Disabling b2-related patches leaves the workflow unchanged for those steps."""
     cfg = LocalCIConfig(
         patches=PatchesConfig(
@@ -72,7 +71,7 @@ def test_pipeline_disable_b2_patches(capy_workflow_path, sample_entry) -> None:
         )
     )
     patched = _write_patched_workflow(
-        capy_workflow_path, sample_entry, config=cfg
+        workflow_path, sample_entry, config=cfg
     )
     try:
         content = patched.read_text()
@@ -84,25 +83,37 @@ def test_pipeline_disable_b2_patches(capy_workflow_path, sample_entry) -> None:
         patched.unlink(missing_ok=True)
 
 
-def test_pipeline_disable_container_mounts(capy_workflow_path, sample_entry) -> None:
+def test_pipeline_disable_container_mounts(workflow_path, sample_entry) -> None:
     mounts = "-v /host/boost:/tmp/localci-cache/boost"
-    cfg = LocalCIConfig(patches=PatchesConfig(container_mounts=False))
-    patched = _write_patched_workflow(
-        capy_workflow_path,
+    mount_fragment = "/host/boost:/tmp/localci-cache/boost"
+
+    patched_enabled = _write_patched_workflow(
+        workflow_path,
         sample_entry,
         job_id="build",
         container_mount_options=mounts,
-        config=cfg,
+        config=LocalCIConfig(patches=PatchesConfig(container_mounts=True)),
     )
     try:
-        content = patched.read_text()
-        assert "/host/boost:/tmp/localci-cache/boost" not in content
+        assert mount_fragment in patched_enabled.read_text()
     finally:
-        patched.unlink(missing_ok=True)
+        patched_enabled.unlink(missing_ok=True)
+
+    patched_disabled = _write_patched_workflow(
+        workflow_path,
+        sample_entry,
+        job_id="build",
+        container_mount_options=mounts,
+        config=LocalCIConfig(patches=PatchesConfig(container_mounts=False)),
+    )
+    try:
+        assert mount_fragment not in patched_disabled.read_text()
+    finally:
+        patched_disabled.unlink(missing_ok=True)
 
 
-def test_pipeline_custom_order(capy_workflow_path, sample_entry) -> None:
-    """Custom order only changes step sequence; all enabled steps still run."""
+def test_pipeline_custom_order() -> None:
+    """Custom order lists all enabled steps in the requested sequence."""
     cfg = LocalCIConfig(
         patches=PatchesConfig(
             order=[
@@ -117,7 +128,7 @@ def test_pipeline_custom_order(capy_workflow_path, sample_entry) -> None:
         )
     )
     pipeline = PatchPipeline.from_config(cfg)
-    step_names = [step.name for step in pipeline._steps]
+    step_names = [step.name for step in pipeline.steps]
     assert step_names == [
         "codecov_skip",
         "b2_source_cache",
@@ -132,3 +143,39 @@ def test_pipeline_custom_order(capy_workflow_path, sample_entry) -> None:
 def test_patches_config_rejects_unknown_step() -> None:
     with pytest.raises(ValueError, match="Unknown patch steps"):
         PatchesConfig(order=["not_a_real_step"])
+
+
+def test_patches_config_rejects_duplicate_step() -> None:
+    with pytest.raises(ValueError, match="Duplicate step names"):
+        PatchesConfig(
+            order=[
+                "b2_source_cache",
+                "b2_source_cache",
+                "codecov_skip",
+                "restore_capy_timestamps",
+                "capy_copy_preservation",
+                "b2_bootstrap_skip",
+                "container_mounts",
+                "image_substitution",
+            ]
+        )
+
+
+def test_patches_config_rejects_empty_order() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        PatchesConfig(order=[])
+
+
+def test_patches_config_rejects_enabled_step_missing_from_order() -> None:
+    with pytest.raises(ValueError, match="missing from 'order'"):
+        PatchesConfig(
+            b2_source_cache=True,
+            order=[
+                "codecov_skip",
+                "restore_capy_timestamps",
+                "capy_copy_preservation",
+                "b2_bootstrap_skip",
+                "container_mounts",
+                "image_substitution",
+            ],
+        )

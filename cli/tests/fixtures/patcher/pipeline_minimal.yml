@@ -1,0 +1,20 @@
+name: Pipeline minimal
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+    strategy:
+      matrix:
+        include:
+          - name: "build (ubuntu-24.04, gcc-15)"
+            runs-on: ubuntu-latest
+            container: ubuntu:24.04
+    steps:
+      - name: Patch Boost
+        run: |
+          cp -rL boost-source boost-root
+          cp -r "$workspace_root"/capy-root "libs/$module"
+      - name: Boost B2 Workflow
+        uses: alandefreitas/cpp-actions/b2-workflow@v1.9.0

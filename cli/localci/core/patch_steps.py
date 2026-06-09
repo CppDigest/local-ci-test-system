@@ -82,26 +82,31 @@ class RestoreCapyTimestampsStep(PatchStep):
 
     def apply(self, ctx: PatchContext) -> None:
         for i, line in enumerate(ctx.lines):
-            if re.match(r"^\s+-\s+name:\s+Patch Boost", line):
-                already_patched = any(
-                    "capy-file-stats" in ctx.lines[j]
-                    for j in range(max(0, i - 15), i)
-                )
-                if not already_patched:
-                    new_step = [
-                        "      - name: Restore capy source file timestamps\n",
-                        "        run: |\n",
-                        '          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/.capy-file-stats" ]; then\n',
-                        "            while IFS=' ' read -r saved_mtime fhash relpath; do\n",
-                        '              [ -f "capy-root/$relpath" ] || continue\n',
-                        '              curr=$(sha256sum "capy-root/$relpath" 2>/dev/null | cut -d\' \' -f1)\n',
-                        '              [ "$curr" = "$fhash" ] && touch -d "@$saved_mtime" "capy-root/$relpath" 2>/dev/null || true\n',
-                        '            done < "${LOCALCI_B2_SOURCE_DIR}/.capy-file-stats"\n',
-                        '          fi\n',
-                    ]
-                    for j, new_line in enumerate(new_step):
-                        ctx.lines.insert(i + j, new_line)
-                break
+            step_match = re.match(r"^(\s+)-\s+name:\s+Patch Boost", line)
+            if not step_match:
+                continue
+            already_patched = any(
+                "capy-file-stats" in ctx.lines[j]
+                for j in range(max(0, i - 15), i)
+            )
+            if not already_patched:
+                list_indent = step_match.group(1)
+                prop_indent = list_indent + "  "
+                body_indent = prop_indent + "  "
+                new_step = [
+                    f"{list_indent}- name: Restore capy source file timestamps\n",
+                    f"{prop_indent}run: |\n",
+                    f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats" ]; then\n',
+                    f"{body_indent}  while IFS=' ' read -r saved_mtime fhash relpath; do\n",
+                    f'{body_indent}    [ -f "capy-root/$relpath" ] || continue\n',
+                    f'{body_indent}    curr=$(sha256sum "capy-root/$relpath" 2>/dev/null | cut -d\' \' -f1)\n',
+                    f'{body_indent}    [ "$curr" = "$fhash" ] && touch -d "@$saved_mtime" "capy-root/$relpath" 2>/dev/null || true\n',
+                    f'{body_indent}  done < "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n',
+                    f"{body_indent}fi\n",
+                ]
+                for j, new_line in enumerate(new_step):
+                    ctx.lines.insert(i + j, new_line)
+            break
 
 
 class CapyCopyPreservationStep(PatchStep):
@@ -149,13 +154,17 @@ class B2BootstrapSkipStep(PatchStep):
                     for j in range(max(0, step_start - 10), step_start)
                 )
                 if not already_patched:
+                    step_match = re.match(r"^(\s+)-\s+name:\s*", ctx.lines[step_start])
+                    list_indent = step_match.group(1) if step_match else ""
+                    prop_indent = list_indent + "  "
+                    body_indent = prop_indent + "  "
                     new_step = [
-                        "      - name: Skip b2 bootstrap (b2 binary cached)\n",
-                        "        run: |\n",
-                        '          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/b2" ]; then\n',
-                        "            printf '#!/bin/sh\\necho \"b2 binary cached, skipping bootstrap.\"\\n' > boost-root/bootstrap.sh\n",
-                        "            chmod +x boost-root/bootstrap.sh\n",
-                        "          fi\n",
+                        f"{list_indent}- name: Skip b2 bootstrap (b2 binary cached)\n",
+                        f"{prop_indent}run: |\n",
+                        f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/b2" ]; then\n',
+                        f'{body_indent}  printf \'#!/bin/sh\\necho "b2 binary cached, skipping bootstrap."\\n\' > boost-root/bootstrap.sh\n',
+                        f"{body_indent}  chmod +x boost-root/bootstrap.sh\n",
+                        f"{body_indent}fi\n",
                     ]
                     for j, new_line in enumerate(new_step):
                         ctx.lines.insert(step_start + j, new_line)

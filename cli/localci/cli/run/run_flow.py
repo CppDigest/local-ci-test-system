@@ -126,6 +126,7 @@ def execute_run(
     orch_config.offline = options.offline
     orch_config.auto_build = cfg.images.auto_build
 
+    # Production path: bind config-aware patcher; tests inject one via `deps`.
     if deps is None:
         from localci.cli.run.patcher import make_workflow_patcher
 

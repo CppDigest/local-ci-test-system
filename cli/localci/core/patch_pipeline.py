@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from localci.core.config import PATCH_STEP_NAMES, LocalCIConfig
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from localci.core.workflow import MatrixEntry
@@ -47,6 +50,11 @@ class PatchPipeline:
     def __init__(self, steps: list[PatchStep]) -> None:
         self._steps = steps
 
+    @property
+    def steps(self) -> list[PatchStep]:
+        """Configured patch steps in pipeline order."""
+        return list(self._steps)
+
     @classmethod
     def from_config(cls, config: LocalCIConfig) -> PatchPipeline:
         """Build a pipeline from ``.localci.yml`` patch settings."""
@@ -59,8 +67,10 @@ class PatchPipeline:
             if not getattr(patches, name, True):
                 continue
             step_cls = PATCH_STEP_REGISTRY.get(name)
-            if step_cls is not None:
-                steps.append(step_cls())
+            if step_cls is None:
+                logger.warning("Patch step %r is not registered; skipping", name)
+                continue
+            steps.append(step_cls())
         return cls(steps)
 
     def apply(self, ctx: PatchContext) -> None:
