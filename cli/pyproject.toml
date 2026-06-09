@@ -22,7 +22,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "types-PyYAML>=6.0.0",
-    "types-psutil>=5.9.0",  # for localci.utils.resources when it leaves ignore_errors
+    "types-psutil>=5.9.0",
 ]
 
 [project.scripts]
