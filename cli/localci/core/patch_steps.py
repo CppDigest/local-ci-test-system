@@ -150,8 +150,8 @@ class B2BootstrapSkipStep(PatchStep):
                         break
                     step_start -= 1
                 already_patched = any(
-                    "LOCALCI_B2_SOURCE_DIR" in ctx.lines[j] and "bootstrap" in ctx.lines[j]
-                    for j in range(max(0, step_start - 10), step_start)
+                    "Skip b2 bootstrap" in ctx.lines[j]
+                    for j in range(max(0, step_start - 15), step_start)
                 )
                 if not already_patched:
                     step_match = re.match(r"^(\s+)-\s+name:\s*", ctx.lines[step_start])
