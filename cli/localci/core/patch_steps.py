@@ -7,6 +7,31 @@ import re
 from localci.core.patch_pipeline import PatchContext, PatchStep
 
 
+def _leading_indent(line: str) -> str:
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _step_insert_indents(lines: list[str], step_start: int) -> tuple[str, str, str]:
+    """Derive YAML indentation for inserting a new workflow step."""
+    line = lines[step_start]
+    step_match = re.match(r"^(\s+)-\s+name:\s*", line)
+    if step_match:
+        list_indent = step_match.group(1)
+    else:
+        dash_match = re.match(r"^(\s*)-\s+", line)
+        if dash_match:
+            list_indent = dash_match.group(1)
+        else:
+            list_indent = _leading_indent(line)
+            if not line.strip():
+                for idx in range(step_start - 1, max(-1, step_start - 6), -1):
+                    if lines[idx].strip():
+                        list_indent = _leading_indent(lines[idx])
+                        break
+    prop_indent = list_indent + "  "
+    return list_indent, prop_indent, prop_indent + "  "
+
+
 class ContainerMountsStep(PatchStep):
     """Inject cache bind-mount flags into the job container options."""
 
@@ -123,6 +148,7 @@ class CapyCopyPreservationStep(PatchStep):
                 ctx.lines[i] = (
                     f'{ind}cp -rp "$workspace_root"/capy-root "libs/$module"\n'
                     f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ]; then\n'
+                    f'{ind}  mkdir -p "${{LOCALCI_B2_SOURCE_DIR}}"\n'
                     f'{ind}  find "$workspace_root/capy-root" -type f \\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.ipp" \\) |\n'
                     f'{ind}  while IFS= read -r f; do\n'
                     f'{ind}    mtime=$(stat -c "%Y" "$f")\n'
@@ -154,10 +180,9 @@ class B2BootstrapSkipStep(PatchStep):
                     for j in range(max(0, step_start - 15), step_start)
                 )
                 if not already_patched:
-                    step_match = re.match(r"^(\s+)-\s+name:\s*", ctx.lines[step_start])
-                    list_indent = step_match.group(1) if step_match else ""
-                    prop_indent = list_indent + "  "
-                    body_indent = prop_indent + "  "
+                    list_indent, prop_indent, body_indent = _step_insert_indents(
+                        ctx.lines, step_start
+                    )
                     new_step = [
                         f"{list_indent}- name: Skip b2 bootstrap (b2 binary cached)\n",
                         f"{prop_indent}run: |\n",
@@ -196,12 +221,14 @@ class ImageSubstitutionStep(PatchStep):
         name_indent_len = len(name_indent)
 
         block_start = name_idx
-        while block_start > 0:
-            block_start -= 1
+        while True:
             line = ctx.lines[block_start]
-            line_indent = line[: len(line) - len(line.lstrip())]
+            line_indent = _leading_indent(line)
             if line.strip().startswith("-") and len(line_indent) <= name_indent_len:
                 break
+            if block_start == 0:
+                break
+            block_start -= 1
 
         list_item_indent = ctx.lines[block_start][
             : len(ctx.lines[block_start]) - len(ctx.lines[block_start].lstrip())
