@@ -1,0 +1,25 @@
+name: Already Patched
+on:
+  push:
+jobs:
+  build:
+    steps:
+      - name: Restore capy source file timestamps
+        run: |
+          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/.capy-file-stats" ]; then
+            echo restore
+          fi
+      - name: Patch Boost
+        run: |
+          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/Jamroot" ]; then
+            ln -sfn "${LOCALCI_B2_SOURCE_DIR}" boost-root
+          else
+            cp -rL boost-source boost-root
+          fi
+      - name: Skip b2 bootstrap (b2 binary cached)
+        run: |
+          if [ -n "${LOCALCI_B2_SOURCE_DIR:-}" ] && [ -f "${LOCALCI_B2_SOURCE_DIR}/b2" ]; then
+            printf '#!/bin/sh\necho cached\n' > boost-root/bootstrap.sh
+          fi
+      - name: B2 Build
+        uses: alandefreitas/cpp-actions/b2-workflow@v1.9.0

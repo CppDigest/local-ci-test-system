@@ -1,0 +1,10 @@
+name: Boost Cache Patch
+on:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch Boost
+        run: |
+          cp -rL boost-source boost-root

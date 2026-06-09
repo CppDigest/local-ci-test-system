@@ -1,0 +1,9 @@
+name: Container Mount No Options
+on:
+  push:
+jobs:
+  build:
+    container:
+      image: ubuntu:24.04
+    steps:
+      - run: echo build

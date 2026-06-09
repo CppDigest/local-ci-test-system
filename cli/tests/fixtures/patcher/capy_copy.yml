@@ -1,0 +1,10 @@
+name: Capy Copy Patch
+on:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Patch Boost
+        run: |
+          cp -r "$workspace_root"/capy-root "libs/$module"

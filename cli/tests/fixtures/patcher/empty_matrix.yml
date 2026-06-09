@@ -1,0 +1,10 @@
+name: Empty Matrix
+on:
+  push:
+jobs:
+  build:
+    strategy:
+      matrix:
+        include: []
+    steps:
+      - run: echo no-matrix

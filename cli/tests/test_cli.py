@@ -96,7 +96,9 @@ class TestList:
         )
         assert result.exit_code == 0
 
-    def test_no_workflow_errors(self):
+    def test_no_workflow_errors(self, tmp_path, monkeypatch):
+        """Without --workflow, list fails when no workflow file is reachable."""
+        monkeypatch.chdir(tmp_path)
         result = runner.invoke(cli, ["list"])
         assert result.exit_code != 0
 
@@ -107,11 +109,20 @@ class TestList:
             f"version: 1\nworkflow: {SAMPLE_CI}\njobs:\n  include:\n    - GCC 15\n"
         )
         result = runner.invoke(
-            cli, ["-c", str(config_file), "list", "--enabled", "--format", "simple"]
+            cli,
+            [
+                "-c",
+                str(config_file),
+                "list",
+                "--enabled",
+                "--format",
+                "json",
+            ],
         )
         assert result.exit_code == 0
-        # Should only show entries whose name matches "GCC 15"
-        assert "GCC 15" in result.output
+        entries = json.loads(result.output)
+        assert entries
+        assert all("GCC 15" in e["name"] for e in entries)
 
     def test_list_disabled_with_config(self, tmp_path):
         """--disabled filters by config.jobs.exclude when present."""
@@ -120,11 +131,20 @@ class TestList:
             f"version: 1\nworkflow: {SAMPLE_CI}\njobs:\n  exclude:\n    - GCC 15\n"
         )
         result = runner.invoke(
-            cli, ["-c", str(config_file), "list", "--disabled", "--format", "simple"]
+            cli,
+            [
+                "-c",
+                str(config_file),
+                "list",
+                "--disabled",
+                "--format",
+                "json",
+            ],
         )
         assert result.exit_code == 0
-        # Disabled shows only entries in exclude (names matching "GCC 15")
-        assert "GCC 15" in result.output
+        entries = json.loads(result.output)
+        assert entries
+        assert all("GCC 15" in e["name"] for e in entries)
 
 
 # ---------------------------------------------------------------------------

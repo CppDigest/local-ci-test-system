@@ -1,0 +1,10 @@
+name: Container Mount Patch
+on:
+  push:
+jobs:
+  build:
+    container:
+      image: ubuntu:24.04
+      options: --privileged
+    steps:
+      - run: echo build

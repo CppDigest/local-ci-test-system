@@ -1,0 +1,17 @@
+name: Container Image Patch
+on:
+  push:
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - name: "GCC 15: C++20"
+            container: "ubuntu:25.04"
+            runs-on: ubuntu-latest
+          - name: "GCC 12: C++20"
+            container: "ubuntu:22.04"
+            runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - run: echo build
