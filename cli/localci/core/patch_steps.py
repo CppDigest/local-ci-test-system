@@ -55,8 +55,10 @@ class ContainerMountsStep(PatchStep):
                     for k in range(j + 1, min(j + 10, len(ctx.lines))):
                         opt_match = re.match(r"^(\s+)options\s*:\s*(.*)$", ctx.lines[k])
                         if opt_match:
-                            existing = opt_match.group(2).strip().strip('"\'')
-                            new_val = f"{existing} {ctx.container_mount_options}".strip()
+                            existing = opt_match.group(2).strip().strip("\"'")
+                            new_val = (
+                                f"{existing} {ctx.container_mount_options}".strip()
+                            )
                             ctx.lines[k] = f'{opt_match.group(1)}options: "{new_val}"\n'
                             options_found = True
                             break
@@ -80,20 +82,23 @@ class B2SourceCacheStep(PatchStep):
 
     def apply(self, ctx: PatchContext) -> None:
         for i, line in enumerate(ctx.lines):
-            if "cp -rL boost-source boost-root" in line and "LOCALCI_B2_SOURCE_DIR" not in line:
+            if (
+                "cp -rL boost-source boost-root" in line
+                and "LOCALCI_B2_SOURCE_DIR" not in line
+            ):
                 ind = line[: len(line) - len(line.lstrip())]
                 ctx.lines[i] = (
                     f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/Jamroot" ]; then\n'
-                    f'{ind}  # Cache hit: leave headers untouched (stable timestamps) so b2 builds incrementally\n'
+                    f"{ind}  # Cache hit: leave headers untouched (stable timestamps) so b2 builds incrementally\n"
                     f'{ind}  rm -rf "${{LOCALCI_B2_SOURCE_DIR}}/libs/capy" 2>/dev/null || true\n'
                     f'{ind}  ln -sfn "${{LOCALCI_B2_SOURCE_DIR}}" boost-root\n'
-                    f'{ind}else\n'
-                    f'{ind}  cp -rL boost-source boost-root\n'
+                    f"{ind}else\n"
+                    f"{ind}  cp -rL boost-source boost-root\n"
                     f'{ind}  if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ]; then\n'
                     f'{ind}    mkdir -p "${{LOCALCI_B2_SOURCE_DIR}}"\n'
                     f'{ind}    cp -a boost-root/. "${{LOCALCI_B2_SOURCE_DIR}}/"\n'
-                    f'{ind}  fi\n'
-                    f'{ind}fi\n'
+                    f"{ind}  fi\n"
+                    f"{ind}fi\n"
                 )
                 break
 
@@ -111,8 +116,7 @@ class RestoreCapyTimestampsStep(PatchStep):
             if not step_match:
                 continue
             already_patched = any(
-                "capy-file-stats" in ctx.lines[j]
-                for j in range(max(0, i - 15), i)
+                "capy-file-stats" in ctx.lines[j] for j in range(max(0, i - 15), i)
             )
             if not already_patched:
                 list_indent = step_match.group(1)
@@ -124,7 +128,7 @@ class RestoreCapyTimestampsStep(PatchStep):
                     f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats" ]; then\n',
                     f"{body_indent}  while IFS=' ' read -r saved_mtime fhash relpath; do\n",
                     f'{body_indent}    [ -f "capy-root/$relpath" ] || continue\n',
-                    f'{body_indent}    curr=$(sha256sum "capy-root/$relpath" 2>/dev/null | cut -d\' \' -f1)\n',
+                    f"{body_indent}    curr=$(sha256sum \"capy-root/$relpath\" 2>/dev/null | cut -d' ' -f1)\n",
                     f'{body_indent}    [ "$curr" = "$fhash" ] && touch -d "@$saved_mtime" "capy-root/$relpath" 2>/dev/null || true\n',
                     f'{body_indent}  done < "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n',
                     f"{body_indent}fi\n",
@@ -150,12 +154,12 @@ class CapyCopyPreservationStep(PatchStep):
                     f'{ind}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ]; then\n'
                     f'{ind}  mkdir -p "${{LOCALCI_B2_SOURCE_DIR}}"\n'
                     f'{ind}  find "$workspace_root/capy-root" -type f \\( -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.ipp" \\) |\n'
-                    f'{ind}  while IFS= read -r f; do\n'
+                    f"{ind}  while IFS= read -r f; do\n"
                     f'{ind}    mtime=$(stat -c "%Y" "$f")\n'
                     f'{ind}    fhash=$(sha256sum "$f" | cut -d" " -f1)\n'
                     f'{ind}    echo "$mtime $fhash ${{f#$workspace_root/capy-root/}}"\n'
                     f'{ind}  done > "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n'
-                    f'{ind}fi\n'
+                    f"{ind}fi\n"
                 )
                 break
 
@@ -187,7 +191,7 @@ class B2BootstrapSkipStep(PatchStep):
                         f"{list_indent}- name: Skip b2 bootstrap (b2 binary cached)\n",
                         f"{prop_indent}run: |\n",
                         f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/b2" ]; then\n',
-                        f'{body_indent}  printf \'#!/bin/sh\\necho "b2 binary cached, skipping bootstrap."\\n\' > boost-root/bootstrap.sh\n',
+                        f"{body_indent}  printf '#!/bin/sh\\necho \"b2 binary cached, skipping bootstrap.\"\\n' > boost-root/bootstrap.sh\n",
                         f"{body_indent}  chmod +x boost-root/bootstrap.sh\n",
                         f"{body_indent}fi\n",
                     ]
@@ -214,7 +218,9 @@ class ImageSubstitutionStep(PatchStep):
                 name_idx = i
                 break
         if name_idx is None:
-            raise ValueError(f"Matrix entry name '{ctx.entry.name}' not found in workflow")
+            raise ValueError(
+                f"Matrix entry name '{ctx.entry.name}' not found in workflow"
+            )
 
         name_line = ctx.lines[name_idx]
         name_indent = name_line[: len(name_line) - len(name_line.lstrip())]
@@ -244,9 +250,7 @@ class ImageSubstitutionStep(PatchStep):
                 break
             block_end += 1
 
-        container_pattern = re.compile(
-            r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$"
-        )
+        container_pattern = re.compile(r"^(\s+)container:\s*[\"']?[^\"'\n]*[\"']?\s*$")
         for i in range(block_start, block_end):
             mo = container_pattern.match(ctx.lines[i])
             if mo:
@@ -265,7 +269,10 @@ class CodecovSkipStep(PatchStep):
         for i, line in enumerate(ctx.lines):
             if "https://codecov.io/bash" in line and "curl" in line:
                 stripped = line.lstrip()
-                if stripped.strip().startswith("bash <(curl") or "bash <(curl" in stripped:
+                if (
+                    stripped.strip().startswith("bash <(curl")
+                    or "bash <(curl" in stripped
+                ):
                     indent = line[: len(line) - len(line.lstrip())]
                     rest = stripped.strip().rstrip()
                     act_check = 'if [ -z "${ACT:-}" ] || [ "$ACT" != "true" ]; then '
