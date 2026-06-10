@@ -6,7 +6,7 @@ from pathlib import Path
 
 from localci.cli.run.container import RunDependencies, build_run_container
 from localci.cli.run.params import RunOptions
-from localci.cli.run.patcher import _print_execution_plan
+from localci.cli.run.patcher import _print_execution_plan, make_workflow_patcher
 from localci.core.config import LocalCIConfig
 from localci.core.executor import ActNotFoundError, DockerNotAvailableError
 from localci.core.github_token import resolve_github_token, warn_sentinel_github_token
@@ -126,13 +126,15 @@ def execute_run(
     orch_config.offline = options.offline
     orch_config.auto_build = cfg.images.auto_build
 
+    workflow_patcher = make_workflow_patcher(cfg)
+
     parallel_manager = container.parallel_manager_factory(
         queue=queue,
         workflow_file=workflow_path,
         project_dir=project_dir,
         config=orch_config,
         logs_dir=logs_dir,
-        workflow_patcher=container.workflow_patcher,
+        workflow_patcher=workflow_patcher,
         cache_config=cfg.cache,
         no_cache=options.no_cache,
         cache_dir_override=options.cache_dir,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,12 +12,23 @@ from click.testing import CliRunner
 from localci.cli.run.container import RunDependencies, build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.run_flow import execute_run
-from localci.core.config import LocalCIConfig
+from localci.core.config import LocalCIConfig, PatchesConfig
 from localci.core.executor import ActNotFoundError
+from localci.core.workflow import (
+    BuildSystem,
+    BuildVariant,
+    CompilerFamily,
+    CompilerInfo,
+    ContainerInfo,
+    MatrixEntry,
+    PackageRequirements,
+    Platform,
+)
 from localci.errors import WorkflowError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_WORKFLOW = FIXTURES_DIR / "sample_workflow.yml"
+PIPELINE_WORKFLOW = FIXTURES_DIR / "patcher" / "pipeline_minimal.yml"
 
 
 def _dry_run_options(**overrides: object) -> RunOptions:
@@ -137,6 +149,113 @@ class TestExecuteRunDryRun:
             deps=build_run_container(),
         )
         assert code == 0
+
+    def test_binds_config_aware_workflow_patcher(
+        self, sample_config: LocalCIConfig
+    ) -> None:
+        """``patches:`` settings must reach the orchestrator via ``make_workflow_patcher(cfg)``."""
+        deps = build_run_container()
+        mock_executor = MagicMock()
+        deps.job_executor_factory = lambda _logs: mock_executor
+
+        mock_manager = MagicMock()
+        now = datetime.now()
+        mock_run = MagicMock(all_passed=True)
+        mock_run.execution_id = "test"
+        mock_run.started_at = now
+        mock_run.finished_at = now
+        mock_run.results = {}
+        mock_manager.execute.return_value = mock_run
+        deps.parallel_manager_factory = lambda **_kwargs: mock_manager
+
+        mock_tracker = MagicMock()
+        deps.progress_tracker_factory = lambda **_kwargs: mock_tracker
+
+        captured: dict[str, object] = {}
+
+        def capture_manager(**kwargs: object) -> MagicMock:
+            captured["workflow_patcher"] = kwargs.get("workflow_patcher")
+            return mock_manager
+
+        deps.parallel_manager_factory = capture_manager
+
+        with patch(
+            "localci.cli.run.run_flow.make_workflow_patcher"
+        ) as mock_make_patcher:
+            bound_patcher = MagicMock()
+            mock_make_patcher.return_value = bound_patcher
+            code = execute_run(
+                cfg=sample_config,
+                options=_dry_run_options(dry_run=False, timeout=60),
+                deps=deps,
+            )
+
+        assert code == 0
+        mock_make_patcher.assert_called_once_with(sample_config)
+        assert captured["workflow_patcher"] is bound_patcher
+
+    def test_execute_run_propagates_disabled_patch_config(self) -> None:
+        """``patches:`` toggles in cfg affect the real patcher passed to the orchestrator."""
+        assert PIPELINE_WORKFLOW.is_file(), f"missing fixture: {PIPELINE_WORKFLOW}"
+        cfg = LocalCIConfig(
+            workflow=PIPELINE_WORKFLOW,
+            patches=PatchesConfig(b2_bootstrap_skip=False),
+        )
+        entry = MatrixEntry(
+            index=0,
+            name="build (ubuntu-24.04, gcc-15)",
+            platform=Platform.LINUX,
+            compiler=CompilerInfo(
+                family=CompilerFamily.GCC, version="15", cc="gcc-15", cxx="g++-15"
+            ),
+            container=ContainerInfo(image="ubuntu:24.04"),
+            variant=BuildVariant(),
+            packages=PackageRequirements(),
+            runs_on="ubuntu-24.04",
+            build_system=BuildSystem.B2,
+            raw={},
+        )
+
+        deps = build_run_container()
+        mock_executor = MagicMock()
+        deps.job_executor_factory = lambda _logs: mock_executor
+
+        now = datetime.now()
+        mock_run = MagicMock(all_passed=True)
+        mock_run.execution_id = "test"
+        mock_run.started_at = now
+        mock_run.finished_at = now
+        mock_run.results = {}
+        mock_manager = MagicMock()
+        mock_manager.execute.return_value = mock_run
+        deps.progress_tracker_factory = lambda **_kwargs: MagicMock()
+
+        captured: dict[str, object] = {}
+
+        def capture_manager(**kwargs: object) -> MagicMock:
+            captured["workflow_patcher"] = kwargs.get("workflow_patcher")
+            return mock_manager
+
+        deps.parallel_manager_factory = capture_manager
+
+        code = execute_run(
+            cfg=cfg,
+            options=_dry_run_options(
+                dry_run=False,
+                timeout=60,
+                workflow=str(PIPELINE_WORKFLOW),
+            ),
+            deps=deps,
+        )
+        assert code == 0
+
+        patcher = captured["workflow_patcher"]
+        assert callable(patcher)
+        patched = patcher(PIPELINE_WORKFLOW, entry)  # type: ignore[operator]
+        try:
+            assert "Skip b2 bootstrap" not in patched.read_text()
+        finally:
+            patched.unlink(missing_ok=True)
 
 
 class TestExecuteRunCliParity:
