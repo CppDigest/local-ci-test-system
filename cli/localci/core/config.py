@@ -206,11 +206,11 @@ class PatchesConfig(BaseModel):
     b2_bootstrap_skip: bool = True
     image_substitution: bool = True
     codecov_skip: bool = True
-    order: Optional[list[str]] = None
+    order: list[str] | None = None
 
     @field_validator("order")
     @classmethod
-    def validate_order(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+    def validate_order(cls, v: list[str] | None) -> list[str] | None:
         if v is None:
             return v
         if len(v) == 0:
@@ -225,7 +225,7 @@ class PatchesConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_order_completeness(self) -> "PatchesConfig":
+    def validate_order_completeness(self) -> PatchesConfig:
         if self.order is None:
             return self
         enabled = {n for n in PATCH_STEP_NAMES if getattr(self, n, True)}
