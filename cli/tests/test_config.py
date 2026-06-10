@@ -6,7 +6,9 @@ round-tripping.
 
 from __future__ import annotations
 
+import pytest
 import yaml
+from pydantic import ValidationError
 
 from localci.core.config import (
     CacheConfig,
@@ -195,18 +197,12 @@ class TestValidation:
         assert cfg.parallel.max_jobs == 1
 
     def test_max_jobs_too_low(self):
-        try:
+        with pytest.raises(ValidationError):
             LocalCIConfig(parallel={"max_jobs": 0})
-            raise AssertionError("Expected validation error")
-        except Exception:
-            pass
 
     def test_max_jobs_too_high(self):
-        try:
+        with pytest.raises(ValidationError):
             LocalCIConfig(parallel={"max_jobs": 100})
-            raise AssertionError("Expected validation error")
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------

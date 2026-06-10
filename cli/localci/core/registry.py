@@ -326,7 +326,7 @@ class ImageRegistry:
             "packages",
             "last_used",
             "usage_count",
-            "build_date",
+            "created",
         }
     )
 
