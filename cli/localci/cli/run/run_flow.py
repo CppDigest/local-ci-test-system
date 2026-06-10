@@ -107,13 +107,11 @@ def execute_run(
         not options.no_cache
         and cfg.cache.enabled
         and cfg.cache.boost.enabled
-    ):
-        if not container.ensure_boost_cache_fn(
+        and not container.ensure_boost_cache_fn(
             cfg.cache, options.no_cache, options.cache_dir
-        ):
-            print_warning(
-                "Boost cache setup failed; jobs will clone Boost from scratch."
-            )
+        )
+    ):
+        print_warning("Boost cache setup failed; jobs will clone Boost from scratch.")
 
     orch_config = container.orchestrator_config_factory(cfg)
     orch_config.max_parallel = effective_parallel
@@ -149,9 +147,7 @@ def execute_run(
         status_file=status_file,
     )
     for job in queue.get_all_jobs():
-        tracker.on_event(
-            JobEvent(event_type=JobEventType.JOB_QUEUED, job=job)
-        )
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
     parallel_manager.add_listener(tracker.on_event)
 
     _print_cache_enabled_message(cfg, options.no_cache)
@@ -325,8 +321,7 @@ def _save_execution_results(summary: ExecutionSummary, cfg: LocalCIConfig) -> No
         summary.save(execution_file)
         print_info(f"Results saved to {last_run_file}")
         print_info(
-            f"Execution ID: {summary.execution_id} "
-            "(use with status -e or logs -e)"
+            f"Execution ID: {summary.execution_id} (use with status -e or logs -e)"
         )
     except OSError as exc:
         print_warning(f"Could not save results: {exc}")

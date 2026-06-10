@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 import click
 
@@ -80,9 +81,7 @@ def run_options(command: F) -> F:
         click.option(
             "--interactive", "-i", is_flag=True, help="Interactive job selection."
         ),
-        click.option(
-            "--verbose", "-v", is_flag=True, help="Show verbose act output."
-        ),
+        click.option("--verbose", "-v", is_flag=True, help="Show verbose act output."),
         click.option(
             "--github-token",
             "-t",

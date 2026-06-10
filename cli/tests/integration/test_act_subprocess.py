@@ -66,9 +66,7 @@ def test_failing_job_extract_error(
     act_runner_image: str,
 ) -> None:
     project, logs_dir = integration_project
-    result, _ = _build_and_run(
-        "test-fail.yml", logs_dir, act_runner_image, project
-    )
+    result, _ = _build_and_run("test-fail.yml", logs_dir, act_runner_image, project)
 
     assert result.status == JobStatus.FAILED
     assert result.exit_code is not None

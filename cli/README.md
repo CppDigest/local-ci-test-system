@@ -116,6 +116,10 @@ pytest --cov=localci -m "not integration"
 # Integration tests (requires act + Docker; path + marker required)
 pytest tests/integration -m integration
 
+# Lint (E, F, I, UP, B, SIM — see pyproject.toml)
+ruff check localci/ tests/
+ruff format --check localci/ tests/
+
 # Static type checking (strict; 85 legacy errors in 18 modules suppressed — see pyproject.toml)
 mypy localci/
 ```

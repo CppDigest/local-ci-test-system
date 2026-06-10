@@ -99,7 +99,9 @@ def cache_clear(
         elif target == "b2-source":
             dirs_to_remove.append((root / "b2-source").resolve())
             if not cfg.cache.boost.enabled:
-                print_warning("Boost cache is disabled in config; clearing b2-source anyway.")
+                print_warning(
+                    "Boost cache is disabled in config; clearing b2-source anyway."
+                )
         elif target == "apt":
             d = cfg.cache.apt.dir or root / "apt"
             dirs_to_remove.append(Path(d).expanduser().resolve())

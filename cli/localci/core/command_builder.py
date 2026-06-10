@@ -12,7 +12,6 @@ import logging
 import shlex
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 from localci.core.config import CacheConfig, ResolvedCachePaths
 from localci.core.executor import ActCommand
@@ -54,10 +53,10 @@ class ActCommandBuilder:
         project_dir: Path = Path("."),
         job_id: str = "build",
         repo_full_name: str = "cppalliance/capy",
-        default_env: Optional[dict[str, str]] = None,
-        default_secrets: Optional[dict[str, str]] = None,
+        default_env: dict[str, str] | None = None,
+        default_secrets: dict[str, str] | None = None,
         offline: bool = False,
-        act_version: Optional[tuple[int, int, int]] = None,
+        act_version: tuple[int, int, int] | None = None,
     ) -> None:
         self.workflow_file = workflow_file
         self.project_dir = project_dir
@@ -75,14 +74,14 @@ class ActCommandBuilder:
     def build(
         self,
         entry: MatrixEntry,
-        image_tag: Optional[str] = None,
+        image_tag: str | None = None,
         dryrun: bool = False,
         verbose: bool = False,
-        extra_env: Optional[dict[str, str]] = None,
-        workflow_file: Optional[Path] = None,
-        action_cache_path: Optional[Path] = None,
-        resolved_cache_paths: Optional[ResolvedCachePaths] = None,
-        cache_config: Optional[CacheConfig] = None,
+        extra_env: dict[str, str] | None = None,
+        workflow_file: Path | None = None,
+        action_cache_path: Path | None = None,
+        resolved_cache_paths: ResolvedCachePaths | None = None,
+        cache_config: CacheConfig | None = None,
     ) -> ActCommand:
         """Build an :class:`ActCommand` for a specific matrix entry.
 
@@ -129,7 +128,7 @@ class ActCommandBuilder:
             env.update(extra_env)
 
         # Phase 2: cache bind mounts and env
-        container_options: Optional[str] = None
+        container_options: str | None = None
         if resolved_cache_paths is not None:
             mount_parts: list[str] = []
             if resolved_cache_paths.ccache_host is not None:
@@ -158,7 +157,9 @@ class ActCommandBuilder:
                 env["CCACHE_DIR"] = resolved_cache_paths.ccache_container
                 if cache_config and cache_config.ccache.enabled:
                     env["CCACHE_MAXSIZE"] = cache_config.ccache.max_size
-                    env["CCACHE_COMPRESS"] = "1" if cache_config.ccache.compress else "0"
+                    env["CCACHE_COMPRESS"] = (
+                        "1" if cache_config.ccache.compress else "0"
+                    )
                     # Same approach as Boost-hands-on-exp: wrap compiler with ccache so
                     # b2 and other build steps use ccache when they invoke CC/CXX.
                     if env.get("CC"):
@@ -184,7 +185,7 @@ class ActCommandBuilder:
         # Architecture: request linux/386 only when using a generic image
         # (e.g. ubuntu:24.04). Our capy x86 image is amd64 with multilib, so
         # we must not request 386 when using it or the daemon will reject.
-        container_arch: Optional[str] = None
+        container_arch: str | None = None
         if entry.architecture == "x86" and (
             not image_tag or not str(image_tag).startswith("capy-")
         ):
@@ -243,7 +244,7 @@ class ActCommandBuilder:
     def _build_runner_mappings(
         self,
         entry: MatrixEntry,
-        image_tag: Optional[str],
+        image_tag: str | None,
     ) -> dict[str, str]:
         """Map GitHub runner labels to Docker images.
 
@@ -287,12 +288,11 @@ class ActCommandBuilder:
             },
         }
 
-        tmp = tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             mode="w",
             suffix=".json",
             prefix="localci-event-",
             delete=False,
-        )
-        tmp.write(json.dumps(event))
-        tmp.close()
-        return Path(tmp.name)
+        ) as tmp:
+            tmp.write(json.dumps(event))
+            return Path(tmp.name)

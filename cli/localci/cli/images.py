@@ -77,7 +77,9 @@ def images(ctx: click.Context) -> None:
     help="Path to image-registry.yml.",
 )
 @click.pass_context
-def images_list(ctx: click.Context, output_format: str, registry_path: Path | None) -> None:
+def images_list(
+    ctx: click.Context, output_format: str, registry_path: Path | None
+) -> None:
     """List available images."""
     try:
         registry = _get_registry(registry_path)
@@ -288,7 +290,14 @@ def images_import(ctx: click.Context, tar_file: str) -> None:
 
 @images.command("export")
 @click.argument("image")
-@click.option("--output", "-o", "output_path", type=click.Path(), required=True, help="Output tar file path.")
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(),
+    required=True,
+    help="Output tar file path.",
+)
 @click.pass_context
 def images_export(ctx: click.Context, image: str, output_path: str) -> None:
     """Export a Docker image to a tar file."""

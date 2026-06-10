@@ -6,9 +6,9 @@ round-tripping.
 
 from __future__ import annotations
 
-from pathlib import Path
-
+import pytest
 import yaml
+from pydantic import ValidationError
 
 from localci.core.config import (
     CacheConfig,
@@ -18,7 +18,6 @@ from localci.core.config import (
     load_config,
     resolve_cache_paths,
 )
-
 
 # ---------------------------------------------------------------------------
 # Default config
@@ -69,7 +68,10 @@ class TestConfigLoading:
             "version": 1,
             "workflow": ".github/workflows/test.yml",
             "event": "push",
-            "parallel": {"max_jobs": 16, "resource_limit": {"cpu_percent": 90, "memory_percent": 80}},
+            "parallel": {
+                "max_jobs": 16,
+                "resource_limit": {"cpu_percent": 90, "memory_percent": 80},
+            },
             "platforms": {"linux": True, "windows": True, "macos": False},
             "jobs": {"include": ["build"], "exclude": ["changelog"]},
             "priorities": {"GCC 15": 1, "Clang 20": 2},
@@ -113,7 +115,7 @@ class TestConfigLoading:
     def test_load_missing_file(self):
         try:
             load_config("/nonexistent/path/.localci.yml")
-            assert False, "Expected FileNotFoundError"
+            raise AssertionError("Expected FileNotFoundError")
         except FileNotFoundError:
             pass
 
@@ -195,18 +197,12 @@ class TestValidation:
         assert cfg.parallel.max_jobs == 1
 
     def test_max_jobs_too_low(self):
-        try:
+        with pytest.raises(ValidationError):
             LocalCIConfig(parallel={"max_jobs": 0})
-            assert False, "Expected validation error"
-        except Exception:
-            pass
 
     def test_max_jobs_too_high(self):
-        try:
+        with pytest.raises(ValidationError):
             LocalCIConfig(parallel={"max_jobs": 100})
-            assert False, "Expected validation error"
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +233,9 @@ class TestResolveCachePaths:
 
     def test_resolve_cache_paths_no_cache(self):
         cfg = LocalCIConfig()
-        assert resolve_cache_paths(cfg.cache, True, None, "build", "build:gcc-15") is None
+        assert (
+            resolve_cache_paths(cfg.cache, True, None, "build", "build:gcc-15") is None
+        )
 
     def test_resolve_cache_paths_cache_disabled(self):
         cache = CacheConfig(enabled=False)
@@ -268,9 +266,7 @@ class TestResolveCachePaths:
     def test_resolve_cache_paths_b2_source_when_boost_enabled(self):
         """B2 source cache path is set per job when boost cache and build_dir enabled."""
         cfg = LocalCIConfig()
-        r = resolve_cache_paths(
-            cfg.cache, False, None, "build", "build:gcc-15"
-        )
+        r = resolve_cache_paths(cfg.cache, False, None, "build", "build:gcc-15")
         assert r is not None
         assert r.b2_source_host is not None
         assert "b2-source" in str(r.b2_source_host)
@@ -283,16 +279,12 @@ class TestResolveCachePaths:
             update={
                 "cache": cfg.cache.model_copy(
                     update={
-                        "boost": cfg.cache.boost.model_copy(
-                            update={"build_dir": False}
-                        )
+                        "boost": cfg.cache.boost.model_copy(update={"build_dir": False})
                     }
                 )
             }
         )
-        r = resolve_cache_paths(
-            cfg.cache, False, None, "build", "build:gcc-15"
-        )
+        r = resolve_cache_paths(cfg.cache, False, None, "build", "build:gcc-15")
         assert r is not None
         assert r.b2_source_host is None
 

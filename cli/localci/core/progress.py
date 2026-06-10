@@ -15,15 +15,14 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
+from localci.core.executor import JobResult
 from localci.core.models import (
     JobEvent,
     JobEventType,
-    QueuedJob,
     QueuedJobStatus,
 )
-from localci.core.executor import JobResult, JobStatus
 
 if TYPE_CHECKING:
     from localci.core.orchestrator import ExecutionRun
@@ -46,14 +45,18 @@ class JobProgress:
     index: int
     priority: int
     status: QueuedJobStatus = QueuedJobStatus.QUEUED
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     duration_seconds: float = 0.0
-    exit_code: Optional[int] = None
-    error_message: Optional[str] = None
-    log_file: Optional[str] = None
-    current_step: Optional[str] = None  # From act output (e.g. "Run Main Clone Boost.Capy")
-    step_timings: list[tuple[str, float]] = field(default_factory=list)  # (step_name, duration_seconds)
+    exit_code: int | None = None
+    error_message: str | None = None
+    log_file: str | None = None
+    current_step: str | None = (
+        None  # From act output (e.g. "Run Main Clone Boost.Capy")
+    )
+    step_timings: list[tuple[str, float]] = field(
+        default_factory=list
+    )  # (step_name, duration_seconds)
 
     @property
     def elapsed(self) -> float:
@@ -157,9 +160,7 @@ class PriorityLevelProgress:
     def status_label(self) -> str:
         if self.is_done:
             return (
-                "complete"
-                if self.failed == 0
-                else f"complete ({self.failed} failed)"
+                "complete" if self.failed == 0 else f"complete ({self.failed} failed)"
             )
         if self.running > 0:
             return "running"
@@ -190,12 +191,12 @@ class ProgressTracker:
 
     def __init__(
         self,
-        queue: "PriorityJobQueue",
+        queue: PriorityJobQueue,
         workflow_name: str = "",
         workflow_file: str = "",
         platform: str = "linux",
         max_parallel: int = 8,
-        status_file: Optional[Path] = None,
+        status_file: Path | None = None,
     ):
         self.queue = queue
         self.workflow_name = workflow_name or ""
@@ -206,8 +207,8 @@ class ProgressTracker:
 
         self._lock = threading.Lock()
         self._jobs: dict[str, JobProgress] = {}
-        self._started_at: Optional[datetime] = None
-        self._execution_id: Optional[str] = None
+        self._started_at: datetime | None = None
+        self._execution_id: str | None = None
         self._live = None  # Rich Live instance
         self._completed_durations: list[float] = []
         self._last_status_write: float = 0.0
@@ -438,9 +439,7 @@ class ProgressTracker:
 
         with self._lock:
             total = len(self._jobs)
-            completed = sum(
-                1 for j in self._jobs.values() if j.is_terminal
-            )
+            completed = sum(1 for j in self._jobs.values() if j.is_terminal)
         eta = self._estimate_eta()
         pct = (completed / total * 100) if total > 0 else 0
         bar_filled = int(pct / 5)
@@ -466,9 +465,7 @@ class ProgressTracker:
                 + (" passed" if level.is_done and level.failed == 0 else "")
                 + ")"
             )
-            lines.append(
-                f"Priority {level.priority} {icon} {label}{suffix}"
-            )
+            lines.append(f"Priority {level.priority} {icon} {label}{suffix}")
         return Text("\n".join(lines) + "\n")
 
     def _render_job_table(self):
@@ -506,7 +503,7 @@ class ProgressTracker:
     # Summary report
     # -----------------------------------------------------------------------
 
-    def print_summary(self, run: "ExecutionRun") -> None:
+    def print_summary(self, run: ExecutionRun) -> None:
         """Print post-execution summary report."""
         from rich.console import Console
         from rich.table import Table
@@ -533,19 +530,13 @@ class ProgressTracker:
 
         console.print(f"\nExecution ID: {run.execution_id}")
         console.print(f"Duration:     {dur_str}")
-        console.print(
-            f"Result:       [{result_style}]{result_text}[/{result_style}]"
-        )
+        console.print(f"Result:       [{result_style}]{result_text}[/{result_style}]")
         console.print()
 
         levels = self._get_priority_levels()
         for level in levels:
             style = "green" if level.failed == 0 else "red"
-            suffix = (
-                f"  ← {level.failed} failure(s)"
-                if level.failed > 0
-                else ""
-            )
+            suffix = f"  ← {level.failed} failure(s)" if level.failed > 0 else ""
             console.print(
                 f"Priority {level.priority}: "
                 f"[{style}]{level.passed}/{level.total} passed[/{style}]"
@@ -594,7 +585,10 @@ class ProgressTracker:
                 for name, dur in steps:
                     step_dur_str = f"{dur:.1f}s"
                     if (name, dur) == longest_step:
-                        step_table.add_row(f"[bold]{name}[/bold]", f"[bold]{step_dur_str}[/bold] ← longest")
+                        step_table.add_row(
+                            f"[bold]{name}[/bold]",
+                            f"[bold]{step_dur_str}[/bold] ← longest",
+                        )
                     else:
                         step_table.add_row(name, step_dur_str)
                 console.print(step_table)
@@ -611,14 +605,10 @@ class ProgressTracker:
             )
         ]
         if failures:
-            console.print(
-                f"\n[red bold]FAILURES ({len(failures)}):[/red bold]"
-            )
+            console.print(f"\n[red bold]FAILURES ({len(failures)}):[/red bold]")
             console.print("─" * 64)
             for job in failures:
-                console.print(
-                    f"\n[red bold][{job.index}] {job.name}[/red bold]"
-                )
+                console.print(f"\n[red bold][{job.index}] {job.name}[/red bold]")
                 if job.exit_code is not None:
                     console.print(f"    Exit code: {job.exit_code}")
                 console.print(f"    Duration:  {job.elapsed_display}")
@@ -652,14 +642,12 @@ class ProgressTracker:
         cancelled = [
             j
             for j in jobs
-            if j.status
-            in (QueuedJobStatus.CANCELLED, QueuedJobStatus.SKIPPED)
+            if j.status in (QueuedJobStatus.CANCELLED, QueuedJobStatus.SKIPPED)
         ]
         running = [
             j
             for j in jobs
-            if j.status
-            in (QueuedJobStatus.RUNNING, QueuedJobStatus.PREPARING)
+            if j.status in (QueuedJobStatus.RUNNING, QueuedJobStatus.PREPARING)
         ]
         pending = [
             j
@@ -777,9 +765,7 @@ class ProgressTracker:
         with self._lock:
             for job in self._jobs.values():
                 if job.priority not in levels:
-                    levels[job.priority] = PriorityLevelProgress(
-                        priority=job.priority
-                    )
+                    levels[job.priority] = PriorityLevelProgress(priority=job.priority)
                 level = levels[job.priority]
                 level.total += 1
 
@@ -828,22 +814,17 @@ class ProgressTracker:
 
         with self._lock:
             total = len(self._jobs)
-            completed = sum(
-                1 for j in self._jobs.values() if j.is_terminal
-            )
+            completed = sum(1 for j in self._jobs.values() if j.is_terminal)
             running_count = sum(
                 1
                 for j in self._jobs.values()
-                if j.status
-                in (QueuedJobStatus.RUNNING, QueuedJobStatus.PREPARING)
+                if j.status in (QueuedJobStatus.RUNNING, QueuedJobStatus.PREPARING)
             )
         remaining = total - completed
         if remaining <= 0:
             return 0.0
 
-        avg_duration = sum(self._completed_durations) / len(
-            self._completed_durations
-        )
+        avg_duration = sum(self._completed_durations) / len(self._completed_durations)
         effective_parallel = max(running_count, 1)
         remaining_batches = remaining / effective_parallel
         return remaining_batches * avg_duration

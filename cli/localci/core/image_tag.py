@@ -23,17 +23,12 @@ def derive_image_tag(entry: MatrixEntry) -> str | None:
     """
     if entry.container.image:
         img = entry.container.image.strip().lower()
-        if ":" in img:
-            os_label = img.replace(":", "-", 1)
-        else:
-            os_label = img
+        os_label = img.replace(":", "-", 1) if ":" in img else img
     else:
         if not _is_linux_runner(entry.runs_on):
             return None
         os_label = entry.runs_on
-    compiler_label = (
-        f"{entry.compiler.family.value}{entry.compiler.version}"
-    )
+    compiler_label = f"{entry.compiler.family.value}{entry.compiler.version}"
     base = f"capy-{os_label}-{compiler_label}"
     if entry.variant.coverage:
         base += "-cov"

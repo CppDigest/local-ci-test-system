@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.config import CmakeCacheConfig
 from localci.core.workflow import (

@@ -4,20 +4,16 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from localci.core.executor import JobResult, JobStatus
-from localci.core.models import JobEventType, QueuedJob
+from localci.core.models import JobEventType
 from localci.core.orchestrator import (
     ExecutionRun,
     OrchestratorConfig,
-    OrchestratorState,
     ParallelExecutionManager,
 )
 from localci.core.queue import PriorityJobQueue
 
 from .test_queue import make_job
-
 
 # ---------------------------------------------------------------------------
 # OrchestratorConfig
@@ -169,7 +165,9 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_stop_on_first_failure(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
+    def test_stop_on_first_failure(
+        self, MockExecutor, MockDocker, MockMonitor, tmp_path
+    ):
         mock_executor = MockExecutor.return_value
         mock_executor.run.return_value = JobResult(
             job_id="build",
@@ -206,7 +204,9 @@ class TestParallelExecutionManager:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
-    def test_priority_enforcement(self, MockExecutor, MockDocker, MockMonitor, tmp_path):
+    def test_priority_enforcement(
+        self, MockExecutor, MockDocker, MockMonitor, tmp_path
+    ):
         execution_order = []
 
         def mock_run(_cmd, matrix_index=0, matrix_name="", **_kwargs):

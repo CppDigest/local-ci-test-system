@@ -12,7 +12,6 @@ Covers:
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -40,7 +39,6 @@ from localci.errors import (
     YqError,
     YqNotFoundError,
 )
-
 
 runner = CliRunner()
 
@@ -242,6 +240,7 @@ class TestLoadConfigStructuredErrors:
         with pytest.raises(ConfigValidationError) as exc_info:
             load_config(cfg_file)
         from pydantic import ValidationError
+
         assert isinstance(exc_info.value.cause, ValidationError)
 
     def test_valid_config_still_loads(self, tmp_path):
@@ -256,6 +255,7 @@ class TestLoadConfigStructuredErrors:
         cfg_file.write_text("version: 1\n")
 
         import builtins
+
         original_open = builtins.open
 
         def broken_open(path, *args, **kwargs):
@@ -321,7 +321,9 @@ class TestCliConfigErrorPaths:
     def test_explicit_config_not_found(self, tmp_path):
         result = runner.invoke(cli, ["--config", str(tmp_path / "missing.yml"), "list"])
         assert result.exit_code != 0
-        assert "not found" in result.output.lower() or "missing" in result.output.lower()
+        assert (
+            "not found" in result.output.lower() or "missing" in result.output.lower()
+        )
 
     def test_invalid_config_surfaces_validation_detail(self, tmp_path):
         cfg = tmp_path / ".localci.yml"
@@ -329,7 +331,11 @@ class TestCliConfigErrorPaths:
         result = runner.invoke(cli, ["--config", str(cfg), "list"])
         assert result.exit_code != 0
         # Should include something actionable — not just "Failed to load config"
-        assert "invalid config" in result.output.lower() or "999" in result.output or "max_jobs" in result.output.lower()
+        assert (
+            "invalid config" in result.output.lower()
+            or "999" in result.output
+            or "max_jobs" in result.output.lower()
+        )
 
 
 # ---------------------------------------------------------------------------

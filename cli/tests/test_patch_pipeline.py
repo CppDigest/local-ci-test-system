@@ -70,9 +70,7 @@ def test_pipeline_disable_b2_patches(workflow_path, sample_entry) -> None:
             b2_bootstrap_skip=False,
         )
     )
-    patched = _write_patched_workflow(
-        workflow_path, sample_entry, config=cfg
-    )
+    patched = _write_patched_workflow(workflow_path, sample_entry, config=cfg)
     try:
         content = patched.read_text()
         assert "LOCALCI_B2_SOURCE_DIR" not in content
@@ -176,9 +174,7 @@ def test_from_config_raises_when_step_missing_from_registry(
         for name, cls in PATCH_STEP_REGISTRY.items()
         if name != "b2_source_cache"
     }
-    monkeypatch.setattr(
-        "localci.core.patch_steps.PATCH_STEP_REGISTRY", incomplete
-    )
+    monkeypatch.setattr("localci.core.patch_steps.PATCH_STEP_REGISTRY", incomplete)
     with pytest.raises(ValueError, match="b2_source_cache"):
         PatchPipeline.from_config(LocalCIConfig())
 

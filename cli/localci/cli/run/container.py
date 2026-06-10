@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from localci.core.boost_cache import ensure_boost_cache
 from localci.core.ccache_stats import get_ccache_stats

@@ -11,7 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from localci.errors import CyclicDependencyError
+from localci.core.serialization import (
+    workflow_summary,
+    workflow_to_dict,
+    workflow_to_json,
+)
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -24,17 +28,13 @@ from localci.core.workflow import (
     PackageRequirements,
     Platform,
     StepInfo,
+    UnsupportedMatrixError,
     Workflow,
     WorkflowAnalyzer,
     WorkflowError,
     WorkflowParseError,
-    UnsupportedMatrixError,
 )
-from localci.core.serialization import (
-    workflow_summary,
-    workflow_to_dict,
-    workflow_to_json,
-)
+from localci.errors import CyclicDependencyError
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -97,10 +97,9 @@ class TestWorkflowAnalyzer:
         import logging
 
         with caplog.at_level(logging.WARNING):
-            analyzer.analyze(
-                FIXTURES_DIR / "sample_ci.yml", event="schedule"
-            )
+            analyzer.analyze(FIXTURES_DIR / "sample_ci.yml", event="schedule")
         assert "schedule" in caplog.text
+
     def test_analyze_with_event_filter_same_when_no_conditions(self, analyzer):
         """With no event-specific job conditions, --event does not change job set."""
         wf_no_event = analyzer.analyze(FIXTURES_DIR / "sample_ci.yml")
@@ -237,15 +236,11 @@ class TestCompilerClassification:
         assert len(msvc) == 2
 
     def test_filter_apple_clang(self, analyzer, sample_workflow):
-        ac = analyzer.filter_by_compiler(
-            sample_workflow, CompilerFamily.APPLE_CLANG
-        )
+        ac = analyzer.filter_by_compiler(sample_workflow, CompilerFamily.APPLE_CLANG)
         assert len(ac) == 1
 
     def test_filter_mingw(self, analyzer, sample_workflow):
-        mingw = analyzer.filter_by_compiler(
-            sample_workflow, CompilerFamily.MINGW
-        )
+        mingw = analyzer.filter_by_compiler(sample_workflow, CompilerFamily.MINGW)
         assert len(mingw) == 1
 
     def test_compiler_display_name(self, sample_workflow):
@@ -430,9 +425,7 @@ class TestPackageRequirements:
         assert x86.packages.apt_add_architecture == "i386"
 
     def test_all_packages(self):
-        pkg = PackageRequirements(
-            apt_packages=["foo"], build_tools=["bar"]
-        )
+        pkg = PackageRequirements(apt_packages=["foo"], build_tools=["bar"])
         assert pkg.all_packages == ["foo", "bar"]
 
 
@@ -621,6 +614,8 @@ class TestErrorClasses:
         assert err.field_name == "compiler"
         assert err.context == "matrix entry 3"
         assert isinstance(err, WorkflowError)
+
+
 # Event filtering
 # =====================================================================
 

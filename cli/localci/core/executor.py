@@ -14,13 +14,17 @@ import shutil
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import IO, Callable, Optional
+from typing import IO
 
 from localci.errors import ActNotFoundError, DockerNotAvailableError
+
+_DEFAULT_LOGS_DIR = Path.home() / ".localci" / "logs"
 
 logger = logging.getLogger(__name__)
 
@@ -82,24 +86,24 @@ class JobResult:
 
     # Status
     status: JobStatus = JobStatus.PENDING
-    exit_code: Optional[int] = None
+    exit_code: int | None = None
 
     # Timing
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     duration_seconds: float = 0.0
 
     # Output
     stdout: str = ""
     stderr: str = ""
-    log_file: Optional[Path] = None
+    log_file: Path | None = None
 
     # Image info
-    image_used: Optional[str] = None
+    image_used: str | None = None
     image_load_time: float = 0.0
 
     # Error details
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     @property
     def success(self) -> bool:
@@ -164,28 +168,28 @@ class ActCommand:
     # Environment
     env: dict[str, str] = field(default_factory=dict)
     secrets: dict[str, str] = field(default_factory=dict)
-    env_file: Optional[Path] = None
+    env_file: Path | None = None
 
     # Event
-    event_file: Optional[Path] = None
+    event_file: Path | None = None
 
     # Container
-    container_architecture: Optional[str] = None
+    container_architecture: str | None = None
 
     # Action cache (per-job path to avoid parallel races in ~/.cache/act)
-    action_cache_path: Optional[Path] = None
+    action_cache_path: Path | None = None
 
     # Phase 2: bind mounts for ccache/boost/cmake (act --container-options "-v ...")
-    container_options: Optional[str] = None
+    container_options: str | None = None
 
     # Working directory
-    workdir: Optional[Path] = None
+    workdir: Path | None = None
 
     # Binary name (set by executor)
     act_binary: str = "act"
 
     # Parsed act version for feature-gating; None means unknown (flags are always emitted)
-    act_version: Optional[tuple[int, int, int]] = None
+    act_version: tuple[int, int, int] | None = None
 
     def build(self) -> list[str]:
         """Build complete act command as argument list."""
@@ -319,20 +323,20 @@ class JobExecutor:
 
     def __init__(
         self,
-        logs_dir: Path = Path.home() / ".localci" / "logs",
+        logs_dir: Path = _DEFAULT_LOGS_DIR,
     ) -> None:
         self.logs_dir = Path(logs_dir).expanduser()
         self.logs_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # On Windows, choco installs the binary as `act-cli.exe`
         # On Linux/macOS, it's `act`
-        self._act_path: Optional[str] = self._find_act_binary()
-        self._act_version: Optional[tuple[int, int, int]] = None
+        self._act_path: str | None = self._find_act_binary()
+        self._act_version: tuple[int, int, int] | None = None
 
     @staticmethod
-    def _find_act_binary() -> Optional[str]:
+    def _find_act_binary() -> str | None:
         """Find the act binary, checking both 'act' and 'act-cli' (Windows).
-        
+
         On Windows, Chocolatey installs act as `act-cli.exe`.
         On Linux/macOS, it's `act`.
         """
@@ -340,13 +344,13 @@ class JobExecutor:
         act_path = shutil.which("act")
         if act_path:
             return act_path
-        
+
         # Try 'act-cli' (Windows Chocolatey package)
         if sys.platform == "win32":
             act_cli_path = shutil.which("act-cli")
             if act_cli_path:
                 return act_cli_path
-        
+
         return None
 
     # -----------------------------------------------------------------
@@ -380,13 +384,14 @@ class JobExecutor:
         version = result.stdout.strip()
         logger.info("act found: %s", version)
         import re
+
         m = re.search(r"v?(\d+)\.(\d+)\.(\d+)", version)
         if m:
             self._act_version = (int(m.group(1)), int(m.group(2)), int(m.group(3)))
         return version
 
     @property
-    def act_version_tuple(self) -> Optional[tuple[int, int, int]]:
+    def act_version_tuple(self) -> tuple[int, int, int] | None:
         """Parsed act version as (major, minor, patch), or None if not yet checked."""
         return self._act_version
 
@@ -420,7 +425,7 @@ class JobExecutor:
         matrix_name: str = "",
         timeout: int = 3600,
         stream_output: bool = True,
-        on_output: Optional[Callable[[str], None]] = None,
+        on_output: Callable[[str], None] | None = None,
     ) -> JobResult:
         """Execute a single job.
 
@@ -450,8 +455,8 @@ class JobExecutor:
             matrix_name=matrix_name,
         )
 
-        act_cmd: Optional[ActCommand] = cmd
-        
+        act_cmd: ActCommand | None = cmd
+
         # Set the correct binary name for this platform
         if self._act_path:
             cmd.act_binary = self._act_path
@@ -544,7 +549,7 @@ class JobExecutor:
         timeout: int,
         log_file: Path,
         stream_output: bool,
-        on_output: Optional[Callable[[str], None]],
+        on_output: Callable[[str], None] | None,
     ) -> tuple[int, str, str]:
         """Execute ``act`` process with output capture and streaming.
 
@@ -581,9 +586,7 @@ class JobExecutor:
                 env=env,
             )
 
-            def read_stream(
-                stream: IO[str], lines: list[str], prefix: str
-            ) -> None:
+            def read_stream(stream: IO[str], lines: list[str], prefix: str) -> None:
                 for line in stream:
                     lines.append(line)
                     with log_lock:
@@ -671,10 +674,8 @@ class JobExecutor:
         return "\n".join(lines[-max_lines:])
 
     @staticmethod
-    def _cleanup_temp_files(cmd: Optional[ActCommand]) -> None:
+    def _cleanup_temp_files(cmd: ActCommand | None) -> None:
         """Remove temporary files created during execution."""
         if cmd and cmd.event_file and cmd.event_file.exists():
-            try:
+            with suppress(OSError):
                 cmd.event_file.unlink()
-            except OSError:
-                pass

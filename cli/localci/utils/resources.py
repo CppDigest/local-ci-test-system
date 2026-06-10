@@ -11,7 +11,6 @@ import platform
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +51,12 @@ class ResourceMonitor:
     """
 
     def __init__(self) -> None:
-        self._psutil: Optional[object] = self._try_import_psutil()
+        self._psutil: object | None = self._try_import_psutil()
 
-    def _try_import_psutil(self) -> Optional[object]:
+    def _try_import_psutil(self) -> object | None:
         try:
             import psutil
+
             return psutil
         except ImportError:
             logger.warning(
@@ -116,7 +116,7 @@ class ResourceMonitor:
     def _get_memory(self) -> tuple[float, float]:
         if self._psutil:
             mem = self._psutil.virtual_memory()
-            return mem.percent, mem.available / (1024 ** 3)
+            return mem.percent, mem.available / (1024**3)
         return 50.0, 8.0
 
     def _get_disk_free(self) -> float:
@@ -125,7 +125,7 @@ class ResourceMonitor:
                 usage = self._psutil.disk_usage("C:\\")
             else:
                 usage = self._psutil.disk_usage("/")
-            return usage.free / (1024 ** 3)
+            return usage.free / (1024**3)
         return 50.0
 
     def _get_container_count(self) -> int:
@@ -137,9 +137,7 @@ class ResourceMonitor:
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
-                return len(
-                    [line for line in result.stdout.strip().split("\n") if line]
-                )
+                return len([line for line in result.stdout.strip().split("\n") if line])
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
         return 0

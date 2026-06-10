@@ -27,8 +27,7 @@ Hierarchy::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Base
@@ -62,7 +61,7 @@ class ConfigFileNotFoundError(ConfigError, FileNotFoundError):
         The original exception, if any.
     """
 
-    def __init__(self, path: Path, cause: Optional[Exception] = None) -> None:
+    def __init__(self, path: Path, cause: Exception | None = None) -> None:
         self.path = Path(path)
         self.cause = cause
         super().__init__(f"Config file not found: {self.path}")
@@ -101,7 +100,7 @@ class ConfigValidationError(ConfigError):
         exception carrying the field-level details.
     """
 
-    def __init__(self, path: Optional[Path], cause: Exception) -> None:
+    def __init__(self, path: Path | None, cause: Exception) -> None:
         self.path = Path(path) if path is not None else None
         self.cause = cause
         location = f" in {self.path}" if self.path else ""
@@ -130,7 +129,7 @@ class WorkflowNotFoundError(WorkflowError, FileNotFoundError):
         The original exception, if any.
     """
 
-    def __init__(self, path: Path, cause: Optional[Exception] = None) -> None:
+    def __init__(self, path: Path, cause: Exception | None = None) -> None:
         self.path = Path(path)
         self.cause = cause
         super().__init__(f"Workflow file not found: {self.path}")
@@ -156,7 +155,7 @@ class WorkflowParseError(WorkflowError):
         path: Path,
         cause: Exception,
         *,
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> None:
         self.path = Path(path)
         self.cause = cause
@@ -170,9 +169,7 @@ class MissingFieldError(WorkflowError):
     def __init__(self, field_name: str, context: str) -> None:
         self.field_name = field_name
         self.context = context
-        super().__init__(
-            f"Missing required field '{field_name}' in {context}"
-        )
+        super().__init__(f"Missing required field '{field_name}' in {context}")
 
 
 class UnsupportedMatrixError(WorkflowError):
@@ -182,9 +179,7 @@ class UnsupportedMatrixError(WorkflowError):
         self.entry = entry
         self.detail = detail
         self.name = entry.get("name", "unknown")
-        super().__init__(
-            f"Unsupported matrix entry '{self.name}': {detail}"
-        )
+        super().__init__(f"Unsupported matrix entry '{self.name}': {detail}")
 
 
 class CyclicDependencyError(WorkflowError):

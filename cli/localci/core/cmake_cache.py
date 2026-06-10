@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from localci.core.config import LOCALCI_CACHE_CONTAINER_ROOT
 
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Default paths/globs (relative to project root) included in change detection
 DEFAULT_CMAKE_INPUTS = ["CMakeLists.txt", "cmake/*.cmake"]
 
+
 # Must match ResolvedCachePaths.boost_container so digest and runtime BOOST_ROOT stay in sync
 def _boost_container_path_for_digest() -> str:
     return f"{LOCALCI_CACHE_CONTAINER_ROOT}/boost"
@@ -30,8 +31,8 @@ def _boost_container_path_for_digest() -> str:
 
 def compute_cmake_input_digest(
     project_dir: Path,
-    entry: "MatrixEntry",
-    cmake_config: "CmakeCacheConfig",
+    entry: MatrixEntry,
+    cmake_config: CmakeCacheConfig,
     boost_enabled: bool,
 ) -> str:
     """Compute a short digest of inputs that affect CMake configuration.

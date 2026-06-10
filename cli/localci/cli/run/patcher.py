@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from localci.core.config import LocalCIConfig
 from localci.core.patch_pipeline import PatchContext, PatchPipeline

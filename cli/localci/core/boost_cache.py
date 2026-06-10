@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from localci.core.config import CacheConfig
@@ -21,9 +21,9 @@ DEFAULT_BOOST_REPO_URL = "https://github.com/boostorg/boost.git"
 
 
 def ensure_boost_cache(
-    cache_config: "CacheConfig",
+    cache_config: CacheConfig,
     no_cache: bool,
-    cache_dir_override: Optional[Path] = None,
+    cache_dir_override: Path | None = None,
 ) -> bool:
     """Ensure the Boost cache directory exists and is a git repo (clone or fetch).
 
@@ -69,7 +69,11 @@ def _git_clone(dest: Path, branch: str, shallow: bool, remote_url: str) -> bool:
         subprocess.run(args, check=True, capture_output=True, text=True, timeout=300)
         logger.info("Boost cache cloned at %s (branch=%s)", dest, branch)
         return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ) as e:
         logger.warning(
             "Boost cache clone failed: %s (stderr: %s)",
             e,
@@ -100,7 +104,11 @@ def _git_fetch_and_update(dest: Path, branch: str, shallow: bool = False) -> boo
         )
         logger.debug("Boost cache updated at %s (branch=%s)", dest, branch)
         return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ) as e:
         logger.warning(
             "Boost cache fetch/update failed: %s (stderr: %s)",
             e,

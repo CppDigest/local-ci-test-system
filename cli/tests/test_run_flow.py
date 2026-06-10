@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from localci.cli.run.container import RunDependencies, build_run_container
+from localci.cli.run.container import build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.run_flow import execute_run
 from localci.core.config import LocalCIConfig, PatchesConfig
@@ -62,9 +62,7 @@ def sample_config() -> LocalCIConfig:
 class TestExecuteRunDryRun:
     """Direct tests of ``execute_run`` without act/Docker."""
 
-    def test_dry_run_prints_execution_plan(
-        self, sample_config: LocalCIConfig
-    ) -> None:
+    def test_dry_run_prints_execution_plan(self, sample_config: LocalCIConfig) -> None:
         with patch("localci.cli.run.run_flow._print_execution_plan") as mock_plan:
             code = execute_run(
                 cfg=sample_config,
@@ -123,9 +121,7 @@ class TestExecuteRunDryRun:
 
         assert code == 1
 
-    def test_empty_matrix_returns_zero(
-        self, sample_config: LocalCIConfig
-    ) -> None:
+    def test_empty_matrix_returns_zero(self, sample_config: LocalCIConfig) -> None:
         deps = build_run_container()
         mock_wf = MagicMock()
         mock_wf.jobs = {}

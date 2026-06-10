@@ -5,7 +5,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from localci.core.image_tag import derive_image_tag
 from localci.core.models import QueuedJob
@@ -13,7 +13,6 @@ from localci.core.queue import PriorityConfig, PriorityJobQueue
 from localci.core.workflow import MatrixEntry, Platform
 
 if TYPE_CHECKING:
-    from localci.core.config import LocalCIConfig
     from localci.core.registry import ImageRegistry
     from localci.core.workflow import Job, Workflow
 
@@ -22,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 def _resolve_image_tag_and_build(
     entry: MatrixEntry,
-    registry: Optional["ImageRegistry"],
-) -> tuple[Optional[str], Optional[str], bool]:
+    registry: ImageRegistry | None,
+) -> tuple[str | None, str | None, bool]:
     """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build.
 
     Returns (None, None, True) when no image tag can be derived (e.g. non-Linux runner).
@@ -86,35 +85,38 @@ class QueueBuilder:
 
     def __init__(
         self,
-        workflow: "Workflow",
-        priority_config: Optional[PriorityConfig] = None,
+        workflow: Workflow,
+        priority_config: PriorityConfig | None = None,
     ):
         self.workflow = workflow
         self.priority_config = priority_config or PriorityConfig()
 
     def build(
         self,
-        platform_filter: Optional[Platform] = None,
-        job_filter: Optional[list[str]] = None,
-        compiler_filter: Optional[str] = None,
-        matrix_include: Optional[list[dict]] = None,
-        matrix_exclude: Optional[list[dict]] = None,
-        entries_include: Optional[set[tuple[str, int]]] = None,
-        registry_path: Optional[Path] = None,
+        platform_filter: Platform | None = None,
+        job_filter: list[str] | None = None,
+        compiler_filter: str | None = None,
+        matrix_include: list[dict] | None = None,
+        matrix_exclude: list[dict] | None = None,
+        entries_include: set[tuple[str, int]] | None = None,
+        registry_path: Path | None = None,
     ) -> PriorityJobQueue:
         """Build queue. entries_include: when set, only (job_id, entry.index) in this set."""
         queue = PriorityJobQueue()
 
         # First pass: collect (job, entry) that pass filters and build job_id -> [keys]
         job_keys: dict[str, list[str]] = {}
-        candidates: list[tuple["Job", MatrixEntry]] = []
+        candidates: list[tuple[Job, MatrixEntry]] = []
 
         for job_id, job in self.workflow.jobs.items():
             if job_filter and job_id not in job_filter:
                 logger.debug("Skipping job %s (not in filter)", job_id)
                 continue
             for entry in job.matrix:
-                if entries_include is not None and (job_id, entry.index) not in entries_include:
+                if (
+                    entries_include is not None
+                    and (job_id, entry.index) not in entries_include
+                ):
                     continue
                 if platform_filter and entry.platform != platform_filter:
                     continue
@@ -144,7 +146,7 @@ class QueueBuilder:
             image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
                 entry, registry
             )
-            
+
             queued = QueuedJob(
                 job_id=job.id,
                 matrix_entry=entry,

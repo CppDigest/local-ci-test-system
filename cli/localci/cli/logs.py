@@ -69,7 +69,9 @@ def logs(
     JOB is a job index (e.g. 5) or name (e.g. "GCC 15").
     """
     if follow:
-        print_warning("--follow is not yet implemented (no live tail); showing log snapshot only.")
+        print_warning(
+            "--follow is not yet implemented (no live tail); showing log snapshot only."
+        )
     if timestamps:
         print_warning("--timestamps is not yet implemented; ignoring.")
 
@@ -89,9 +91,7 @@ def logs(
                 f"Expected file: {results_file}"
             )
         else:
-            print_warning(
-                "No previous execution found. Run `localci run` first."
-            )
+            print_warning("No previous execution found. Run `localci run` first.")
         return
 
     try:
@@ -141,9 +141,11 @@ def logs(
 
     # Print to console
     console.print(f"[bold]Logs for: {match.matrix_name}[/bold]")
-    console.print(f"[muted]Status: {match.status.value}  |  "
-                  f"Duration: {match.duration_display}  |  "
-                  f"Exit code: {match.exit_code}[/muted]")
+    console.print(
+        f"[muted]Status: {match.status.value}  |  "
+        f"Duration: {match.duration_display}  |  "
+        f"Exit code: {match.exit_code}[/muted]"
+    )
     console.print(f"[muted]Log file: {match.log_file}[/muted]")
     console.print()
     click.echo(content)

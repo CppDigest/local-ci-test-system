@@ -7,12 +7,11 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def get_ccache_stats(host_ccache_dir: Path) -> Optional[str]:
+def get_ccache_stats(host_ccache_dir: Path) -> str | None:
     """Run ``ccache -s`` for the given host cache directory.
 
     Uses CCACHE_DIR so stats reflect the cache used by jobs. Returns the

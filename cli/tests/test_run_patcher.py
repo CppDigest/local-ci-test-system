@@ -34,7 +34,9 @@ def sample_entry():
         index=0,
         name="build (ubuntu-24.04, gcc-15)",
         platform=Platform.LINUX,
-        compiler=CompilerInfo(family=CompilerFamily.GCC, version="15", cc="gcc-15", cxx="g++-15"),
+        compiler=CompilerInfo(
+            family=CompilerFamily.GCC, version="15", cc="gcc-15", cxx="g++-15"
+        ),
         container=ContainerInfo(image="ubuntu:24.04"),
         variant=BuildVariant(),
         packages=PackageRequirements(),

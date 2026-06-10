@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from localci.core.config import PATCH_STEP_NAMES, LocalCIConfig
 
@@ -21,7 +21,7 @@ class PatchStep(ABC):
         """Unique step identifier (matches ``PatchesConfig`` field names)."""
 
     @abstractmethod
-    def apply(self, ctx: "PatchContext") -> None:
+    def apply(self, ctx: PatchContext) -> None:
         """Apply this patch in place to ``ctx.lines``."""
 
 
@@ -34,11 +34,11 @@ class PatchContext:
     """
 
     lines: list[str]
-    entry: "MatrixEntry"
+    entry: MatrixEntry
     config: LocalCIConfig
-    image_tag: Optional[str] = None
-    job_id: Optional[str] = None
-    container_mount_options: Optional[str] = None
+    image_tag: str | None = None
+    job_id: str | None = None
+    container_mount_options: str | None = None
 
 
 class PatchPipeline:
