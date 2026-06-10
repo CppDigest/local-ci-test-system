@@ -425,6 +425,7 @@ def load_config(path: Path | str | None = None) -> LocalCIConfig:
         A validated configuration object.  If no config file is found,
         returns a default configuration.
     """
+    config_path: Path | None
     if path is not None:
         config_path = Path(path)
         if not config_path.is_file():
