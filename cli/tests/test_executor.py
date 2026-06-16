@@ -1043,6 +1043,19 @@ class TestDockerManager:
         dm = DockerManager()
         assert dm.has_docker is True
 
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_docker_cmd_raises_when_path_cleared(self, mock_which, mock_run):
+        mock_which.return_value = "/usr/bin/docker"
+        mock_run.return_value = MagicMock(returncode=0, stdout="24.0")
+
+        from localci.utils.docker import DockerManager
+
+        dm = DockerManager()
+        dm._docker_path = None  # simulate -O / internal invariant break
+        with pytest.raises(RuntimeError, match="Docker executable path not set"):
+            dm.build_cmd("version")
+
 
 # =====================================================================
 # ExecutionSummary tests

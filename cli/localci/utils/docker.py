@@ -65,7 +65,11 @@ class DockerManager:
 
     def _docker_cmd(self, *args: str) -> list[str]:
         """Build a Docker command using the resolved binary path."""
-        assert self._docker_path is not None
+        if self._docker_path is None:
+            raise RuntimeError(
+                "Docker executable path not set; verify Docker is installed and on PATH, "
+                "and ensure Docker availability checks pass before running Docker commands."
+            )
         return [self._docker_path, *args]
 
     def build_cmd(self, *args: str) -> list[str]:
