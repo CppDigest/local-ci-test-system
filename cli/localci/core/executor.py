@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Callable
 from contextlib import suppress
@@ -167,8 +168,12 @@ class ActCommand:
 
     # Environment
     env: dict[str, str] = field(default_factory=dict)
+    # Secrets passed to act via --secret-file (never as argv values).
+    # All keys and values must be str (POSIX subprocess.Popen requirement).
     secrets: dict[str, str] = field(default_factory=dict)
     env_file: Path | None = None
+    # Temp file for --secret-file; populated by JobExecutor._execute_process.
+    secret_file: Path | None = None
 
     # Event
     event_file: Path | None = None
@@ -241,6 +246,10 @@ class ActCommand:
         if self.env_file:
             cmd.extend(["--env-file", str(self.env_file)])
 
+        # Secrets file (path only on argv; values stay in the temp file)
+        if self.secret_file:
+            cmd.extend(["--secret-file", str(self.secret_file)])
+
         # Event payload
         if self.event_file:
             cmd.extend(["-e", str(self.event_file)])
@@ -274,7 +283,7 @@ class ActCommand:
         return cmd
 
     def display(self) -> str:
-        """Human-readable command string (secrets are not included in argv)."""
+        """Human-readable command string (secret values are not included in argv)."""
         return " ".join(self.build())
 
     def __str__(self) -> str:
@@ -537,26 +546,50 @@ class JobExecutor:
     ) -> tuple[int, str, str]:
         """Execute ``act`` process with output capture and streaming.
 
-        Uses :meth:`ActCommand.display` for the log header and injects
-        :attr:`ActCommand.secrets` into the subprocess environment so secrets
-        are never passed on the command line or written to disk.
+        Uses :meth:`ActCommand.display` for the log header. Secret values are
+        written to a ``0600`` temp file and passed via ``--secret-file`` (path
+        only on argv); :attr:`ActCommand.secrets` is also injected into the
+        subprocess environment for act's GitHub authentication.
 
         Returns ``(exit_code, stdout, stderr)``.
         """
-        cmd = act_cmd.build()
         workdir = act_cmd.workdir or Path(".")
         stdout_lines: list[str] = []
         stderr_lines: list[str] = []
         log_lock = threading.Lock()
 
+        if act_cmd.secrets and not all(
+            isinstance(k, str) and isinstance(v, str)
+            for k, v in act_cmd.secrets.items()
+        ):
+            raise TypeError(
+                "ActCommand.secrets must contain only str keys and str values"
+            )
+
+        if act_cmd.secrets:
+            fd, secret_path = tempfile.mkstemp(
+                prefix="localci-secrets-",
+                suffix=".env",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as secret_f:
+                    for key, value in act_cmd.secrets.items():
+                        secret_f.write(f"{key}={value}\n")
+            except Exception:
+                with suppress(OSError):
+                    os.close(fd)
+                raise
+            act_cmd.secret_file = Path(secret_path)
+
+        cmd = act_cmd.build()
+
         with open(log_file, "w", encoding="utf-8") as log_f:
-            # Write header (argv contains no secrets)
+            # Write header (secret values are not on argv)
             log_f.write("# LocalCI Job Log\n")
             log_f.write(f"# Command: {act_cmd.display()}\n")
             log_f.write(f"# Started: {datetime.now().isoformat()}\n")
             log_f.write(f"# {'=' * 60}\n\n")
 
-            # Inject secrets via subprocess env (never via argv)
             env = dict(os.environ)
             env.update(act_cmd.secrets)
 
@@ -663,3 +696,6 @@ class JobExecutor:
         if cmd and cmd.event_file and cmd.event_file.exists():
             with suppress(OSError):
                 cmd.event_file.unlink()
+        if cmd and cmd.secret_file and cmd.secret_file.exists():
+            with suppress(OSError):
+                cmd.secret_file.unlink()

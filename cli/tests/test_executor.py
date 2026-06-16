@@ -262,6 +262,21 @@ class TestActCommand:
         assert "--secret" not in args
         assert "secret123" not in args
 
+    def test_secret_file_on_argv_not_values(self, tmp_path):
+        secret_file = tmp_path / "secrets.env"
+        secret_file.write_text("GITHUB_TOKEN=secret123\n")
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secrets={"GITHUB_TOKEN": "secret123"},
+            secret_file=secret_file,
+        )
+        args = cmd.build()
+        assert "--secret-file" in args
+        assert str(secret_file) in args
+        assert "secret123" not in args
+        assert "--secret" not in args
+
     def test_display_omits_secrets(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
@@ -674,9 +689,12 @@ class TestJobExecutor:
         mock_process.returncode = 0
 
         captured_env: dict[str, str] = {}
+        captured_cmd: list[str] = []
 
-        def fake_popen(*_args: object, **kwargs: object) -> MagicMock:
-            env = kwargs["env"]
+        def fake_popen(cmd: list[str], **_kwargs: object) -> MagicMock:
+            captured_cmd.extend(cmd)
+            env = _kwargs.get("env")
+            assert env is not None, "subprocess.Popen must receive env kwarg"
             assert isinstance(env, dict)
             captured_env.update(env)
             return mock_process
@@ -692,19 +710,51 @@ class TestJobExecutor:
 
         assert exit_code == 0
         assert captured_env["GITHUB_TOKEN"] == "secret123"
+        assert "--secret-file" in captured_cmd
+        assert "secret123" not in captured_cmd
+        assert act_cmd.secret_file is not None
+        assert act_cmd.secret_file.exists()
         assert "secret123" not in act_cmd.build()
+
+    @patch("shutil.which")
+    def test_secrets_type_guard_rejects_non_str_values(
+        self, mock_which, tmp_path
+    ) -> None:
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        act_cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secrets={"GITHUB_TOKEN": 123},  # type: ignore[dict-item]
+            workdir=tmp_path,
+        )
+        with pytest.raises(
+            TypeError, match="ActCommand.secrets must contain only str"
+        ):
+            executor._execute_process(
+                act_cmd,
+                timeout=10,
+                log_file=tmp_path / "job.log",
+                stream_output=False,
+                on_output=None,
+            )
 
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")
+        secret = tmp_path / "secrets.env"
+        secret.write_text("GITHUB_TOKEN=x\n")
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
             event_file=event,
+            secret_file=secret,
         )
         assert event.exists()
+        assert secret.exists()
         JobExecutor._cleanup_temp_files(cmd)
         assert not event.exists()
+        assert not secret.exists()
 
     def test_cleanup_temp_files_none_cmd(self):
         # Should not raise
