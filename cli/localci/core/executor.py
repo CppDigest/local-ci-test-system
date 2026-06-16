@@ -29,6 +29,17 @@ _DEFAULT_LOGS_DIR = Path.home() / ".localci" / "logs"
 
 logger = logging.getLogger(__name__)
 
+_INVALID_SECRET_KEY_CHARS = frozenset("=\n\r\0")
+
+
+def _validate_secret_entry(key: str, value: str) -> None:
+    """Reject secret keys/values that would corrupt act's KEY=VALUE secret file."""
+    if any(char in key for char in _INVALID_SECRET_KEY_CHARS):
+        raise ValueError(f"Invalid secret key: {key!r}")
+    if any(char in value for char in "\n\r\0"):
+        raise ValueError(f"Invalid secret value for key {key!r}")
+
+
 # Substrings (matched case-insensitively) for summarizing failed job output.
 _ERROR_EXTRACT_KEYWORDS = (
     "error:",
@@ -172,8 +183,9 @@ class ActCommand:
     # All keys and values must be str (POSIX subprocess.Popen requirement).
     secrets: dict[str, str] = field(default_factory=dict)
     env_file: Path | None = None
-    # Temp file for --secret-file; populated by JobExecutor._execute_process.
+    # Temp file for --secret-file; set by JobExecutor._execute_process only.
     secret_file: Path | None = None
+    _executor_owned_secret_file: bool = field(default=False, repr=False)
 
     # Event
     event_file: Path | None = None
@@ -574,12 +586,16 @@ class JobExecutor:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as secret_f:
                     for key, value in act_cmd.secrets.items():
+                        _validate_secret_entry(key, value)
                         secret_f.write(f"{key}={value}\n")
             except Exception:
                 with suppress(OSError):
                     os.close(fd)
+                with suppress(OSError):
+                    Path(secret_path).unlink()
                 raise
             act_cmd.secret_file = Path(secret_path)
+            act_cmd._executor_owned_secret_file = True
 
         cmd = act_cmd.build()
 
@@ -696,6 +712,11 @@ class JobExecutor:
         if cmd and cmd.event_file and cmd.event_file.exists():
             with suppress(OSError):
                 cmd.event_file.unlink()
-        if cmd and cmd.secret_file and cmd.secret_file.exists():
+        if (
+            cmd
+            and cmd._executor_owned_secret_file
+            and cmd.secret_file
+            and cmd.secret_file.exists()
+        ):
             with suppress(OSError):
                 cmd.secret_file.unlink()

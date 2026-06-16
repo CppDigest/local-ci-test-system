@@ -48,6 +48,20 @@ from localci.core.workflow import (
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def _assert_argv_has_no_secret_leaks(argv: list[str], *secret_values: str) -> None:
+    """Ensure secret values and ``--secret`` flags never appear on argv."""
+    for arg in argv:
+        assert arg != "--secret", f"unexpected --secret flag in argv: {arg!r}"
+        assert not arg.startswith("--secret="), (
+            f"unexpected --secret= flag in argv: {arg!r}"
+        )
+        for value in secret_values:
+            if value:
+                assert value not in arg, (
+                    f"secret value leaked into argv element: {arg!r}"
+                )
+
+
 def _make_entry(
     *,
     index: int = 0,
@@ -259,8 +273,7 @@ class TestActCommand:
             secrets={"GITHUB_TOKEN": "secret123"},
         )
         args = cmd.build()
-        assert "--secret" not in args
-        assert "secret123" not in args
+        _assert_argv_has_no_secret_leaks(args, "secret123")
 
     def test_secret_file_on_argv_not_values(self, tmp_path):
         secret_file = tmp_path / "secrets.env"
@@ -274,8 +287,7 @@ class TestActCommand:
         args = cmd.build()
         assert "--secret-file" in args
         assert str(secret_file) in args
-        assert "secret123" not in args
-        assert "--secret" not in args
+        _assert_argv_has_no_secret_leaks(args, "secret123")
 
     def test_display_omits_secrets(self):
         cmd = ActCommand(
@@ -285,7 +297,7 @@ class TestActCommand:
         )
         display = cmd.display()
         assert "secret123" not in display
-        assert "--secret" not in display
+        _assert_argv_has_no_secret_leaks(display.split(), "secret123")
 
     def test_container_architecture(self):
         cmd = ActCommand(
@@ -711,10 +723,11 @@ class TestJobExecutor:
         assert exit_code == 0
         assert captured_env["GITHUB_TOKEN"] == "secret123"
         assert "--secret-file" in captured_cmd
-        assert "secret123" not in captured_cmd
+        _assert_argv_has_no_secret_leaks(captured_cmd, "secret123")
         assert act_cmd.secret_file is not None
         assert act_cmd.secret_file.exists()
-        assert "secret123" not in act_cmd.build()
+        assert act_cmd._executor_owned_secret_file
+        _assert_argv_has_no_secret_leaks(act_cmd.build(), "secret123")
 
     @patch("shutil.which")
     def test_secrets_type_guard_rejects_non_str_values(
@@ -752,6 +765,19 @@ class TestJobExecutor:
         assert secret.exists()
         JobExecutor._cleanup_temp_files(cmd)
         assert not event.exists()
+        assert secret.exists()
+
+    def test_cleanup_temp_files_deletes_executor_owned_secret(self, tmp_path):
+        secret = tmp_path / "localci-secrets-owned.env"
+        secret.write_text("GITHUB_TOKEN=x\n")
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secret_file=secret,
+        )
+        cmd._executor_owned_secret_file = True
+        assert secret.exists()
+        JobExecutor._cleanup_temp_files(cmd)
         assert not secret.exists()
 
     def test_cleanup_temp_files_none_cmd(self):
@@ -818,8 +844,7 @@ class TestActCommandBuilder:
 
         assert cmd.secrets["GITHUB_TOKEN"] == SENTINEL_GITHUB_TOKEN
         argv = cmd.build()
-        assert "--secret" not in argv
-        assert SENTINEL_GITHUB_TOKEN not in argv
+        _assert_argv_has_no_secret_leaks(argv, SENTINEL_GITHUB_TOKEN)
 
     def test_custom_default_secrets(self, tmp_path):
         wf = tmp_path / "ci.yml"
@@ -835,8 +860,7 @@ class TestActCommandBuilder:
         assert cmd.secrets["MY_SECRET"] == "val"
         assert "GITHUB_TOKEN" in cmd.secrets
         argv = cmd.build()
-        assert "--secret" not in argv
-        assert "val" not in argv
+        _assert_argv_has_no_secret_leaks(argv, "val")
 
     def test_x86_architecture(self, tmp_path):
         wf = tmp_path / "ci.yml"
