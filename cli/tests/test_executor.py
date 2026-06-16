@@ -252,17 +252,17 @@ class TestActCommand:
         assert "CC=gcc-15" in args
         assert "CXX=g++-15" in args
 
-    def test_secrets(self):
+    def test_secrets_not_on_argv(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
             secrets={"GITHUB_TOKEN": "secret123"},
         )
         args = cmd.build()
-        assert "--secret" in args
-        assert "GITHUB_TOKEN=secret123" in args
+        assert "--secret" not in args
+        assert "secret123" not in args
 
-    def test_display_redacts_secrets(self):
+    def test_display_omits_secrets(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
@@ -270,7 +270,7 @@ class TestActCommand:
         )
         display = cmd.display()
         assert "secret123" not in display
-        assert "***" in display
+        assert "--secret" not in display
 
     def test_container_architecture(self):
         cmd = ActCommand(
@@ -656,6 +656,44 @@ class TestJobExecutor:
         assert "all done" in extracted
         assert "finished ok" in extracted
 
+    @patch("shutil.which")
+    def test_secrets_injected_into_subprocess_env(self, mock_which, tmp_path):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        act_cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secrets={"GITHUB_TOKEN": "secret123"},
+            workdir=tmp_path,
+        )
+        log_file = tmp_path / "job.log"
+
+        mock_process = MagicMock()
+        mock_process.stdout = []
+        mock_process.stderr = []
+        mock_process.returncode = 0
+
+        captured_env: dict[str, str] = {}
+
+        def fake_popen(*_args: object, **kwargs: object) -> MagicMock:
+            env = kwargs["env"]
+            assert isinstance(env, dict)
+            captured_env.update(env)
+            return mock_process
+
+        with patch("localci.core.executor.subprocess.Popen", side_effect=fake_popen):
+            exit_code, _, _ = executor._execute_process(
+                act_cmd,
+                timeout=10,
+                log_file=log_file,
+                stream_output=False,
+                on_output=None,
+            )
+
+        assert exit_code == 0
+        assert captured_env["GITHUB_TOKEN"] == "secret123"
+        assert "secret123" not in act_cmd.build()
+
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")
@@ -731,6 +769,9 @@ class TestActCommandBuilder:
         cmd = builder.build(entry)
 
         assert cmd.secrets["GITHUB_TOKEN"] == SENTINEL_GITHUB_TOKEN
+        argv = cmd.build()
+        assert "--secret" not in argv
+        assert SENTINEL_GITHUB_TOKEN not in argv
 
     def test_custom_default_secrets(self, tmp_path):
         wf = tmp_path / "ci.yml"
@@ -745,6 +786,9 @@ class TestActCommandBuilder:
 
         assert cmd.secrets["MY_SECRET"] == "val"
         assert "GITHUB_TOKEN" in cmd.secrets
+        argv = cmd.build()
+        assert "--secret" not in argv
+        assert "val" not in argv
 
     def test_x86_architecture(self, tmp_path):
         wf = tmp_path / "ci.yml"

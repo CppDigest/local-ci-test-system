@@ -241,10 +241,6 @@ class ActCommand:
         if self.env_file:
             cmd.extend(["--env-file", str(self.env_file)])
 
-        # Secrets
-        for key, value in self.secrets.items():
-            cmd.extend(["--secret", f"{key}={value}"])
-
         # Event payload
         if self.event_file:
             cmd.extend(["-e", str(self.event_file)])
@@ -278,20 +274,8 @@ class ActCommand:
         return cmd
 
     def display(self) -> str:
-        """Human-readable command string (secrets redacted)."""
-        parts = self.build()
-        redacted: list[str] = []
-        skip_next = False
-        for part in parts:
-            if skip_next:
-                redacted.append("***")
-                skip_next = False
-            elif part == "--secret":
-                redacted.append(part)
-                skip_next = True
-            else:
-                redacted.append(part)
-        return " ".join(redacted)
+        """Human-readable command string (secrets are not included in argv)."""
+        return " ".join(self.build())
 
     def __str__(self) -> str:
         return self.display()
@@ -553,8 +537,9 @@ class JobExecutor:
     ) -> tuple[int, str, str]:
         """Execute ``act`` process with output capture and streaming.
 
-        Uses ActCommand.display() for the log header (secrets redacted) and
-        ActCommand.secrets for env, so the token is never written to disk.
+        Uses :meth:`ActCommand.display` for the log header and injects
+        :attr:`ActCommand.secrets` into the subprocess environment so secrets
+        are never passed on the command line or written to disk.
 
         Returns ``(exit_code, stdout, stderr)``.
         """
@@ -565,16 +550,15 @@ class JobExecutor:
         log_lock = threading.Lock()
 
         with open(log_file, "w", encoding="utf-8") as log_f:
-            # Write header with redacted command (no secrets on disk)
+            # Write header (argv contains no secrets)
             log_f.write("# LocalCI Job Log\n")
             log_f.write(f"# Command: {act_cmd.display()}\n")
             log_f.write(f"# Started: {datetime.now().isoformat()}\n")
             log_f.write(f"# {'=' * 60}\n\n")
 
-            # Build environment: parent env + GITHUB_TOKEN from ActCommand.secrets
+            # Inject secrets via subprocess env (never via argv)
             env = dict(os.environ)
-            if "GITHUB_TOKEN" in act_cmd.secrets:
-                env["GITHUB_TOKEN"] = act_cmd.secrets["GITHUB_TOKEN"]
+            env.update(act_cmd.secrets)
 
             process = subprocess.Popen(
                 cmd,
