@@ -28,6 +28,8 @@ from localci.core.executor import (
     JobExecutor,
     JobResult,
     JobStatus,
+    _format_secret_file_line,
+    _validate_secret_key,
 )
 from localci.core.results import ExecutionSummary
 from localci.core.workflow import (
@@ -145,6 +147,14 @@ def _make_summary(
 
 class TestActCommand:
     """Test act command construction."""
+
+    def test_format_secret_file_line_quotes_and_escapes(self) -> None:
+        line = _format_secret_file_line("GITHUB_TOKEN", 'ghp_"abc"\nline2')
+        assert line == 'GITHUB_TOKEN="ghp_\\"abc\\"\\nline2"\n'
+
+    def test_validate_secret_key_rejects_invalid_chars(self) -> None:
+        with pytest.raises(ValueError, match="Invalid secret key"):
+            _validate_secret_key("BAD=KEY")
 
     def test_basic_command(self):
         cmd = ActCommand(
