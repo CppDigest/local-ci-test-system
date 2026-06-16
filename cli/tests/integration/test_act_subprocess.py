@@ -99,6 +99,8 @@ def test_github_token_available_as_workflow_secret(
     )
 
     assert result.status == JobStatus.PASSED
+    assert result.exit_code == 0
     combined = (result.stdout or "") + (result.stderr or "")
-    assert "TOKEN_PRESENT" in combined
-    assert "TOKEN_MISSING" not in combined
+    # act logs the step script (including "TOKEN_MISSING") in combined output;
+    # assert on container stdout lines prefixed with "| " instead.
+    assert any("| TOKEN_PRESENT" in line for line in combined.splitlines())
