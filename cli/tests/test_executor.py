@@ -728,9 +728,7 @@ class TestJobExecutor:
             secrets={"GITHUB_TOKEN": 123},  # type: ignore[dict-item]
             workdir=tmp_path,
         )
-        with pytest.raises(
-            TypeError, match="ActCommand.secrets must contain only str"
-        ):
+        with pytest.raises(TypeError, match="ActCommand.secrets must contain only str"):
             executor._execute_process(
                 act_cmd,
                 timeout=10,
