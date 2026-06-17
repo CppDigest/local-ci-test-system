@@ -84,3 +84,6 @@ line-length = 88
 select = ["E", "F", "I", "UP", "B", "SIM"]
 # E501 is handled by ruff format; avoid duplicate line-length enforcement.
 ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["localci"]

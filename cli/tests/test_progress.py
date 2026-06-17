@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 
 import pytest
+
 from localci.core.executor import JobResult, JobStatus
 from localci.core.models import (
     JobEvent,

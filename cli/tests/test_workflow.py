@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from localci.core.serialization import (
     workflow_summary,
     workflow_to_dict,

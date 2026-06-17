@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.workflow import MatrixEntry, WorkflowAnalyzer

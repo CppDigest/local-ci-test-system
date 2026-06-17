@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+
 from localci.cli.main import cli
 from localci.core.executor import JobExecutor, JobStatus
 from localci.core.results import ExecutionSummary

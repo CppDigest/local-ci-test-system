@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+
 from localci.cli.main import cli
 from localci.core.workflow import WorkflowAnalyzer
 

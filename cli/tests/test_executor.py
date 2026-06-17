@@ -19,6 +19,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import (
     ActCommand,
@@ -1249,6 +1250,7 @@ class TestCLIRunCommand:
 
     def test_run_help(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1262,6 +1264,7 @@ class TestCLIRunCommand:
     def test_run_dry_run(self):
         """Dry run should show the execution plan without running."""
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1281,6 +1284,7 @@ class TestCLIStatusCommand:
 
     def test_status_help(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1291,6 +1295,7 @@ class TestCLIStatusCommand:
 
     def test_status_no_results(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1304,6 +1309,7 @@ class TestCLILogsCommand:
 
     def test_logs_help(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1314,6 +1320,7 @@ class TestCLILogsCommand:
 
     def test_logs_no_results(self):
         from click.testing import CliRunner
+
         from localci.cli.main import cli
 
         runner = CliRunner()

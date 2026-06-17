@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 from click.testing import CliRunner
+
 from localci.cli.main import cli
 from localci.core.config import load_config
 from localci.core.workflow import WorkflowAnalyzer

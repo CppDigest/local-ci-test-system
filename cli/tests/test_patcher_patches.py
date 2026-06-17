@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+
 from localci.cli.run import _write_patched_workflow
 from localci.core.workflow import (
     BuildSystem,
