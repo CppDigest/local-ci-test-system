@@ -4,7 +4,7 @@
 # local dev tools (not committed)
 .tools/
 
-# image 
+# image
 *.tar
 images/capy/dist/
 
@@ -29,4 +29,3 @@ Icon?
 .com.apple.timemachine.donotpresent
 .VolumeIcon.icns
 .cursor
-

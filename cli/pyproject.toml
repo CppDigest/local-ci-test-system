@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "mypy>=1.10.0",
+    "pre-commit>=4.0.0",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.5",
@@ -83,3 +84,6 @@ line-length = 88
 select = ["E", "F", "I", "UP", "B", "SIM"]
 # E501 is handled by ruff format; avoid duplicate line-length enforcement.
 ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["localci"]
