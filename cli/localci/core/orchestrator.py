@@ -403,7 +403,6 @@ class ParallelExecutionManager:
                     container_mount_options=container_mount_options,
                 )
 
-            event_file_to_clean: Path | None = None
             try:
                 # Per-job act action cache to avoid parallel jobs sharing ~/.cache/act
                 # (causes "remove ... no such file or directory" when one job cleans cache)
@@ -430,7 +429,6 @@ class ParallelExecutionManager:
                     resolved_cache_paths=resolved_cache_paths,
                     cache_config=self._cache_config,
                 )
-                event_file_to_clean = getattr(cmd, "event_file", None)
                 result = self._executor.run(
                     cmd,
                     matrix_index=job.matrix_entry.index,
@@ -453,15 +451,6 @@ class ParallelExecutionManager:
                         logger.debug(
                             "Could not remove patched workflow temp file %s: %s",
                             workflow_file,
-                            unlink_err,
-                        )
-                if event_file_to_clean is not None:
-                    try:
-                        event_file_to_clean.unlink(missing_ok=True)
-                    except OSError as unlink_err:
-                        logger.debug(
-                            "Could not remove event temp file %s: %s",
-                            event_file_to_clean,
                             unlink_err,
                         )
         except Exception as e:

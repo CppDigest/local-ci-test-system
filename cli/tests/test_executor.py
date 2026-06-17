@@ -30,6 +30,7 @@ from localci.core.executor import (
     JobStatus,
 )
 from localci.core.results import ExecutionSummary
+from localci.core.secrets_io import format_secret_file_line, validate_secret_key
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -46,6 +47,20 @@ from localci.core.workflow import (
 # =====================================================================
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+
+def _assert_argv_has_no_secret_leaks(argv: list[str], *secret_values: str) -> None:
+    """Ensure secret values and ``--secret`` flags never appear on argv."""
+    for arg in argv:
+        assert arg != "--secret", f"unexpected --secret flag in argv: {arg!r}"
+        assert not arg.startswith("--secret="), (
+            f"unexpected --secret= flag in argv: {arg!r}"
+        )
+        for value in secret_values:
+            if value:
+                assert value not in arg, (
+                    f"secret value leaked into argv element: {arg!r}"
+                )
 
 
 def _make_entry(
@@ -131,6 +146,14 @@ def _make_summary(
 
 class TestActCommand:
     """Test act command construction."""
+
+    def test_format_secret_file_line_quotes_and_escapes(self) -> None:
+        line = format_secret_file_line("GITHUB_TOKEN", 'ghp_"abc"\nline2')
+        assert line == 'GITHUB_TOKEN="ghp_\\"abc\\"\\nline2"\n'
+
+    def test_validate_secret_key_rejects_invalid_chars(self) -> None:
+        with pytest.raises(ValueError, match="Invalid secret key"):
+            validate_secret_key("BAD=KEY")
 
     def test_basic_command(self):
         cmd = ActCommand(
@@ -241,28 +264,48 @@ class TestActCommand:
         args = cmd.build()
         assert "--rm" in args
 
-    def test_env_vars(self):
+    def test_env_not_on_argv(self, tmp_path):
+        env_file = tmp_path / "job.env"
+        env_file.write_text(
+            format_secret_file_line("CC", "gcc-15")
+            + format_secret_file_line("CXX", "g++-15")
+        )
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
-            env={"CC": "gcc-15", "CXX": "g++-15"},
+            env_file=env_file,
         )
         args = cmd.build()
-        assert "--env" in args
-        assert "CC=gcc-15" in args
-        assert "CXX=g++-15" in args
+        assert "--env-file" in args
+        assert str(env_file) in args
+        assert "--env" not in args
+        assert "CC=gcc-15" not in args
+        assert "CXX=g++-15" not in args
 
-    def test_secrets(self):
+    def test_secrets_not_on_argv(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
             secrets={"GITHUB_TOKEN": "secret123"},
         )
         args = cmd.build()
-        assert "--secret" in args
-        assert "GITHUB_TOKEN=secret123" in args
+        _assert_argv_has_no_secret_leaks(args, "secret123")
 
-    def test_display_redacts_secrets(self):
+    def test_secret_file_on_argv_not_values(self, tmp_path):
+        secret_file = tmp_path / "secrets.env"
+        secret_file.write_text("GITHUB_TOKEN=secret123\n")
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secrets={"GITHUB_TOKEN": "secret123"},
+            secret_file=secret_file,
+        )
+        args = cmd.build()
+        assert "--secret-file" in args
+        assert str(secret_file) in args
+        _assert_argv_has_no_secret_leaks(args, "secret123")
+
+    def test_display_omits_secrets(self):
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
@@ -270,7 +313,7 @@ class TestActCommand:
         )
         display = cmd.display()
         assert "secret123" not in display
-        assert "***" in display
+        _assert_argv_has_no_secret_leaks(display.split(), "secret123")
 
     def test_container_architecture(self):
         cmd = ActCommand(
@@ -656,17 +699,162 @@ class TestJobExecutor:
         assert "all done" in extracted
         assert "finished ok" in extracted
 
+    @patch("shutil.which")
+    def test_secrets_injected_into_subprocess_env(self, mock_which, tmp_path):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        act_cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secrets={"GITHUB_TOKEN": "secret123"},
+            workdir=tmp_path,
+        )
+        log_file = tmp_path / "job.log"
+
+        mock_process = MagicMock()
+        mock_process.stdout = []
+        mock_process.stderr = []
+        mock_process.returncode = 0
+
+        captured_env: dict[str, str] = {}
+        captured_cmd: list[str] = []
+
+        def fake_popen(cmd: list[str], **_kwargs: object) -> MagicMock:
+            captured_cmd.extend(cmd)
+            env = _kwargs.get("env")
+            assert env is not None, "subprocess.Popen must receive env kwarg"
+            assert isinstance(env, dict)
+            captured_env.update(env)
+            return mock_process
+
+        with patch("localci.core.executor.subprocess.Popen", side_effect=fake_popen):
+            exit_code, _, _ = executor._execute_process(
+                act_cmd,
+                timeout=10,
+                log_file=log_file,
+                stream_output=False,
+                on_output=None,
+            )
+
+        assert exit_code == 0
+        assert captured_env["GITHUB_TOKEN"] == "secret123"
+        assert "--secret-file" in captured_cmd
+        _assert_argv_has_no_secret_leaks(captured_cmd, "secret123")
+        assert act_cmd.secret_file is not None
+        assert act_cmd.secret_file.exists()
+        assert act_cmd.secret_file.read_text() == format_secret_file_line(
+            "GITHUB_TOKEN", "secret123"
+        )
+        assert act_cmd._executor_owned_secret_file
+        _assert_argv_has_no_secret_leaks(act_cmd.build(), "secret123")
+
+    @patch("shutil.which")
+    def test_env_materialized_to_env_file(self, mock_which, tmp_path):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        act_cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            env={"CC": "gcc-15", "CXX": "g++-15"},
+            workdir=tmp_path,
+        )
+        log_file = tmp_path / "job.log"
+
+        mock_process = MagicMock()
+        mock_process.stdout = []
+        mock_process.stderr = []
+        mock_process.returncode = 0
+
+        captured_cmd: list[str] = []
+
+        def fake_popen(cmd: list[str], **_kwargs: object) -> MagicMock:
+            captured_cmd.extend(cmd)
+            return mock_process
+
+        with patch("localci.core.executor.subprocess.Popen", side_effect=fake_popen):
+            exit_code, _, _ = executor._execute_process(
+                act_cmd,
+                timeout=10,
+                log_file=log_file,
+                stream_output=False,
+                on_output=None,
+            )
+
+        assert exit_code == 0
+        assert "--env-file" in captured_cmd
+        assert "--env" not in captured_cmd
+        assert "CC=gcc-15" not in captured_cmd
+        assert act_cmd.env_file is not None
+        assert act_cmd.env_file.exists()
+        assert act_cmd.env_file.read_text() == (
+            format_secret_file_line("CC", "gcc-15")
+            + format_secret_file_line("CXX", "g++-15")
+        )
+        assert act_cmd._executor_owned_env_file
+
+    @patch("shutil.which")
+    def test_secrets_type_guard_rejects_non_str_values(
+        self, mock_which, tmp_path
+    ) -> None:
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        act_cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secrets={"GITHUB_TOKEN": 123},  # type: ignore[dict-item]
+            workdir=tmp_path,
+        )
+        with pytest.raises(TypeError, match="ActCommand.secrets must contain only str"):
+            executor._execute_process(
+                act_cmd,
+                timeout=10,
+                log_file=tmp_path / "job.log",
+                stream_output=False,
+                on_output=None,
+            )
+
     def test_cleanup_temp_files(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")
+        secret = tmp_path / "secrets.env"
+        secret.write_text("GITHUB_TOKEN=x\n")
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
             event_file=event,
+            secret_file=secret,
         )
         assert event.exists()
+        assert secret.exists()
         JobExecutor._cleanup_temp_files(cmd)
         assert not event.exists()
+        assert secret.exists()
+
+    def test_cleanup_temp_files_deletes_executor_owned_secret(self, tmp_path):
+        secret = tmp_path / "localci-secrets-owned.env"
+        secret.write_text("GITHUB_TOKEN=x\n")
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            secret_file=secret,
+        )
+        cmd._executor_owned_secret_file = True
+        assert secret.exists()
+        JobExecutor._cleanup_temp_files(cmd)
+        assert not secret.exists()
+
+    def test_cleanup_temp_files_deletes_executor_owned_env(self, tmp_path):
+        env_file = tmp_path / "localci-env-owned.env"
+        env_file.write_text('CC="gcc-15"\n')
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            env_file=env_file,
+        )
+        cmd._executor_owned_env_file = True
+        assert env_file.exists()
+        JobExecutor._cleanup_temp_files(cmd)
+        assert not env_file.exists()
 
     def test_cleanup_temp_files_none_cmd(self):
         # Should not raise
@@ -731,6 +919,8 @@ class TestActCommandBuilder:
         cmd = builder.build(entry)
 
         assert cmd.secrets["GITHUB_TOKEN"] == SENTINEL_GITHUB_TOKEN
+        argv = cmd.build()
+        _assert_argv_has_no_secret_leaks(argv, SENTINEL_GITHUB_TOKEN)
 
     def test_custom_default_secrets(self, tmp_path):
         wf = tmp_path / "ci.yml"
@@ -745,6 +935,8 @@ class TestActCommandBuilder:
 
         assert cmd.secrets["MY_SECRET"] == "val"
         assert "GITHUB_TOKEN" in cmd.secrets
+        argv = cmd.build()
+        _assert_argv_has_no_secret_leaks(argv, "val")
 
     def test_x86_architecture(self, tmp_path):
         wf = tmp_path / "ci.yml"
