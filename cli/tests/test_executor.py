@@ -736,6 +736,9 @@ class TestJobExecutor:
         _assert_argv_has_no_secret_leaks(captured_cmd, "secret123")
         assert act_cmd.secret_file is not None
         assert act_cmd.secret_file.exists()
+        assert act_cmd.secret_file.read_text() == _format_secret_file_line(
+            "GITHUB_TOKEN", "secret123"
+        )
         assert act_cmd._executor_owned_secret_file
         _assert_argv_has_no_secret_leaks(act_cmd.build(), "secret123")
 

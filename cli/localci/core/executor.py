@@ -572,8 +572,8 @@ class JobExecutor:
 
         Uses :meth:`ActCommand.display` for the log header. Secret values are
         written to a ``0600`` temp file and passed via ``--secret-file`` (path
-        only on argv); :attr:`ActCommand.secrets` is also injected into the
-        subprocess environment for act's GitHub authentication.
+        only on argv) for workflow ``${{ secrets.* }}``; :attr:`ActCommand.secrets`
+        is also injected into the subprocess environment for act's GitHub auth.
 
         Returns ``(exit_code, stdout, stderr)``.
         """
@@ -605,6 +605,8 @@ class JobExecutor:
                 with suppress(OSError):
                     Path(secret_path).unlink()
                 raise
+            with suppress(OSError):
+                os.chmod(secret_path, 0o600)
             act_cmd.secret_file = Path(secret_path)
             act_cmd._executor_owned_secret_file = True
 
@@ -617,6 +619,8 @@ class JobExecutor:
             log_f.write(f"# Started: {datetime.now().isoformat()}\n")
             log_f.write(f"# {'=' * 60}\n\n")
 
+            # Child environ is visible to same-UID via /proc/<pid>/environ;
+            # issue #58 accepts this over argv for secret delivery.
             env = dict(os.environ)
             env.update(act_cmd.secrets)
 
