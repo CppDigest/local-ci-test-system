@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-
 from localci.cli.main import cli
 from localci.errors import YqNotFoundError
 from localci.utils.crash import CRASH_LOG_NAME

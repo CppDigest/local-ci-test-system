@@ -8,7 +8,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-
 from localci.cli.run.container import build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.run_flow import execute_run

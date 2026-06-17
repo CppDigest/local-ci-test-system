@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import pytest
 import yaml
-from pydantic import ValidationError
-
 from localci.core.config import (
     CacheConfig,
     LocalCIConfig,
@@ -18,6 +16,7 @@ from localci.core.config import (
     load_config,
     resolve_cache_paths,
 )
+from pydantic import ValidationError
 
 # ---------------------------------------------------------------------------
 # Default config

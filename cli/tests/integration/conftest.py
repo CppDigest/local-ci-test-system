@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from localci.core.executor import JobExecutor
 from localci.core.image_tag import derive_image_tag
 from localci.errors import DockerNotAvailableError

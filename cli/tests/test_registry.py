@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from localci.core.registry import (
     ImageRegistry,
     RegistryEntry,

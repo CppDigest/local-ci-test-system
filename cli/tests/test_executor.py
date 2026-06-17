@@ -19,7 +19,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from localci.core.command_builder import ActCommandBuilder
 from localci.core.executor import (
     ActCommand,
@@ -1053,7 +1052,9 @@ class TestDockerManager:
 
         dm = DockerManager()
         dm._docker_path = None  # simulate -O / internal invariant break
-        with pytest.raises(RuntimeError, match="Docker executable path not set") as exc_info:
+        with pytest.raises(
+            RuntimeError, match="Docker executable path not set"
+        ) as exc_info:
             dm.build_cmd("version")
         assert type(exc_info.value) is RuntimeError
         assert not isinstance(exc_info.value, DockerNotAvailableError)
@@ -1248,7 +1249,6 @@ class TestCLIRunCommand:
 
     def test_run_help(self):
         from click.testing import CliRunner
-
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1262,7 +1262,6 @@ class TestCLIRunCommand:
     def test_run_dry_run(self):
         """Dry run should show the execution plan without running."""
         from click.testing import CliRunner
-
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1282,7 +1281,6 @@ class TestCLIStatusCommand:
 
     def test_status_help(self):
         from click.testing import CliRunner
-
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1293,7 +1291,6 @@ class TestCLIStatusCommand:
 
     def test_status_no_results(self):
         from click.testing import CliRunner
-
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1307,7 +1304,6 @@ class TestCLILogsCommand:
 
     def test_logs_help(self):
         from click.testing import CliRunner
-
         from localci.cli.main import cli
 
         runner = CliRunner()
@@ -1318,7 +1314,6 @@ class TestCLILogsCommand:
 
     def test_logs_no_results(self):
         from click.testing import CliRunner
-
         from localci.cli.main import cli
 
         runner = CliRunner()

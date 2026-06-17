@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from localci.cli.run import _write_patched_workflow
 from localci.core.workflow import (
     BuildSystem,

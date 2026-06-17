@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-
 from localci.cli.main import cli
 from localci.core.executor import AUTH_ERROR_EXTRACT_KEYWORDS, JobExecutor
 from localci.core.github_token import (
