@@ -26,17 +26,11 @@ A system to execute GitHub Actions CI workflows locally with pre-built, optimize
 - Provides real-time progress monitoring
 - Aggregates test results
 
-### MCP Server Interface
-- Exposes endpoints for triggering tests
-- Uses `yq` for workflow analysis
-- Uses `act` for workflow execution
-- Supports async operations for long-running tests
-
 ---
 
 ## Execution Workflow
 
-All steps are performed via scripts within the MCP server.
+All steps are performed via the CLI.
 
 ### Step 1: Extract Workflow Information
 
@@ -151,7 +145,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
 **4.4. Progress Tracking**
 - Track overall progress: `X/Y jobs completed`
 - Track per-job status: `pending`, `running`, `completed`, `failed`
-- Provide real-time updates via MCP interface
+- Provide real-time updates via CLI (`localci status`) and status files
 
 **Output**: Complete execution results for all jobs in test list.
 
@@ -214,86 +208,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
   act --dryrun --matrix compiler:gcc
   ```
 
-### B. MCP Integration
-
-#### MCP Server Endpoints
-
-**`analyze_workflow`**
-- **Purpose**: Execute Step 1 - Analyze workflow files and extract configuration
-- **Input**: 
-  - `workflow_file`: Path to workflow file (e.g., `.github/workflows/ci.yml`)
-  - `event`: Git event name (e.g., `push`, `pull_request`)
-- **Output**: 
-  - `jobs`: List of jobs with their configurations
-  - `matrix_entries`: All matrix combinations
-  - `dependencies`: Job dependency graph
-
-**`run_local_ci`**
-- **Purpose**: Execute Steps 1-4 - Analyze workflows and trigger parallel job execution
-- **Input**:
-  - `workflow_file`: Path to workflow file
-  - `event`: Git event name
-  - `config`: Configuration object (optional)
-    - `jobs`: List of job names to run
-    - `matrix_filters`: Object with key-value pairs to filter matrix (e.g., `{"compiler": "gcc", "version": "15"}`)
-    - `max_parallel`: Maximum concurrent jobs
-    - `job_priorities`: Object mapping job names to priority values (e.g., `{"build": 1, "changelog": 2}`)
-      - Lower number = higher priority (1 is highest)
-      - If not specified, priorities extracted from workflow file or assigned default values
-- **Output**:
-  - `execution_id`: Unique identifier for this execution
-  - `status_url`: URL to check execution status
-
-**`get_status`**
-- **Purpose**: Get execution status (Step 4 progress)
-- **Input**: `execution_id`
-- **Output**:
-  - `progress`: Overall progress (e.g., `25/56 jobs completed`)
-  - `completed_jobs`: List of completed jobs with results
-  - `failed_jobs`: List of failed jobs with error messages
-  - `running_jobs`: List of currently running jobs
-  - `pending_jobs`: List of pending jobs
-
-**`get_logs`**
-- **Purpose**: Get logs for specific job
-- **Input**:
-  - `execution_id`
-  - `job_name`: Name of the job
-  - `matrix_entry`: Matrix entry identifier (optional)
-- **Output**: Job execution logs
-
-**`cancel_execution`**
-- **Purpose**: Cancel running execution
-- **Input**: `execution_id`
-- **Output**: Cancellation status
-
-#### Example MCP Request
-
-```json
-{
-  "tool": "run_local_ci",
-  "input": {
-    "workflow_file": ".github/workflows/ci.yml",
-    "event": "push",
-    "config": {
-      "jobs": ["build"],
-      "matrix_filters": {
-        "compiler": "gcc",
-        "version": "15"
-      },
-      "max_parallel": 20
-    }
-  }
-}
-```
-
-#### Async Operations
-
-- Long-running executions return immediately with `execution_id`
-- Client polls `get_status` endpoint for updates
-- Results available via `get_status` and `get_logs` endpoints
-
-### C. Setup
+### B. Setup
 
 #### Prerequisites
 
@@ -412,7 +327,7 @@ resource_limits:
   disk_min_free_gb: 10  # Minimum free disk space in GB before warning
 ```
 
-### D. Image Matching Algorithm
+### C. Image Matching Algorithm
 
 The algorithm uses a **two-mark system**: essential marks for infrastructure requirements and extra marks for packages/tools.
 
@@ -513,7 +428,7 @@ For each job (matrix_entry):
        → Save new image to registry
 ```
 
-### E. New Image Creation Process
+### D. New Image Creation Process
 
 When no image has full essential marks (= 100), a new image must be created. The image with the highest essential marks is used as the base to minimize build time.
 
@@ -618,7 +533,7 @@ Examples:
 - `beast2-ubuntu-25.04-clang18-asan.tar` (compiler + variant)
 - `beast2-ubuntu-24.04-x86.tar` (specific architecture)
 
-### F. Host Platform Compatibility
+### E. Host Platform Compatibility
 
 **Windows Host:**
 - Windows containers: Run natively
@@ -640,7 +555,7 @@ Examples:
 
 For concrete install commands, Docker Desktop/WSL2 notes, and a preflight checklist before your first run, see **[Cross-platform prerequisites](../cli/Usage%20Guide.md#cross-platform-prerequisites)** in the Usage Guide.
 
-### G. Benefits and Limitations
+### F. Benefits and Limitations
 
 #### Benefits
 
@@ -660,7 +575,7 @@ For concrete install commands, Docker Desktop/WSL2 notes, and a preflight checkl
 - **Initial setup**: Time required to build and save initial image set
 - **Resource intensive**: Requires significant CPU, memory, and disk resources
 
-### H. Resource Requirements
+### G. Resource Requirements
 
 **Minimum Requirements:**
 - CPU: 8 cores (for ~20 parallel jobs)
@@ -674,7 +589,7 @@ For concrete install commands, Docker Desktop/WSL2 notes, and a preflight checkl
 - Disk: 200GB+ (SSD recommended)
 - Network: Fast local storage for image loading
 
-### I. Future Scalability
+### H. Future Scalability
 
 The system can be extended to scale beyond local host limitations using cloud infrastructure and container orchestration:
 
@@ -708,7 +623,7 @@ The system can be extended to scale beyond local host limitations using cloud in
 - **Multi-platform**: Support for mixed Windows/Linux node pools
 
 **Architecture:**
-- **Control Plane**: MCP server + orchestrator controller
+- **Control Plane**: CLI orchestrator controller
 - **Worker Nodes**: Run `act` containers in Kubernetes pods
 - **Image Registry**: Container registry (Docker Hub, GitHub Container Registry, private registry)
 - **Storage**: Persistent volumes for image cache and artifacts
@@ -726,7 +641,7 @@ The system can be extended to scale beyond local host limitations using cloud in
 3. **Phase 3**: Cloud compute instances for heavy workloads
 4. **Phase 4**: Full Kubernetes deployment for enterprise scale
 
-### J. Example Workflow Analysis
+### I. Example Workflow Analysis
 
 **Beast2 CI Workflow Example:**
 - **Total jobs**: 4 (runner-selection, build, changelog, antora)
