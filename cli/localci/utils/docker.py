@@ -67,8 +67,9 @@ class DockerManager:
         """Build a Docker command using the resolved binary path."""
         if self._docker_path is None:
             raise RuntimeError(
-                "Docker executable path not set; verify Docker is installed and on PATH, "
-                "and ensure Docker availability checks pass before running Docker commands."
+                "Docker executable path not set; construct DockerManager() so "
+                "_check_docker() can resolve the binary — verify Docker is installed "
+                "and on PATH."
             )
         return [self._docker_path, *args]
 

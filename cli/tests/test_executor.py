@@ -1053,8 +1053,10 @@ class TestDockerManager:
 
         dm = DockerManager()
         dm._docker_path = None  # simulate -O / internal invariant break
-        with pytest.raises(RuntimeError, match="Docker executable path not set"):
+        with pytest.raises(RuntimeError, match="Docker executable path not set") as exc_info:
             dm.build_cmd("version")
+        assert type(exc_info.value) is RuntimeError
+        assert not isinstance(exc_info.value, DockerNotAvailableError)
 
 
 # =====================================================================
