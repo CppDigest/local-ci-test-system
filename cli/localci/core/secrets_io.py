@@ -1,4 +1,4 @@
-"""Godotenv-compatible secret file formatting for act ``--secret-file``."""
+"""Godotenv-compatible dotenv line formatting for act ``--secret-file`` / ``--env-file``."""
 
 from __future__ import annotations
 

@@ -167,14 +167,15 @@ class ActCommand:
     dryrun: bool = False
     verbose: bool = False
 
-    # Environment
+    # Environment (values passed via --env-file path only; see JobExecutor)
     env: dict[str, str] = field(default_factory=dict)
     # Secrets passed to act via --secret-file (never as argv values).
     # All keys and values must be str (POSIX subprocess.Popen requirement).
     secrets: dict[str, str] = field(default_factory=dict)
     env_file: Path | None = None
-    # Temp file for --secret-file; set by JobExecutor._execute_process only.
+    # Temp files for --env-file / --secret-file; set by JobExecutor._execute_process only.
     secret_file: Path | None = None
+    _executor_owned_env_file: bool = field(default=False, repr=False)
     _executor_owned_secret_file: bool = field(default=False, repr=False)
 
     # Event
@@ -240,11 +241,7 @@ class ActCommand:
         if self.verbose:
             cmd.append("-v")
 
-        # Environment variables
-        for key, value in self.env.items():
-            cmd.extend(["--env", f"{key}={value}"])
-
-        # Env file
+        # Env file (path only on argv; values materialized by JobExecutor)
         if self.env_file:
             cmd.extend(["--env-file", str(self.env_file)])
 
@@ -548,10 +545,11 @@ class JobExecutor:
     ) -> tuple[int, str, str]:
         """Execute ``act`` process with output capture and streaming.
 
-        Uses :meth:`ActCommand.display` for the log header. Secret values are
-        written to a ``0600`` temp file and passed via ``--secret-file`` (path
-        only on argv) for workflow ``${{ secrets.* }}``; :attr:`ActCommand.secrets`
-        is also injected into the subprocess environment for act's GitHub auth.
+        Uses :meth:`ActCommand.display` for the log header. Environment and secret
+        values are written to ``0600`` temp files and passed via ``--env-file`` /
+        ``--secret-file`` (paths only on argv). Workflow ``${{ secrets.* }}`` uses
+        the secret file; :attr:`ActCommand.secrets` is also injected into the
+        subprocess environment for act's GitHub auth.
 
         Returns ``(exit_code, stdout, stderr)``.
         """
@@ -567,6 +565,40 @@ class JobExecutor:
             raise TypeError(
                 "ActCommand.secrets must contain only str keys and str values"
             )
+
+        if act_cmd.env and not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in act_cmd.env.items()
+        ):
+            raise TypeError("ActCommand.env must contain only str keys and str values")
+
+        if act_cmd.env:
+            fd, env_path = tempfile.mkstemp(
+                prefix="localci-env-",
+                suffix=".env",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as env_f:
+                    if (
+                        act_cmd.env_file
+                        and act_cmd.env_file.exists()
+                        and not act_cmd._executor_owned_env_file
+                    ):
+                        existing = act_cmd.env_file.read_text(encoding="utf-8")
+                        env_f.write(existing)
+                        if not existing.endswith("\n"):
+                            env_f.write("\n")
+                    for key, value in act_cmd.env.items():
+                        env_f.write(format_secret_file_line(key, value))
+            except Exception:
+                with suppress(OSError):
+                    os.close(fd)
+                with suppress(OSError):
+                    Path(env_path).unlink()
+                raise
+            with suppress(OSError):
+                os.chmod(env_path, 0o600)
+            act_cmd.env_file = Path(env_path)
+            act_cmd._executor_owned_env_file = True
 
         if act_cmd.secrets:
             fd, secret_path = tempfile.mkstemp(
@@ -705,6 +737,14 @@ class JobExecutor:
         if cmd and cmd.event_file and cmd.event_file.exists():
             with suppress(OSError):
                 cmd.event_file.unlink()
+        if (
+            cmd
+            and cmd._executor_owned_env_file
+            and cmd.env_file
+            and cmd.env_file.exists()
+        ):
+            with suppress(OSError):
+                cmd.env_file.unlink()
         if (
             cmd
             and cmd._executor_owned_secret_file

@@ -264,16 +264,23 @@ class TestActCommand:
         args = cmd.build()
         assert "--rm" in args
 
-    def test_env_vars(self):
+    def test_env_not_on_argv(self, tmp_path):
+        env_file = tmp_path / "job.env"
+        env_file.write_text(
+            format_secret_file_line("CC", "gcc-15")
+            + format_secret_file_line("CXX", "g++-15")
+        )
         cmd = ActCommand(
             workflow_file=Path("ci.yml"),
             job_id="build",
-            env={"CC": "gcc-15", "CXX": "g++-15"},
+            env_file=env_file,
         )
         args = cmd.build()
-        assert "--env" in args
-        assert "CC=gcc-15" in args
-        assert "CXX=g++-15" in args
+        assert "--env-file" in args
+        assert str(env_file) in args
+        assert "--env" not in args
+        assert "CC=gcc-15" not in args
+        assert "CXX=g++-15" not in args
 
     def test_secrets_not_on_argv(self):
         cmd = ActCommand(
@@ -742,6 +749,50 @@ class TestJobExecutor:
         _assert_argv_has_no_secret_leaks(act_cmd.build(), "secret123")
 
     @patch("shutil.which")
+    def test_env_materialized_to_env_file(self, mock_which, tmp_path):
+        mock_which.return_value = "/usr/bin/act"
+        executor = JobExecutor(logs_dir=self.logs_dir)
+        act_cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            env={"CC": "gcc-15", "CXX": "g++-15"},
+            workdir=tmp_path,
+        )
+        log_file = tmp_path / "job.log"
+
+        mock_process = MagicMock()
+        mock_process.stdout = []
+        mock_process.stderr = []
+        mock_process.returncode = 0
+
+        captured_cmd: list[str] = []
+
+        def fake_popen(cmd: list[str], **_kwargs: object) -> MagicMock:
+            captured_cmd.extend(cmd)
+            return mock_process
+
+        with patch("localci.core.executor.subprocess.Popen", side_effect=fake_popen):
+            exit_code, _, _ = executor._execute_process(
+                act_cmd,
+                timeout=10,
+                log_file=log_file,
+                stream_output=False,
+                on_output=None,
+            )
+
+        assert exit_code == 0
+        assert "--env-file" in captured_cmd
+        assert "--env" not in captured_cmd
+        assert "CC=gcc-15" not in captured_cmd
+        assert act_cmd.env_file is not None
+        assert act_cmd.env_file.exists()
+        assert act_cmd.env_file.read_text() == (
+            format_secret_file_line("CC", "gcc-15")
+            + format_secret_file_line("CXX", "g++-15")
+        )
+        assert act_cmd._executor_owned_env_file
+
+    @patch("shutil.which")
     def test_secrets_type_guard_rejects_non_str_values(
         self, mock_which, tmp_path
     ) -> None:
@@ -791,6 +842,19 @@ class TestJobExecutor:
         assert secret.exists()
         JobExecutor._cleanup_temp_files(cmd)
         assert not secret.exists()
+
+    def test_cleanup_temp_files_deletes_executor_owned_env(self, tmp_path):
+        env_file = tmp_path / "localci-env-owned.env"
+        env_file.write_text('CC="gcc-15"\n')
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            env_file=env_file,
+        )
+        cmd._executor_owned_env_file = True
+        assert env_file.exists()
+        JobExecutor._cleanup_temp_files(cmd)
+        assert not env_file.exists()
 
     def test_cleanup_temp_files_none_cmd(self):
         # Should not raise
