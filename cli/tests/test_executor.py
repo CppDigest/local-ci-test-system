@@ -28,10 +28,9 @@ from localci.core.executor import (
     JobExecutor,
     JobResult,
     JobStatus,
-    _format_secret_file_line,
-    _validate_secret_key,
 )
 from localci.core.results import ExecutionSummary
+from localci.core.secrets_io import format_secret_file_line, validate_secret_key
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -149,12 +148,12 @@ class TestActCommand:
     """Test act command construction."""
 
     def test_format_secret_file_line_quotes_and_escapes(self) -> None:
-        line = _format_secret_file_line("GITHUB_TOKEN", 'ghp_"abc"\nline2')
+        line = format_secret_file_line("GITHUB_TOKEN", 'ghp_"abc"\nline2')
         assert line == 'GITHUB_TOKEN="ghp_\\"abc\\"\\nline2"\n'
 
     def test_validate_secret_key_rejects_invalid_chars(self) -> None:
         with pytest.raises(ValueError, match="Invalid secret key"):
-            _validate_secret_key("BAD=KEY")
+            validate_secret_key("BAD=KEY")
 
     def test_basic_command(self):
         cmd = ActCommand(
@@ -736,7 +735,7 @@ class TestJobExecutor:
         _assert_argv_has_no_secret_leaks(captured_cmd, "secret123")
         assert act_cmd.secret_file is not None
         assert act_cmd.secret_file.exists()
-        assert act_cmd.secret_file.read_text() == _format_secret_file_line(
+        assert act_cmd.secret_file.read_text() == format_secret_file_line(
             "GITHUB_TOKEN", "secret123"
         )
         assert act_cmd._executor_owned_secret_file

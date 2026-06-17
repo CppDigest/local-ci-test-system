@@ -23,34 +23,12 @@ from enum import Enum
 from pathlib import Path
 from typing import IO
 
+from localci.core.secrets_io import format_secret_file_line
 from localci.errors import ActNotFoundError, DockerNotAvailableError
 
 _DEFAULT_LOGS_DIR = Path.home() / ".localci" / "logs"
 
 logger = logging.getLogger(__name__)
-
-_INVALID_SECRET_KEY_CHARS = frozenset("=\n\r\0")
-
-
-def _validate_secret_key(key: str) -> None:
-    """Reject secret keys that would corrupt act's godotenv secret file."""
-    if any(char in key for char in _INVALID_SECRET_KEY_CHARS):
-        raise ValueError(f"Invalid secret key: {key!r}")
-
-
-def _format_secret_file_line(key: str, value: str) -> str:
-    """Format one KEY=VALUE line for act's godotenv ``--secret-file`` parser."""
-    _validate_secret_key(key)
-    if "\0" in value:
-        raise ValueError(f"Invalid secret value for key {key!r}")
-    escaped = (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-    )
-    return f'{key}="{escaped}"\n'
-
 
 # Substrings (matched case-insensitively) for summarizing failed job output.
 _ERROR_EXTRACT_KEYWORDS = (
@@ -598,7 +576,7 @@ class JobExecutor:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as secret_f:
                     for key, value in act_cmd.secrets.items():
-                        secret_f.write(_format_secret_file_line(key, value))
+                        secret_f.write(format_secret_file_line(key, value))
             except Exception:
                 with suppress(OSError):
                     os.close(fd)
