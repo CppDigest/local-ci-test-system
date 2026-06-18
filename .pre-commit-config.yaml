@@ -1,0 +1,48 @@
+# Local CI pre-commit hooks — mirrors .github/workflows/ci.yml (lint + typecheck).
+# Install: pip install pre-commit  (or: uv sync --extra dev from cli/)
+# Setup:   pre-commit install
+# Run all: pre-commit run -a
+
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^cli/tests/fixtures/integration/project/.github/workflows/invalid\.yml$
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff
+        name: ruff check (cli)
+        files: ^cli/(localci|tests)/
+        args: [--fix, --config, cli/pyproject.toml]
+      - id: ruff-format
+        name: ruff format (cli)
+        files: ^cli/(localci|tests)/
+        args: [--config, cli/pyproject.toml]
+
+  - repo: local
+    hooks:
+      - id: mypy-cli
+        name: mypy (cli)
+        entry: bash -c 'cd cli && mypy localci/'
+        language: python
+        pass_filenames: false
+        always_run: true
+        files: ^cli/
+        additional_dependencies:
+          - click>=8.1.0
+          - mypy>=1.10.0
+          - pydantic>=2.0.0
+          - pyyaml>=6.0
+          - rich>=13.0.0
+          - types-PyYAML>=6.0.0
+          - types-psutil>=5.9.0

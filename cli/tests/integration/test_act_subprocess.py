@@ -24,6 +24,7 @@ def _build_and_run(
     logs_dir: Path,
     act_runner_image: str,
     project_dir: Path,
+    default_secrets: dict[str, str] | None = None,
 ) -> tuple[JobResult, MatrixEntry]:
     workflow_path = _workflow_path(workflow_name, project_dir)
     analyzer = WorkflowAnalyzer()
@@ -34,6 +35,7 @@ def _build_and_run(
         workflow_file=workflow_path,
         project_dir=project_dir,
         job_id=INTEGRATION_JOB_ID,
+        default_secrets=default_secrets or {},
     )
     cmd = builder.build(entry, image_tag=act_runner_image)
     executor = JobExecutor(logs_dir=logs_dir)
@@ -81,3 +83,26 @@ def test_failing_job_extract_error(
 
     lower = result.error_message.lower()
     assert any(kw in lower for kw in ("failed", "error", "exit"))
+
+
+def test_github_token_available_as_workflow_secret(
+    integration_project: tuple[Path, Path],
+    act_runner_image: str,
+) -> None:
+    project, logs_dir = integration_project
+    result, _ = _build_and_run(
+        "token-test.yml",
+        logs_dir,
+        act_runner_image,
+        project,
+        default_secrets={"GITHUB_TOKEN": "local-ci-test-token"},
+    )
+
+    assert result.status == JobStatus.PASSED
+    assert result.exit_code == 0
+    combined = (result.stdout or "") + (result.stderr or "")
+    lines = combined.splitlines()
+    # act logs the step script (including echo "TOKEN_MISSING") in combined output;
+    # assert on container stdout lines prefixed with "| " instead.
+    assert any("| TOKEN_PRESENT" in line for line in lines)
+    assert not any("| TOKEN_MISSING" in line for line in lines)

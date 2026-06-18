@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections.abc import Callable
 from contextlib import suppress
@@ -22,6 +23,7 @@ from enum import Enum
 from pathlib import Path
 from typing import IO
 
+from localci.core.secrets_io import format_secret_file_line
 from localci.errors import ActNotFoundError, DockerNotAvailableError
 
 _DEFAULT_LOGS_DIR = Path.home() / ".localci" / "logs"
@@ -165,10 +167,16 @@ class ActCommand:
     dryrun: bool = False
     verbose: bool = False
 
-    # Environment
+    # Environment (values passed via --env-file path only; see JobExecutor)
     env: dict[str, str] = field(default_factory=dict)
+    # Secrets passed to act via --secret-file (never as argv values).
+    # All keys and values must be str (POSIX subprocess.Popen requirement).
     secrets: dict[str, str] = field(default_factory=dict)
     env_file: Path | None = None
+    # Temp files for --env-file / --secret-file; set by JobExecutor._execute_process only.
+    secret_file: Path | None = None
+    _executor_owned_env_file: bool = field(default=False, repr=False)
+    _executor_owned_secret_file: bool = field(default=False, repr=False)
 
     # Event
     event_file: Path | None = None
@@ -233,17 +241,13 @@ class ActCommand:
         if self.verbose:
             cmd.append("-v")
 
-        # Environment variables
-        for key, value in self.env.items():
-            cmd.extend(["--env", f"{key}={value}"])
-
-        # Env file
+        # Env file (path only on argv; values materialized by JobExecutor)
         if self.env_file:
             cmd.extend(["--env-file", str(self.env_file)])
 
-        # Secrets
-        for key, value in self.secrets.items():
-            cmd.extend(["--secret", f"{key}={value}"])
+        # Secrets file (path only on argv; values stay in the temp file)
+        if self.secret_file:
+            cmd.extend(["--secret-file", str(self.secret_file)])
 
         # Event payload
         if self.event_file:
@@ -278,20 +282,8 @@ class ActCommand:
         return cmd
 
     def display(self) -> str:
-        """Human-readable command string (secrets redacted)."""
-        parts = self.build()
-        redacted: list[str] = []
-        skip_next = False
-        for part in parts:
-            if skip_next:
-                redacted.append("***")
-                skip_next = False
-            elif part == "--secret":
-                redacted.append(part)
-                skip_next = True
-            else:
-                redacted.append(part)
-        return " ".join(redacted)
+        """Human-readable command string (secret values are not included in argv)."""
+        return " ".join(self.build())
 
     def __str__(self) -> str:
         return self.display()
@@ -553,28 +545,94 @@ class JobExecutor:
     ) -> tuple[int, str, str]:
         """Execute ``act`` process with output capture and streaming.
 
-        Uses ActCommand.display() for the log header (secrets redacted) and
-        ActCommand.secrets for env, so the token is never written to disk.
+        Uses :meth:`ActCommand.display` for the log header. Environment and secret
+        values are written to ``0600`` temp files and passed via ``--env-file`` /
+        ``--secret-file`` (paths only on argv). Workflow ``${{ secrets.* }}`` uses
+        the secret file; :attr:`ActCommand.secrets` is also injected into the
+        subprocess environment for act's GitHub auth.
 
         Returns ``(exit_code, stdout, stderr)``.
         """
-        cmd = act_cmd.build()
         workdir = act_cmd.workdir or Path(".")
         stdout_lines: list[str] = []
         stderr_lines: list[str] = []
         log_lock = threading.Lock()
 
+        if act_cmd.secrets and not all(
+            isinstance(k, str) and isinstance(v, str)
+            for k, v in act_cmd.secrets.items()
+        ):
+            raise TypeError(
+                "ActCommand.secrets must contain only str keys and str values"
+            )
+
+        if act_cmd.env and not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in act_cmd.env.items()
+        ):
+            raise TypeError("ActCommand.env must contain only str keys and str values")
+
+        if act_cmd.env:
+            fd, env_path = tempfile.mkstemp(
+                prefix="localci-env-",
+                suffix=".env",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as env_f:
+                    if (
+                        act_cmd.env_file
+                        and act_cmd.env_file.exists()
+                        and not act_cmd._executor_owned_env_file
+                    ):
+                        existing = act_cmd.env_file.read_text(encoding="utf-8")
+                        env_f.write(existing)
+                        if not existing.endswith("\n"):
+                            env_f.write("\n")
+                    for key, value in act_cmd.env.items():
+                        env_f.write(format_secret_file_line(key, value))
+            except Exception:
+                with suppress(OSError):
+                    os.close(fd)
+                with suppress(OSError):
+                    Path(env_path).unlink()
+                raise
+            with suppress(OSError):
+                os.chmod(env_path, 0o600)
+            act_cmd.env_file = Path(env_path)
+            act_cmd._executor_owned_env_file = True
+
+        if act_cmd.secrets:
+            fd, secret_path = tempfile.mkstemp(
+                prefix="localci-secrets-",
+                suffix=".env",
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as secret_f:
+                    for key, value in act_cmd.secrets.items():
+                        secret_f.write(format_secret_file_line(key, value))
+            except Exception:
+                with suppress(OSError):
+                    os.close(fd)
+                with suppress(OSError):
+                    Path(secret_path).unlink()
+                raise
+            with suppress(OSError):
+                os.chmod(secret_path, 0o600)
+            act_cmd.secret_file = Path(secret_path)
+            act_cmd._executor_owned_secret_file = True
+
+        cmd = act_cmd.build()
+
         with open(log_file, "w", encoding="utf-8") as log_f:
-            # Write header with redacted command (no secrets on disk)
+            # Write header (secret values are not on argv)
             log_f.write("# LocalCI Job Log\n")
             log_f.write(f"# Command: {act_cmd.display()}\n")
             log_f.write(f"# Started: {datetime.now().isoformat()}\n")
             log_f.write(f"# {'=' * 60}\n\n")
 
-            # Build environment: parent env + GITHUB_TOKEN from ActCommand.secrets
+            # Child environ is visible to same-UID via /proc/<pid>/environ;
+            # issue #58 accepts this over argv for secret delivery.
             env = dict(os.environ)
-            if "GITHUB_TOKEN" in act_cmd.secrets:
-                env["GITHUB_TOKEN"] = act_cmd.secrets["GITHUB_TOKEN"]
+            env.update(act_cmd.secrets)
 
             process = subprocess.Popen(
                 cmd,
@@ -679,3 +737,19 @@ class JobExecutor:
         if cmd and cmd.event_file and cmd.event_file.exists():
             with suppress(OSError):
                 cmd.event_file.unlink()
+        if (
+            cmd
+            and cmd._executor_owned_env_file
+            and cmd.env_file
+            and cmd.env_file.exists()
+        ):
+            with suppress(OSError):
+                cmd.env_file.unlink()
+        if (
+            cmd
+            and cmd._executor_owned_secret_file
+            and cmd.secret_file
+            and cmd.secret_file.exists()
+        ):
+            with suppress(OSError):
+                cmd.secret_file.unlink()

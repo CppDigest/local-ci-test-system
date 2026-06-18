@@ -1,0 +1,19 @@
+name: Token Secret Test
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: "Hello"
+            runs-on: ubuntu-latest
+            compiler: gcc
+            version: "15"
+    steps:
+      - run: |
+          if [ -z "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "TOKEN_MISSING" && exit 1
+          fi
+          echo "TOKEN_PRESENT"

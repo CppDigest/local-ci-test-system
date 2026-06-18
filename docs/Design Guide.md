@@ -104,11 +104,11 @@ For each job ready to execute (when under parallel limit AND priority allows):
 
 1. **Image Preparation:**
    - Check execution plan from Step 3 for image selection
-   
+
    - **If image has full essential marks (= 100)**:
      - Load matched image
      - Tag appropriately for `act`
-   
+
    - **If no image has full essential marks**:
      - Load base image (highest essential marks)
      - Create new image from this base:
@@ -117,7 +117,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
        - Save the new image for future reuse
        - Update image registry/index with new image metadata
      - Tag appropriately for `act`
-   
+
    - Image loading/creation is synchronous - job waits for image to be ready before proceeding
 
 2. **Execute `act`:**
@@ -157,7 +157,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
 
 #### `yq`
 - **Purpose**: Parse and analyze GitHub Actions YAML workflow files
-- **Installation**: 
+- **Installation**:
   - Windows: `choco install yq` or download from GitHub releases
   - Linux: `sudo apt-get install yq` or `snap install yq`
   - macOS: `brew install yq`
@@ -166,13 +166,13 @@ For each job ready to execute (when under parallel limit AND priority allows):
   ```bash
   # Extract all jobs
   yq '.jobs' .github/workflows/ci.yml
-  
+
   # Extract matrix configurations
   yq '.jobs.build.strategy.matrix.include[]' .github/workflows/ci.yml
-  
+
   # Extract container requirements
   yq '.jobs.build.strategy.matrix.include[].container' .github/workflows/ci.yml
-  
+
   # Extract job dependencies
   yq '.jobs.build.needs' .github/workflows/ci.yml
   ```
@@ -200,10 +200,10 @@ For each job ready to execute (when under parallel limit AND priority allows):
       --matrix version:15 \
       -P ubuntu-latest=my-image:tag \
       --pull=false
-  
+
   # List available jobs
   act --list
-  
+
   # Dry run to preview
   act --dryrun --matrix compiler:gcc
   ```
@@ -259,7 +259,7 @@ images:
     created: 2026-01-14T10:00:00Z
     last_used: 2026-01-14T15:30:00Z
     usage_count: 45
-    
+
   - name: beast2-ubuntu-25.04-x86
     file: images/beast2/ubuntu-25.04-x86.tar
     docker_tag: beast2-ubuntu-25.04-x86:latest
@@ -307,11 +307,11 @@ jobs:
         version: 15
       - container: ubuntu:25.04
     max_parallel: 20
-  
+
   - name: changelog
     enabled: true
     priority: 2  # Lower priority, waits for priority 1 jobs
-  
+
   - name: antora
     enabled: false
     priority: 3
@@ -400,7 +400,7 @@ For each job (matrix_entry):
   1. Extract requirements:
      - Essentials: OS+version+architecture, compiler+version
      - Extras: packages, build tools
-  
+
   2. Evaluate all images in registry:
      For each image:
        Calculate essential marks (conditional, by order):
@@ -411,16 +411,16 @@ For each job (matrix_entry):
              essential_mark = 100
          ELSE:
            essential_mark = 0 (stop, cannot use)
-       
+
        Calculate extra marks (if essential_mark > 0):
          + Packages: 10 each
          + Tools: 20 each
-  
+
   3. Decision:
      IF any images have essential marks = 100:
        → Select image with highest extra marks
        → Use this image
-     
+
      ELSE (no images have essential marks = 100):
        → Select image with highest essential marks as base
        → Create new image from this base
