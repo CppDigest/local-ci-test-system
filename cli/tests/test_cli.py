@@ -191,7 +191,7 @@ class TestStatus:
         assert result.exit_code == 0
 
     def test_status_uses_last_status_json_and_json_format(self, tmp_path):
-        """When last-status.json exists, status uses MCP schema; --format json outputs it."""
+        """When last-status.json exists, status uses its schema; --format json outputs it."""
         logs_dir = tmp_path / "logs"
         logs_dir.mkdir()
         (logs_dir / "last-status.json").write_text(

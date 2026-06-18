@@ -24,7 +24,7 @@ With caches warm, full Linux CI can complete in under ~2 minutes and incremental
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                      MCP / CLI                                    │
+│                      CLI                                          │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
@@ -239,5 +239,5 @@ cache:
 ## Reference
 
 - Implementation plan and issue breakdown: [Preparation and Plan](Preparation%20and%20Plan.md).
-- Architecture and MCP: [Design Guide](Design%20Guide.md).
+- Architecture: [Design Guide](Design%20Guide.md).
 - Config reference and troubleshooting: [User Guide](../cli/USER_GUIDE.md).

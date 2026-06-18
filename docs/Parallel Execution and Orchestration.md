@@ -24,7 +24,7 @@ Together, these are the **orchestrator** and **parallel execution** features: th
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                      MCP / CLI                                    │
+│                      CLI                                          │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
@@ -121,16 +121,16 @@ While a run is in progress, Local CI shows:
 - **Priority levels** and how many jobs in each level have completed.
 - **Overall progress** (e.g. “5/10 jobs completed”).
 
-When the run finishes, it prints a **summary**: total duration, pass/fail counts, and a table of each job with result and duration. It also writes machine-readable output (e.g. `last-run.json`, `last-status.json`) for use by `localci status` and by the MCP server.
+When the run finishes, it prints a **summary**: total duration, pass/fail counts, and a table of each job with result and duration. It also writes machine-readable output (e.g. `last-run.json`, `last-status.json`) for use by `localci status`.
 
 ### How you use it
 
 - **During run:** Just run `localci run ...`; the live display updates automatically. No extra flags needed.
 - **After run:** `localci status` shows the status of the last run (or a specific execution by ID). Use `localci status --format json` for scriptable output. Logs for a specific job: `localci logs <job>` (e.g. by index or name).
 
-### Status file and MCP
+### Status file
 
-The orchestrator (or progress tracker) writes a status file (e.g. `last-status.json`) during and after the run. It includes execution ID, start time, duration, per-job status, and optional current step. The MCP server’s `get_status` endpoint can expose this so that IDEs or agents can query run status without parsing the terminal.
+The orchestrator (or progress tracker) writes a status file (e.g. `last-status.json`) during and after the run. It includes execution ID, start time, duration, per-job status, and optional current step. Use `localci status` (or `localci status --format json`) to query run status without parsing the terminal.
 
 ---
 
