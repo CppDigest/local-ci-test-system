@@ -9,11 +9,13 @@ A system to execute GitHub Actions CI workflows locally with pre-built, optimize
 ## Architecture Components
 
 ### CI Workflow Analyzer
+
 - Uses `yq` for parsing GitHub Actions YAML files
 - Extracts jobs, matrix configurations, steps, dependencies
 - Identifies OS/container requirements, compiler versions, packages
 
 ### Image Management System
+
 - Maintains registry of pre-built Docker images (stored as `.tar` files)
 - Implements image matching algorithm to select optimal images
 - Creates new images on-demand during job execution when no matching image exists
@@ -21,22 +23,17 @@ A system to execute GitHub Actions CI workflows locally with pre-built, optimize
 - Removes old images to manage disk space
 
 ### Test Orchestrator
+
 - Coordinates parallel test execution (~20 jobs simultaneously)
 - Uses Docker API to manage containers
 - Provides real-time progress monitoring
 - Aggregates test results
 
-### MCP Server Interface
-- Exposes endpoints for triggering tests
-- Uses `yq` for workflow analysis
-- Uses `act` for workflow execution
-- Supports async operations for long-running tests
-
 ---
 
 ## Execution Workflow
 
-All steps are performed via scripts within the MCP server.
+All steps are performed via the CLI.
 
 ### Step 1: Extract Workflow Information
 
@@ -61,6 +58,7 @@ Determine which jobs and matrix entries to execute from configuration file:
 - Create ordered list of (job, matrix_entry, priority) tuples, sorted by priority (highest first)
 
 **Priority Rules:**
+
 - Jobs with higher priority must complete before lower priority jobs can start
 - Within same priority level, jobs can run in parallel (up to parallel limit)
 - Priority can be extracted from workflow file or assigned via configuration
@@ -72,11 +70,13 @@ Determine which jobs and matrix entries to execute from configuration file:
 For each (job, matrix_entry) pair in the test list, determine required Docker image:
 
 **3.1. Identify Required Docker Image Type**
+
 - Container image (from `matrix.container` or `job.container.image`)
 - Runner OS (from `matrix.runs-on` or `job.runs-on`)
 - Additional requirements (compiler versions, packages, architecture)
 
 **3.2. Match with Image Registry**
+
 - Use two-mark Image Matching Algorithm to evaluate all available images
 - Calculate essential marks (OS, compiler) and extra marks (packages, tools)
 - Record execution plan:
@@ -92,6 +92,7 @@ Execute jobs with parallel control and priority-based resource management. Jobs 
 For each job, prepare image (load or build) and execute `act`. If an image doesn't exist, it is built synchronously before the job runs - jobs are never skipped due to missing images.
 
 **4.1. Parallel Execution Manager**
+
 - Set maximum concurrent jobs (e.g., ~20 parallel)
 - Monitor resource usage (CPU, memory, disk)
 - Maintain priority-ordered queue of pending (job, matrix_entry, priority) tuples
@@ -103,6 +104,7 @@ For each job, prepare image (load or build) and execute `act`. If an image doesn
 For each job ready to execute (when under parallel limit AND priority allows):
 
 **Priority Check:**
+
 - Job can only start if:
   1. Under parallel limit (e.g., < 20 running jobs)
   2. No higher priority jobs are running (all higher priority jobs completed)
@@ -137,6 +139,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
    - Unload Docker image to free memory
 
 **4.3. Job Completion Handling**
+
 - When one job completes:
   - Remove from running jobs list
   - Add results to completed jobs
@@ -149,9 +152,10 @@ For each job ready to execute (when under parallel limit AND priority allows):
   - Update progress tracking
 
 **4.4. Progress Tracking**
+
 - Track overall progress: `X/Y jobs completed`
 - Track per-job status: `pending`, `running`, `completed`, `failed`
-- Provide real-time updates via MCP interface
+- Provide real-time updates via CLI (`localci status`) and status files
 
 **Output**: Complete execution results for all jobs in test list.
 
@@ -162,6 +166,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
 ### A. Tools
 
 #### `yq`
+
 - **Purpose**: Parse and analyze GitHub Actions YAML workflow files
 - **Installation**:
   - Windows: `choco install yq` or download from GitHub releases
@@ -169,6 +174,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
   - macOS: `brew install yq`
 - **Usage**: Extract jobs, matrix configurations, dependencies, container requirements
 - **Example commands**:
+
   ```bash
   # Extract all jobs
   yq '.jobs' .github/workflows/ci.yml
@@ -184,6 +190,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
   ```
 
 #### `act`
+
 - **Purpose**: Execute GitHub Actions workflows locally in Docker containers
 - **Installation**:
   - Windows: `choco install act-cli` or download from GitHub releases
@@ -198,6 +205,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
   - `--action-offline-mode`: Use cached actions only
   - `--dryrun`: Preview without executing
 - **Example commands**:
+
   ```bash
   # Run specific job with matrix filter
   act -W .github/workflows/ci.yml \
@@ -214,86 +222,7 @@ For each job ready to execute (when under parallel limit AND priority allows):
   act --dryrun --matrix compiler:gcc
   ```
 
-### B. MCP Integration
-
-#### MCP Server Endpoints
-
-**`analyze_workflow`**
-- **Purpose**: Execute Step 1 - Analyze workflow files and extract configuration
-- **Input**:
-  - `workflow_file`: Path to workflow file (e.g., `.github/workflows/ci.yml`)
-  - `event`: Git event name (e.g., `push`, `pull_request`)
-- **Output**:
-  - `jobs`: List of jobs with their configurations
-  - `matrix_entries`: All matrix combinations
-  - `dependencies`: Job dependency graph
-
-**`run_local_ci`**
-- **Purpose**: Execute Steps 1-4 - Analyze workflows and trigger parallel job execution
-- **Input**:
-  - `workflow_file`: Path to workflow file
-  - `event`: Git event name
-  - `config`: Configuration object (optional)
-    - `jobs`: List of job names to run
-    - `matrix_filters`: Object with key-value pairs to filter matrix (e.g., `{"compiler": "gcc", "version": "15"}`)
-    - `max_parallel`: Maximum concurrent jobs
-    - `job_priorities`: Object mapping job names to priority values (e.g., `{"build": 1, "changelog": 2}`)
-      - Lower number = higher priority (1 is highest)
-      - If not specified, priorities extracted from workflow file or assigned default values
-- **Output**:
-  - `execution_id`: Unique identifier for this execution
-  - `status_url`: URL to check execution status
-
-**`get_status`**
-- **Purpose**: Get execution status (Step 4 progress)
-- **Input**: `execution_id`
-- **Output**:
-  - `progress`: Overall progress (e.g., `25/56 jobs completed`)
-  - `completed_jobs`: List of completed jobs with results
-  - `failed_jobs`: List of failed jobs with error messages
-  - `running_jobs`: List of currently running jobs
-  - `pending_jobs`: List of pending jobs
-
-**`get_logs`**
-- **Purpose**: Get logs for specific job
-- **Input**:
-  - `execution_id`
-  - `job_name`: Name of the job
-  - `matrix_entry`: Matrix entry identifier (optional)
-- **Output**: Job execution logs
-
-**`cancel_execution`**
-- **Purpose**: Cancel running execution
-- **Input**: `execution_id`
-- **Output**: Cancellation status
-
-#### Example MCP Request
-
-```json
-{
-  "tool": "run_local_ci",
-  "input": {
-    "workflow_file": ".github/workflows/ci.yml",
-    "event": "push",
-    "config": {
-      "jobs": ["build"],
-      "matrix_filters": {
-        "compiler": "gcc",
-        "version": "15"
-      },
-      "max_parallel": 20
-    }
-  }
-}
-```
-
-#### Async Operations
-
-- Long-running executions return immediately with `execution_id`
-- Client polls `get_status` endpoint for updates
-- Results available via `get_status` and `get_logs` endpoints
-
-### C. Setup
+### B. Setup
 
 #### Prerequisites
 
@@ -363,6 +292,7 @@ images:
 ```
 
 **Image Registry Operations:**
+
 ```bash
 # Load image from tar file
 docker load -i images/beast2/ubuntu-25.04-base.tar
@@ -386,7 +316,7 @@ Create `local-ci-config.yml`:
 jobs:
   - name: build
     enabled: true
-    priority: 1  # Higher priority = execute first (1 is highest)
+    priority: 1 # Higher priority = execute first (1 is highest)
     matrix_filters:
       - compiler: gcc
         version: 15
@@ -395,7 +325,7 @@ jobs:
 
   - name: changelog
     enabled: true
-    priority: 2  # Lower priority, waits for priority 1 jobs
+    priority: 2 # Lower priority, waits for priority 1 jobs
 
   - name: antora
     enabled: false
@@ -407,12 +337,12 @@ resource_limits:
   cpu_per_job: 2
   memory_per_job: 4GB
   disk_per_job: 10GB
-  cpu_threshold: 90  # Pause new jobs if CPU usage exceeds this percentage
-  memory_threshold: 85  # Pause new jobs if memory usage exceeds this percentage
-  disk_min_free_gb: 10  # Minimum free disk space in GB before warning
+  cpu_threshold: 90 # Pause new jobs if CPU usage exceeds this percentage
+  memory_threshold: 85 # Pause new jobs if memory usage exceeds this percentage
+  disk_min_free_gb: 10 # Minimum free disk space in GB before warning
 ```
 
-### D. Image Matching Algorithm
+### C. Image Matching Algorithm
 
 The algorithm uses a **two-mark system**: essential marks for infrastructure requirements and extra marks for packages/tools.
 
@@ -423,6 +353,7 @@ The algorithm uses a **two-mark system**: essential marks for infrastructure req
 **Essential Marks (Infrastructure - Maximum 100 points):**
 
 Extracted from matrix entry:
+
 - OS type, version, and architecture (combined): from `container: "ubuntu:25.04"` and `x86: true/false` → ubuntu:25.04+x86_64 or ubuntu:25.04+i386
 - Compiler family and version: from `compiler: "gcc"`, `version: "15"` → gcc-15
 
@@ -442,6 +373,7 @@ Essential marks are calculated sequentially - if any earlier check fails, stop:
    - Example: OS+version+arch matched but gcc-15 ≠ gcc-14 → Essential mark = 70
 
 **Essential marks possible values: 0, 70, 100**
+
 - **Essential mark = 0**: OS+version+architecture mismatch (incompatible, cannot use as base)
 - **Essential mark = 70**: OS+version+architecture match, but compiler differs (can use as base, upgrade compiler)
 - **Essential mark = 100**: All infrastructure matches exactly (full match)
@@ -449,10 +381,12 @@ Essential marks are calculated sequentially - if any earlier check fails, stop:
 **Extra Marks (Packages/Tools - Maximum 100+ points):**
 
 Extracted from matrix entry:
+
 - Required packages: from `install: "gcc-15-multilib libssl-dev zlib1g-dev"`
 - Build tools: from `build-cmake: true` → cmake required
 
 Scoring:
+
 1. **Required Packages Present**: +10 points per package
    - Typical: 5-10 packages = 50-100 points
 
@@ -474,6 +408,7 @@ Scoring:
    - Install all required packages
 
 **Tie-Breaking (same total marks):**
+
 - Prefer most recently used (`last_used` timestamp)
 - Prefer highest usage count (`usage_count`)
 - Prefer smallest size (`size_mb`)
@@ -513,11 +448,11 @@ For each job (matrix_entry):
        → Save new image to registry
 ```
 
-### E. New Image Creation Process
+### D. New Image Creation Process
 
 When no image has full essential marks (= 100), a new image must be created. The image with the highest essential marks is used as the base to minimize build time.
 
-**E.1. Select Base Image**
+**D.1. Select Base Image**
 
 If no images have essential marks = 100, select base by highest essential marks:
 
@@ -535,11 +470,12 @@ If no images have essential marks = 100, select base by highest essential marks:
    - Prefer 70 over 0 (can reuse OS+version+architecture setup)
    - If tie at 70, use tie-breaking (recently used, usage count, size)
 
-**E.2. Build New Image**
+**D.2. Build New Image**
 
 When building new image (essential marks < 100):
 
 **If base has essential marks = 70:**
+
 ```dockerfile
 # Load base image with matching OS+version+architecture
 docker load -i <base-image>.tar
@@ -564,6 +500,7 @@ docker save -o <new-image>.tar <new-image>:latest
 ```
 
 **If no base available (essential marks = 0):**
+
 ```dockerfile
 # Pull official base matching OS+version+architecture
 docker pull ubuntu:25.04  # or i386/ubuntu:25.04 for x86
@@ -586,7 +523,7 @@ docker build -t <new-image>:latest .
 docker save -o <new-image>.tar <new-image>:latest
 ```
 
-**E.3. Update Image Registry**
+**D.3. Update Image Registry**
 
 After creating new image, update registry:
 
@@ -609,29 +546,33 @@ After creating new image, update registry:
   usage_count: 0
 ```
 
-**E.4. Image Naming Convention**
+**D.4. Image Naming Convention**
 
 New images should follow naming pattern: `<project>-<os>-<variant>.tar`
 
 Examples:
+
 - `beast2-ubuntu-25.04-gcc15.tar` (specific compiler)
 - `beast2-ubuntu-25.04-clang18-asan.tar` (compiler + variant)
 - `beast2-ubuntu-24.04-x86.tar` (specific architecture)
 
-### F. Host Platform Compatibility
+### E. Host Platform Compatibility
 
 **Windows Host:**
+
 - Windows containers: Run natively
 - Linux containers: Run via Docker Desktop (WSL2 backend)
 - Parallel execution: Both container types can run simultaneously
 - macOS containers: Not supported (macOS not containerized)
 
 **Linux Host:**
+
 - Linux containers: Run natively
 - Windows containers: Not supported (requires Windows host)
 - macOS containers: Not supported
 
 **macOS Host:**
+
 - Linux containers: Run via Docker Desktop
 - Windows containers: Not supported
 - macOS containers: Not supported (requires full VM)
@@ -640,7 +581,7 @@ Examples:
 
 For concrete install commands, Docker Desktop/WSL2 notes, and a preflight checklist before your first run, see **[Cross-platform prerequisites](../cli/Usage%20Guide.md#cross-platform-prerequisites)** in the Usage Guide.
 
-### G. Benefits and Limitations
+### F. Benefits and Limitations
 
 #### Benefits
 
@@ -660,33 +601,37 @@ For concrete install commands, Docker Desktop/WSL2 notes, and a preflight checkl
 - **Initial setup**: Time required to build and save initial image set
 - **Resource intensive**: Requires significant CPU, memory, and disk resources
 
-### H. Resource Requirements
+### G. Resource Requirements
 
 **Minimum Requirements:**
+
 - CPU: 8 cores (for ~20 parallel jobs)
 - RAM: 32GB (4GB per job × 8 concurrent)
 - Disk: 100GB (for images, containers, build artifacts)
 - Docker: Docker Desktop with WSL2 (Windows) or Docker Engine (Linux)
 
 **Recommended Requirements:**
+
 - CPU: 16+ cores
 - RAM: 64GB+
 - Disk: 200GB+ (SSD recommended)
 - Network: Fast local storage for image loading
 
-### I. Future Scalability
+### H. Future Scalability
 
 The system can be extended to scale beyond local host limitations using cloud infrastructure and container orchestration:
 
 #### Cloud-Based Execution
 
 **Cloud Storage for Images:**
+
 - Store pre-built Docker images in cloud object storage (AWS S3, Azure Blob Storage, Google Cloud Storage)
 - Download images on-demand to cloud compute instances
 - Reduce local storage requirements
 - Enable sharing images across multiple developers/teams
 
 **Cloud Compute Instances:**
+
 - Run CI jobs on cloud VMs (AWS EC2, Azure VMs, Google Compute Engine)
 - Scale compute resources based on workload
 - Pay-per-use model for occasional large test runs
@@ -695,12 +640,14 @@ The system can be extended to scale beyond local host limitations using cloud in
 #### Kubernetes Orchestration
 
 **Kubernetes Cluster:**
+
 - Deploy test orchestrator as Kubernetes controller
 - Run each job as a Kubernetes Pod
 - Automatic scaling based on queue length
 - Resource management via Kubernetes resource limits
 
 **Benefits:**
+
 - **Horizontal scaling**: Add worker nodes to increase capacity
 - **High availability**: Automatic pod restart on failures
 - **Resource efficiency**: Better utilization of cluster resources
@@ -708,12 +655,14 @@ The system can be extended to scale beyond local host limitations using cloud in
 - **Multi-platform**: Support for mixed Windows/Linux node pools
 
 **Architecture:**
-- **Control Plane**: MCP server + orchestrator controller
+
+- **Control Plane**: CLI orchestrator controller
 - **Worker Nodes**: Run `act` containers in Kubernetes pods
 - **Image Registry**: Container registry (Docker Hub, GitHub Container Registry, private registry)
 - **Storage**: Persistent volumes for image cache and artifacts
 
 **Implementation Considerations:**
+
 - Replace Docker API calls with Kubernetes API
 - Use Kubernetes Jobs for one-time test executions
 - Use ConfigMaps/Secrets for configuration management
@@ -721,14 +670,16 @@ The system can be extended to scale beyond local host limitations using cloud in
 - Use Kubernetes CronJobs for scheduled test runs
 
 **Migration Path:**
+
 1. **Phase 1**: Local execution (current implementation)
 2. **Phase 2**: Hybrid - local + cloud storage for images
 3. **Phase 3**: Cloud compute instances for heavy workloads
 4. **Phase 4**: Full Kubernetes deployment for enterprise scale
 
-### J. Example Workflow Analysis
+### I. Example Workflow Analysis
 
 **Beast2 CI Workflow Example:**
+
 - **Total jobs**: 4 (runner-selection, build, changelog, antora)
 - **Build job matrix**: 56 configurations
   - Windows: 7 variants
@@ -737,6 +688,7 @@ The system can be extended to scale beyond local host limitations using cloud in
 - **Total job instances**: 61 (1 + 56 + 1 + 3)
 
 **Matrix breakdown:**
+
 - GCC versions: 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 - Clang versions: 3.9, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
 - Container images: ubuntu:18.04, ubuntu:20.04, ubuntu:22.04, ubuntu:24.04, ubuntu:25.04

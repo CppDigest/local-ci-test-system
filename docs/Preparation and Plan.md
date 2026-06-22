@@ -36,8 +36,8 @@ Analyzed the Local CI System Design document and capy's GitHub Actions workflow 
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                      MCP Server Interface                        │
-│  analyze_workflow | run_local_ci | get_status | get_logs        │
+│                      CLI                                         │
+│  analyze | list | run | status | logs | images | cache | config  │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
@@ -230,24 +230,9 @@ Analyzed the Local CI System Design document and capy's GitHub Actions workflow 
 
 ---
 
-### Phase 6: MCP Integration - Priority: Medium
+### Phase 6: Developer Experience - Priority: Low
 
-#### Issue 15: MCP Server Endpoints
-**Scope**: Expose local CI via MCP for AI agent integration
-**Deliverables**:
-- `analyze_workflow` endpoint
-- `run_local_ci` endpoint
-- `get_status` endpoint
-- `get_logs` endpoint
-- Async operation support
-**Dependencies**: Issues 1-8
-**Estimate**: MCP integration
-
----
-
-### Phase 7: Developer Experience - Priority: Low
-
-#### Issue 16: Configuration File Support
+#### Issue 15: Configuration File Support
 **Scope**: Project-specific configuration
 **Deliverables**:
 - `.localci.yml` schema
@@ -258,7 +243,7 @@ Analyzed the Local CI System Design document and capy's GitHub Actions workflow 
 **Dependencies**: Issue 1
 **Estimate**: Config system
 
-#### Issue 17: IDE Integration (VS Code/Cursor)
+#### Issue 16: IDE Integration (VS Code/Cursor)
 **Scope**: Integrate with developer IDEs
 **Deliverables**:
 - VS Code extension or tasks.json templates
@@ -291,8 +276,7 @@ Analyzed the Local CI System Design document and capy's GitHub Actions workflow 
 
 ### Sprint 4: Platform Expansion
 13. Issue 13: Windows Support
-14. Issue 15: MCP Server Endpoints
-15. Issue 16: Configuration File Support
+14. Issue 15: Configuration File Support
 
 ---
 

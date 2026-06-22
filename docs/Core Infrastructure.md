@@ -224,5 +224,5 @@ Full schema and all options are in the [User Guide](../cli/USER_GUIDE.md).
 ## Reference
 
 - **User Guide:** [cli/USER_GUIDE.md](../cli/USER_GUIDE.md) — Installation, all commands, config schema, troubleshooting.
-- **Design Guide:** [Design Guide.md](Design%20Guide.md) — Architecture, MCP, image matching.
+- **Design Guide:** [Design Guide.md](Design%20Guide.md) — Architecture and image matching.
 - **Preparation and Plan:** [Preparation and Plan.md](Preparation%20and%20Plan.md) — Implementation plan and issue breakdown.

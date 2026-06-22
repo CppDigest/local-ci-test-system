@@ -12,7 +12,6 @@ Local CI parses your workflow file, runs selected jobs in containers with pre-bu
 - **Local execution** — Run jobs via act with configurable parallelism
 - **Caching** — ccache, Boost clone, B2 build dir, CMake config, and APT package cache
 - **Pre-built images** — Use or build Docker images per compiler/OS to avoid repeated setup
-- **MCP server** — Optional Model Context Protocol interface for AI/IDE integration
 
 ## Prerequisites
 
@@ -118,7 +117,7 @@ local-ci-test-system/
 ## Documentation
 
 - **[User Guide](cli/Usage%20Guide.md)** — Installation, configuration, commands, troubleshooting
-- **[Design Guide](docs/Design%20Guide.md)** — Architecture, MCP, caching
+- **[Design Guide](docs/Design%20Guide.md)** — Architecture and caching
 - **[Performance and Caching](docs/Performance%20and%20Caching.md)** — Cache layout and config
 - **[Preparation and Plan](docs/Preparation%20and%20Plan.md)** — Implementation plan and issue breakdown
 

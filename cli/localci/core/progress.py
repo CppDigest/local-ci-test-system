@@ -1,7 +1,7 @@
 """Real-time progress tracking for the parallel execution manager.
 
 Observes the orchestrator via job events and provides Rich Live display,
-JSON status for MCP, and post-execution summary reports.
+JSON status files, and post-execution summary reports.
 """
 
 from __future__ import annotations
@@ -620,11 +620,11 @@ class ProgressTracker:
         console.print()
 
     # -----------------------------------------------------------------------
-    # JSON status (for MCP integration)
+    # JSON status (for localci status --format json)
     # -----------------------------------------------------------------------
 
     def get_status_dict(self) -> dict:
-        """Get structured status for MCP get_status endpoint."""
+        """Get structured status for JSON output and status files."""
         with self._lock:
             jobs = list(self._jobs.values())
 

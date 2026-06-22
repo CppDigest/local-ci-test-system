@@ -1,7 +1,7 @@
 """``localci status`` command.
 
 Show the progress of a running or completed execution.
-Supports MCP-style status from last-status.json and follow mode.
+Supports structured status from last-status.json and follow mode.
 """
 
 from __future__ import annotations
@@ -53,7 +53,7 @@ def status(
     cfg = ctx.obj["config"]
     logs_dir = Path(cfg.logging.directory)
 
-    # Prefer MCP status file when no execution-id specified
+    # Prefer last-status.json when no execution-id specified
     status_file = logs_dir / "last-status.json"
     if not execution_id and status_file.exists():
         try:
@@ -193,7 +193,7 @@ def _job_list(data: dict, key: str) -> list[dict]:
 
 
 def _print_status_table(data: object) -> None:
-    """Render MCP status data as Rich table."""
+    """Render structured status data as Rich table."""
     if not isinstance(data, dict):
         console.print("[bold red]Status data is not a valid dict.[/bold red]")
         return
