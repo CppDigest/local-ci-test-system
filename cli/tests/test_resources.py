@@ -58,7 +58,21 @@ class TestResourceMonitor:
         assert "psutil" in caplog.text
         assert monitor._psutil is None
 
-    def test_check_thresholds_healthy(self):
+    @patch("localci.utils.resources.subprocess.run")
+    @patch("localci.utils.resources.ResourceMonitor._try_import_psutil")
+    def test_check_thresholds_healthy(self, mock_import, mock_subprocess):
+        mock_subprocess.return_value = MagicMock(returncode=0, stdout="")
+        mock_psutil = MagicMock()
+        mock_psutil.cpu_percent.return_value = 42.0
+        mem = MagicMock()
+        mem.percent = 60.0
+        mem.available = 4 * 1024**3
+        mock_psutil.virtual_memory.return_value = mem
+        disk = MagicMock()
+        disk.free = 100 * 1024**3
+        mock_psutil.disk_usage.return_value = disk
+        mock_import.return_value = mock_psutil
+
         monitor = ResourceMonitor()
         ok, warnings = monitor.check_thresholds(
             cpu_threshold=100.0,
