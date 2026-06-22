@@ -60,8 +60,8 @@ class ResourceMonitor:
             return psutil
         except ImportError:
             logger.warning(
-                "psutil not installed. Resource monitoring will use estimates. "
-                "Install with: pip install psutil"
+                "psutil not available. Resource monitoring will use estimates. "
+                "Reinstall localci to restore full resource monitoring."
             )
             return None
 

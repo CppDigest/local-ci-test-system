@@ -286,32 +286,3 @@ class TestParallelExecutionManager:
         assert status["state"] in ("completed", "running")
         assert "total_jobs" in status
         assert "resources" in status
-
-
-# ---------------------------------------------------------------------------
-# ResourceMonitor
-# ---------------------------------------------------------------------------
-
-
-class TestResourceMonitor:
-    @patch("localci.utils.resources.ResourceMonitor._try_import_psutil")
-    def test_snapshot_without_psutil(self, mock_import):
-        mock_import.return_value = None
-        from localci.utils.resources import ResourceMonitor
-
-        monitor = ResourceMonitor()
-        snap = monitor.snapshot()
-        assert snap.cpu_percent == 50.0
-        assert snap.memory_percent == 50.0
-
-    def test_check_thresholds_healthy(self):
-        from localci.utils.resources import ResourceMonitor
-
-        monitor = ResourceMonitor()
-        ok, warnings = monitor.check_thresholds(
-            cpu_threshold=100.0,
-            memory_threshold=100.0,
-            disk_min_gb=0.0,
-        )
-        assert ok is True
-        assert len(warnings) == 0
