@@ -1,4 +1,4 @@
-"""Tests for ResourceMonitor (Issue 4)."""
+"""Tests for ResourceMonitor."""
 
 from __future__ import annotations
 
@@ -56,6 +56,7 @@ class TestResourceMonitor:
             monitor = ResourceMonitor()
 
         assert "psutil" in caplog.text
+        assert "Reinstall localci" in caplog.text
         assert monitor._psutil is None
 
     @patch("localci.utils.resources.subprocess.run")
