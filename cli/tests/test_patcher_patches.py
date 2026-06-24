@@ -345,9 +345,7 @@ class TestCapyTimestampsPatch:
             caplog, "restore_capy_timestamps", "restore step already present"
         )
 
-    def test_negative_skips_when_patch_boost_step_absent(
-        self, patcher_paths, caplog
-    ):
+    def test_negative_skips_when_patch_boost_step_absent(self, patcher_paths, caplog):
         workflow = FIXTURES_DIR / "container_image.yml"
         with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
             patched = patcher_paths(workflow, config=_restore_capy_only_config())
