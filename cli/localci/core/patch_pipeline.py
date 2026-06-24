@@ -25,7 +25,11 @@ class PatchStep(ABC):
 
     @abstractmethod
     def apply(self, ctx: PatchContext) -> None:
-        """Apply this patch in place to ``ctx.lines``."""
+        """Apply this patch in place to ``ctx.lines``.
+
+        Early exits that do not modify ``ctx.lines`` must call
+        :meth:`_skip` with an actionable reason.
+        """
 
     def _skip(self, reason: str) -> None:
         """Log a warning when this step exits without modifying the workflow."""

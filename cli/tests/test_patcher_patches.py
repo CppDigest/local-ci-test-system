@@ -54,6 +54,34 @@ def _container_mounts_only_config() -> LocalCIConfig:
     )
 
 
+def _restore_capy_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=False,
+            restore_capy_timestamps=True,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+        )
+    )
+
+
+def _image_substitution_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=False,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=True,
+            codecov_skip=False,
+        )
+    )
+
+
 def _make_entry(name: str = "GCC 15: C++20") -> MatrixEntry:
     return MatrixEntry(
         index=0,
@@ -141,6 +169,25 @@ class TestContainerImagePatch:
         assert 'container: "ubuntu:25.04"' in content
         assert "localci/" not in content
         _assert_skip_warning(caplog, "image_substitution", "image_tag not provided")
+
+    def test_negative_skips_when_matrix_entry_has_no_container_field(
+        self, patcher_paths, caplog
+    ):
+        workflow = FIXTURES_DIR / "container_image_no_container.yml"
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                _make_entry("GCC 15: C++20"),
+                image_tag="localci/gcc-15:custom",
+                config=_image_substitution_only_config(),
+            )
+        content = _assert_valid_yaml(patched)
+        assert "localci/gcc-15:custom" not in content
+        _assert_skip_warning(
+            caplog,
+            "image_substitution",
+            "container field not found in matrix entry block",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +343,18 @@ class TestCapyTimestampsPatch:
         assert content.count("Restore capy source file timestamps") == 1
         _assert_skip_warning(
             caplog, "restore_capy_timestamps", "restore step already present"
+        )
+
+    def test_negative_skips_when_patch_boost_step_absent(
+        self, patcher_paths, caplog
+    ):
+        workflow = FIXTURES_DIR / "container_image.yml"
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow, config=_restore_capy_only_config())
+        content = _assert_valid_yaml(patched)
+        assert "Restore capy source file timestamps" not in content
+        _assert_skip_warning(
+            caplog, "restore_capy_timestamps", "Patch Boost step not found"
         )
 
 
