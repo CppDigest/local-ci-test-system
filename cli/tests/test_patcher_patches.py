@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from localci.cli.run import _write_patched_workflow
+from localci.core.config import LocalCIConfig, PatchesConfig
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -29,10 +30,27 @@ PATCH_LOGGER = "localci.core.patch_pipeline"
 
 def _assert_skip_warning(caplog, step_name: str, reason_fragment: str) -> None:
     assert any(
-        step_name in r.message and reason_fragment in r.message for r in caplog.records
+        r.levelno == logging.WARNING
+        and step_name in r.message
+        and reason_fragment in r.message
+        for r in caplog.records
     ), (
-        f"expected skip warning for {step_name!r} containing {reason_fragment!r}, "
-        f"got: {[r.message for r in caplog.records]}"
+        f"expected WARNING for {step_name!r} containing {reason_fragment!r}, "
+        f"got: {[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+
+def _container_mounts_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=True,
+            b2_source_cache=False,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+        )
     )
 
 
@@ -184,6 +202,40 @@ class TestContainerMountPatch:
             "job_id and container_mount_options are required",
         )
 
+    def test_negative_skips_when_job_has_no_container_block(
+        self, patcher_paths, caplog
+    ):
+        workflow = FIXTURES_DIR / "container_mount_no_container_block.yml"
+        original = workflow.read_text(encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                job_id="build",
+                container_mount_options="-v /host/boost:/cache",
+                config=_container_mounts_only_config(),
+            )
+        content = _assert_valid_yaml(patched)
+        assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog, "container_mounts", "job 'build' has no container block"
+        )
+
+    def test_negative_skips_when_job_not_found(self, patcher_paths, caplog):
+        workflow = FIXTURES_DIR / "container_mount.yml"
+        original = workflow.read_text(encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                job_id="missing_job",
+                container_mount_options="-v /host/boost:/cache",
+                config=_container_mounts_only_config(),
+            )
+        content = _assert_valid_yaml(patched)
+        assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog, "container_mounts", "job 'missing_job' not found in workflow"
+        )
+
 
 # ---------------------------------------------------------------------------
 # boost-source cache (cp -rL replacement)
@@ -266,6 +318,8 @@ class TestCapyCopyPatch:
     def test_negative_no_cp_rp_injected_when_capy_copy_line_absent(
         self, patcher_paths, caplog
     ):
+        # Full default pipeline on boost_cache.yml skips several steps; we assert
+        # only the capy_copy_preservation warning for this fixture.
         workflow = FIXTURES_DIR / "boost_cache.yml"
         with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
             patched = patcher_paths(workflow)

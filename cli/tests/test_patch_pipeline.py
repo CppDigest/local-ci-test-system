@@ -209,7 +209,8 @@ def test_patch_step_skip_emits_warning(sample_entry: MatrixEntry, caplog) -> Non
         ContainerMountsStep().apply(ctx)
 
     assert any(
-        "container_mounts" in r.message
+        r.levelno == logging.WARNING
+        and "container_mounts" in r.message
         and "job_id and container_mount_options are required" in r.message
         for r in caplog.records
     )

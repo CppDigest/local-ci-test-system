@@ -41,7 +41,8 @@ class ContainerMountsStep(PatchStep):
 
     def apply(self, ctx: PatchContext) -> None:
         if not ctx.job_id or not ctx.container_mount_options:
-            return self._skip("job_id and container_mount_options are required")
+            self._skip("job_id and container_mount_options are required")
+            return
         job_header = re.compile(r"^\s{2}" + re.escape(ctx.job_id) + r"\s*:\s*$")
         for i, line in enumerate(ctx.lines):
             if not job_header.match(line):
@@ -73,6 +74,7 @@ class ContainerMountsStep(PatchStep):
             self._skip(f"job {ctx.job_id!r} has no container block")
             return
         self._skip(f"job {ctx.job_id!r} not found in workflow")
+        return
 
 
 class B2SourceCacheStep(PatchStep):
@@ -104,6 +106,7 @@ class B2SourceCacheStep(PatchStep):
                 )
                 return
         self._skip("no cp -rL boost-source boost-root line found")
+        return
 
 
 class RestoreCapyTimestampsStep(PatchStep):
@@ -142,6 +145,7 @@ class RestoreCapyTimestampsStep(PatchStep):
                 ctx.lines.insert(i + j, new_line)
             return
         self._skip("Patch Boost step not found")
+        return
 
 
 class CapyCopyPreservationStep(PatchStep):
@@ -169,6 +173,7 @@ class CapyCopyPreservationStep(PatchStep):
                 )
                 return
         self._skip('no cp -r "$workspace_root" capy copy line found')
+        return
 
 
 class B2BootstrapSkipStep(PatchStep):
@@ -208,10 +213,16 @@ class B2BootstrapSkipStep(PatchStep):
                     ctx.lines.insert(step_start + j, new_line)
                 return
         self._skip("no b2-workflow uses step found")
+        return
 
 
 class ImageSubstitutionStep(PatchStep):
-    """Replace matrix container image with the locally-built image tag."""
+    """Replace matrix container image with the locally-built image tag.
+
+    Raises ValueError if the matrix entry name is not found (unexpected workflow
+    structure). Skips with a warning if the container field is absent from the
+    entry block (valid but unsupported layout).
+    """
 
     @property
     def name(self) -> str:
@@ -219,7 +230,8 @@ class ImageSubstitutionStep(PatchStep):
 
     def apply(self, ctx: PatchContext) -> None:
         if not ctx.image_tag:
-            return self._skip("image_tag not provided")
+            self._skip("image_tag not provided")
+            return
         name_escaped = re.escape(ctx.entry.name)
         name_pattern = re.compile(r'name:\s*["\']?' + name_escaped + r'["\']?\s*$')
         name_idx = None
@@ -267,6 +279,7 @@ class ImageSubstitutionStep(PatchStep):
                 ctx.lines[i] = f'{mo.group(1)}container: "{ctx.image_tag}"\n'
                 return
         self._skip("container field not found in matrix entry block")
+        return
 
 
 class CodecovSkipStep(PatchStep):
@@ -293,6 +306,7 @@ class CodecovSkipStep(PatchStep):
                     )
                     return
         self._skip("no Codecov upload step found")
+        return
 
 
 PATCH_STEP_REGISTRY: dict[str, type[PatchStep]] = {

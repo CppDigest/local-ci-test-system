@@ -29,7 +29,7 @@ class PatchStep(ABC):
 
     def _skip(self, reason: str) -> None:
         """Log a warning when this step exits without modifying the workflow."""
-        logger.warning("Patch step %r skipped: %s", self.name, reason)
+        logger.warning("Patch step %s skipped: %s", self.name, reason)
 
 
 @dataclass
