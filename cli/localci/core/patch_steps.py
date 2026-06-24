@@ -41,7 +41,7 @@ class ContainerMountsStep(PatchStep):
 
     def apply(self, ctx: PatchContext) -> None:
         if not ctx.job_id or not ctx.container_mount_options:
-            return
+            return self._skip("job_id and container_mount_options are required")
         job_header = re.compile(r"^\s{2}" + re.escape(ctx.job_id) + r"\s*:\s*$")
         for i, line in enumerate(ctx.lines):
             if not job_header.match(line):
@@ -69,8 +69,10 @@ class ContainerMountsStep(PatchStep):
                             j + 1,
                             f'{options_indent}options: "{ctx.container_mount_options}"\n',
                         )
-                    break
-            break
+                    return
+            self._skip(f"job {ctx.job_id!r} has no container block")
+            return
+        self._skip(f"job {ctx.job_id!r} not found in workflow")
 
 
 class B2SourceCacheStep(PatchStep):
@@ -100,7 +102,8 @@ class B2SourceCacheStep(PatchStep):
                     f"{ind}  fi\n"
                     f"{ind}fi\n"
                 )
-                break
+                return
+        self._skip("no cp -rL boost-source boost-root line found")
 
 
 class RestoreCapyTimestampsStep(PatchStep):
@@ -118,24 +121,27 @@ class RestoreCapyTimestampsStep(PatchStep):
             already_patched = any(
                 "capy-file-stats" in ctx.lines[j] for j in range(max(0, i - 15), i)
             )
-            if not already_patched:
-                list_indent = step_match.group(1)
-                prop_indent = list_indent + "  "
-                body_indent = prop_indent + "  "
-                new_step = [
-                    f"{list_indent}- name: Restore capy source file timestamps\n",
-                    f"{prop_indent}run: |\n",
-                    f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats" ]; then\n',
-                    f"{body_indent}  while IFS=' ' read -r saved_mtime fhash relpath; do\n",
-                    f'{body_indent}    [ -f "capy-root/$relpath" ] || continue\n',
-                    f"{body_indent}    curr=$(sha256sum \"capy-root/$relpath\" 2>/dev/null | cut -d' ' -f1)\n",
-                    f'{body_indent}    [ "$curr" = "$fhash" ] && touch -d "@$saved_mtime" "capy-root/$relpath" 2>/dev/null || true\n',
-                    f'{body_indent}  done < "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n',
-                    f"{body_indent}fi\n",
-                ]
-                for j, new_line in enumerate(new_step):
-                    ctx.lines.insert(i + j, new_line)
-            break
+            if already_patched:
+                self._skip("restore step already present")
+                return
+            list_indent = step_match.group(1)
+            prop_indent = list_indent + "  "
+            body_indent = prop_indent + "  "
+            new_step = [
+                f"{list_indent}- name: Restore capy source file timestamps\n",
+                f"{prop_indent}run: |\n",
+                f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats" ]; then\n',
+                f"{body_indent}  while IFS=' ' read -r saved_mtime fhash relpath; do\n",
+                f'{body_indent}    [ -f "capy-root/$relpath" ] || continue\n',
+                f"{body_indent}    curr=$(sha256sum \"capy-root/$relpath\" 2>/dev/null | cut -d' ' -f1)\n",
+                f'{body_indent}    [ "$curr" = "$fhash" ] && touch -d "@$saved_mtime" "capy-root/$relpath" 2>/dev/null || true\n',
+                f'{body_indent}  done < "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n',
+                f"{body_indent}fi\n",
+            ]
+            for j, new_line in enumerate(new_step):
+                ctx.lines.insert(i + j, new_line)
+            return
+        self._skip("Patch Boost step not found")
 
 
 class CapyCopyPreservationStep(PatchStep):
@@ -161,7 +167,8 @@ class CapyCopyPreservationStep(PatchStep):
                     f'{ind}  done > "${{LOCALCI_B2_SOURCE_DIR}}/.capy-file-stats"\n'
                     f"{ind}fi\n"
                 )
-                break
+                return
+        self._skip('no cp -r "$workspace_root" capy copy line found')
 
 
 class B2BootstrapSkipStep(PatchStep):
@@ -183,21 +190,24 @@ class B2BootstrapSkipStep(PatchStep):
                     "Skip b2 bootstrap" in ctx.lines[j]
                     for j in range(max(0, step_start - 15), step_start)
                 )
-                if not already_patched:
-                    list_indent, prop_indent, body_indent = _step_insert_indents(
-                        ctx.lines, step_start
-                    )
-                    new_step = [
-                        f"{list_indent}- name: Skip b2 bootstrap (b2 binary cached)\n",
-                        f"{prop_indent}run: |\n",
-                        f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/b2" ]; then\n',
-                        f"{body_indent}  printf '#!/bin/sh\\necho \"b2 binary cached, skipping bootstrap.\"\\n' > boost-root/bootstrap.sh\n",
-                        f"{body_indent}  chmod +x boost-root/bootstrap.sh\n",
-                        f"{body_indent}fi\n",
-                    ]
-                    for j, new_line in enumerate(new_step):
-                        ctx.lines.insert(step_start + j, new_line)
-                break
+                if already_patched:
+                    self._skip("skip b2 bootstrap step already present")
+                    return
+                list_indent, prop_indent, body_indent = _step_insert_indents(
+                    ctx.lines, step_start
+                )
+                new_step = [
+                    f"{list_indent}- name: Skip b2 bootstrap (b2 binary cached)\n",
+                    f"{prop_indent}run: |\n",
+                    f'{body_indent}if [ -n "${{LOCALCI_B2_SOURCE_DIR:-}}" ] && [ -f "${{LOCALCI_B2_SOURCE_DIR}}/b2" ]; then\n',
+                    f"{body_indent}  printf '#!/bin/sh\\necho \"b2 binary cached, skipping bootstrap.\"\\n' > boost-root/bootstrap.sh\n",
+                    f"{body_indent}  chmod +x boost-root/bootstrap.sh\n",
+                    f"{body_indent}fi\n",
+                ]
+                for j, new_line in enumerate(new_step):
+                    ctx.lines.insert(step_start + j, new_line)
+                return
+        self._skip("no b2-workflow uses step found")
 
 
 class ImageSubstitutionStep(PatchStep):
@@ -209,7 +219,7 @@ class ImageSubstitutionStep(PatchStep):
 
     def apply(self, ctx: PatchContext) -> None:
         if not ctx.image_tag:
-            return
+            return self._skip("image_tag not provided")
         name_escaped = re.escape(ctx.entry.name)
         name_pattern = re.compile(r'name:\s*["\']?' + name_escaped + r'["\']?\s*$')
         name_idx = None
@@ -255,7 +265,8 @@ class ImageSubstitutionStep(PatchStep):
             mo = container_pattern.match(ctx.lines[i])
             if mo:
                 ctx.lines[i] = f'{mo.group(1)}container: "{ctx.image_tag}"\n'
-                break
+                return
+        self._skip("container field not found in matrix entry block")
 
 
 class CodecovSkipStep(PatchStep):
@@ -280,7 +291,8 @@ class CodecovSkipStep(PatchStep):
                         f"{indent}{act_check}{rest}; "
                         f'else echo "Skipping Codecov upload (running under act)."; fi\n'
                     )
-                break
+                    return
+        self._skip("no Codecov upload step found")
 
 
 PATCH_STEP_REGISTRY: dict[str, type[PatchStep]] = {

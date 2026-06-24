@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from localci.core.config import PATCH_STEP_NAMES, LocalCIConfig
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from localci.core.workflow import MatrixEntry
@@ -23,6 +26,10 @@ class PatchStep(ABC):
     @abstractmethod
     def apply(self, ctx: PatchContext) -> None:
         """Apply this patch in place to ``ctx.lines``."""
+
+    def _skip(self, reason: str) -> None:
+        """Log a warning when this step exits without modifying the workflow."""
+        logger.warning("Patch step %r skipped: %s", self.name, reason)
 
 
 @dataclass
