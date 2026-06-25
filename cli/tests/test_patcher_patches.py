@@ -5,12 +5,14 @@ Each patch type has positive and negative cases using minimal YAML fixtures.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
 import yaml
 
 from localci.cli.run import _write_patched_workflow
+from localci.core.config import LocalCIConfig, PatchesConfig
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -23,6 +25,75 @@ from localci.core.workflow import (
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "patcher"
+PATCH_LOGGER = "localci.core.patch_pipeline"
+
+
+def _assert_skip_warning(caplog, step_name: str, reason_fragment: str) -> None:
+    assert any(
+        r.levelno == logging.WARNING
+        and step_name in r.message
+        and reason_fragment in r.message
+        for r in caplog.records
+    ), (
+        f"expected WARNING for {step_name!r} containing {reason_fragment!r}, "
+        f"got: {[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+
+def _container_mounts_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=True,
+            b2_source_cache=False,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+        )
+    )
+
+
+def _restore_capy_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=False,
+            restore_capy_timestamps=True,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+        )
+    )
+
+
+def _image_substitution_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=False,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=True,
+            codecov_skip=False,
+        )
+    )
+
+
+def _b2_source_cache_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=True,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+        )
+    )
 
 
 def _make_entry(name: str = "GCC 15: C++20") -> MatrixEntry:
@@ -104,12 +175,33 @@ class TestContainerImagePatch:
                 image_tag="localci/missing:latest",
             )
 
-    def test_negative_skips_when_image_tag_not_provided(self, patcher_paths):
+    def test_negative_skips_when_image_tag_not_provided(self, patcher_paths, caplog):
         workflow = FIXTURES_DIR / "container_image.yml"
-        patched = patcher_paths(workflow)
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
         assert 'container: "ubuntu:25.04"' in content
         assert "localci/" not in content
+        _assert_skip_warning(caplog, "image_substitution", "image_tag not provided")
+
+    def test_negative_skips_when_matrix_entry_has_no_container_field(
+        self, patcher_paths, caplog
+    ):
+        workflow = FIXTURES_DIR / "container_image_no_container.yml"
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                _make_entry("GCC 15: C++20"),
+                image_tag="localci/gcc-15:custom",
+                config=_image_substitution_only_config(),
+            )
+        content = _assert_valid_yaml(patched)
+        assert "localci/gcc-15:custom" not in content
+        _assert_skip_warning(
+            caplog,
+            "image_substitution",
+            "container field not found in matrix entry block",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -142,22 +234,68 @@ class TestContainerMountPatch:
         if has_existing_options:
             assert "--privileged" in content
 
-    def test_negative_skips_without_job_id(self, patcher_paths):
+    def test_negative_skips_without_job_id(self, patcher_paths, caplog):
         workflow = FIXTURES_DIR / "container_mount.yml"
         original = workflow.read_text(encoding="utf-8")
-        patched = patcher_paths(
-            workflow,
-            container_mount_options="-v /host/boost:/cache",
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                container_mount_options="-v /host/boost:/cache",
+            )
+        content = _assert_valid_yaml(patched)
+        assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog,
+            "container_mounts",
+            "job_id and container_mount_options are required",
         )
-        content = _assert_valid_yaml(patched)
-        assert content == original.replace("\r\n", "\n")
 
-    def test_negative_skips_without_mount_options(self, patcher_paths):
+    def test_negative_skips_without_mount_options(self, patcher_paths, caplog):
         workflow = FIXTURES_DIR / "container_mount.yml"
         original = workflow.read_text(encoding="utf-8")
-        patched = patcher_paths(workflow, job_id="build")
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow, job_id="build")
         content = _assert_valid_yaml(patched)
         assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog,
+            "container_mounts",
+            "job_id and container_mount_options are required",
+        )
+
+    def test_negative_skips_when_job_has_no_container_block(
+        self, patcher_paths, caplog
+    ):
+        workflow = FIXTURES_DIR / "container_mount_no_container_block.yml"
+        original = workflow.read_text(encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                job_id="build",
+                container_mount_options="-v /host/boost:/cache",
+                config=_container_mounts_only_config(),
+            )
+        content = _assert_valid_yaml(patched)
+        assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog, "container_mounts", "job 'build' has no container block"
+        )
+
+    def test_negative_skips_when_job_not_found(self, patcher_paths, caplog):
+        workflow = FIXTURES_DIR / "container_mount.yml"
+        original = workflow.read_text(encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(
+                workflow,
+                job_id="missing_job",
+                container_mount_options="-v /host/boost:/cache",
+                config=_container_mounts_only_config(),
+            )
+        content = _assert_valid_yaml(patched)
+        assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog, "container_mounts", "job 'missing_job' not found in workflow"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -177,15 +315,19 @@ class TestBoostCachePatch:
         assert "cp -a boost-root/." in content
 
     def test_negative_leaves_workflow_unchanged_without_boost_copy_line(
-        self, patcher_paths
+        self, patcher_paths, caplog
     ):
         workflow = FIXTURES_DIR / "container_image.yml"
         original = workflow.read_text(encoding="utf-8")
-        patched = patcher_paths(workflow)
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow, config=_b2_source_cache_only_config())
         content = _assert_valid_yaml(patched)
         assert "LOCALCI_B2_SOURCE_DIR" not in content
         assert "cp -rL boost-source boost-root" not in content
         assert content == original.replace("\r\n", "\n")
+        _assert_skip_warning(
+            caplog, "b2_source_cache", "no cp -rL boost-source boost-root line found"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -205,11 +347,27 @@ class TestCapyTimestampsPatch:
             "Patch Boost"
         )
 
-    def test_negative_skips_duplicate_on_already_patched_workflow(self, patcher_paths):
+    def test_negative_skips_duplicate_on_already_patched_workflow(
+        self, patcher_paths, caplog
+    ):
         workflow = FIXTURES_DIR / "already_patched.yml"
-        patched = patcher_paths(workflow)
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
         assert content.count("Restore capy source file timestamps") == 1
+        _assert_skip_warning(
+            caplog, "restore_capy_timestamps", "restore step already present"
+        )
+
+    def test_negative_skips_when_patch_boost_step_absent(self, patcher_paths, caplog):
+        workflow = FIXTURES_DIR / "container_image.yml"
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow, config=_restore_capy_only_config())
+        content = _assert_valid_yaml(patched)
+        assert "Restore capy source file timestamps" not in content
+        _assert_skip_warning(
+            caplog, "restore_capy_timestamps", "Patch Boost step not found"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -228,11 +386,21 @@ class TestCapyCopyPatch:
         assert "sha256sum" in content
         assert 'cp -r "$workspace_root"' not in content
 
-    def test_negative_no_cp_rp_injected_when_capy_copy_line_absent(self, patcher_paths):
+    def test_negative_no_cp_rp_injected_when_capy_copy_line_absent(
+        self, patcher_paths, caplog
+    ):
+        # Full default pipeline on boost_cache.yml skips several steps; we assert
+        # only the capy_copy_preservation warning for this fixture.
         workflow = FIXTURES_DIR / "boost_cache.yml"
-        patched = patcher_paths(workflow)
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
         assert 'cp -rp "$workspace_root"' not in content
+        _assert_skip_warning(
+            caplog,
+            "capy_copy_preservation",
+            'no cp -r "$workspace_root" capy copy line found',
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -250,11 +418,15 @@ class TestB2BootstrapPatch:
         assert "bootstrap.sh" in content
         assert content.index("Skip b2 bootstrap") < content.index("b2-workflow")
 
-    def test_negative_skips_when_b2_workflow_step_absent(self, patcher_paths):
+    def test_negative_skips_when_b2_workflow_step_absent(self, patcher_paths, caplog):
         workflow = FIXTURES_DIR / "boost_cache.yml"
-        patched = patcher_paths(workflow)
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
         assert "Skip b2 bootstrap (b2 binary cached)" not in content
+        _assert_skip_warning(
+            caplog, "b2_bootstrap_skip", "no b2-workflow uses step found"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -272,13 +444,17 @@ class TestCodecovPatch:
         assert "Skipping Codecov upload (running under act)" in content
         assert "https://codecov.io/bash" in content
 
-    def test_negative_leaves_workflow_without_codecov_unchanged(self, patcher_paths):
+    def test_negative_leaves_workflow_without_codecov_unchanged(
+        self, patcher_paths, caplog
+    ):
         workflow = FIXTURES_DIR / "boost_cache.yml"
-        patched = patcher_paths(workflow)
+        with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
+            patched = patcher_paths(workflow)
         content = _assert_valid_yaml(patched)
         assert "codecov.io" not in content
         assert "ACT" not in content
         assert "LOCALCI_B2_SOURCE_DIR" in content
+        _assert_skip_warning(caplog, "codecov_skip", "no Codecov upload step found")
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,13 @@
+name: Container Image No Container Field
+on:
+  push:
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - name: "GCC 15: C++20"
+            runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - run: echo build

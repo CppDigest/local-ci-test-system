@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
 
 from localci.cli.run.patcher import _write_patched_workflow
 from localci.core.config import LocalCIConfig, PatchesConfig
-from localci.core.patch_pipeline import PatchPipeline
+from localci.core.patch_pipeline import PatchContext, PatchPipeline
+from localci.core.patch_steps import ContainerMountsStep
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -192,3 +194,23 @@ def test_patches_config_rejects_enabled_step_missing_from_order() -> None:
                 "image_substitution",
             ],
         )
+
+
+def test_patch_step_skip_emits_warning(sample_entry: MatrixEntry, caplog) -> None:
+    """Enabled patch step with incomplete context logs a skip warning."""
+    ctx = PatchContext(
+        lines=["jobs:\n", "  build:\n", "    runs-on: ubuntu-latest\n"],
+        entry=sample_entry,
+        config=LocalCIConfig(),
+        job_id=None,
+        container_mount_options=None,
+    )
+    with caplog.at_level(logging.WARNING, logger="localci.core.patch_pipeline"):
+        ContainerMountsStep().apply(ctx)
+
+    assert any(
+        r.levelno == logging.WARNING
+        and "container_mounts" in r.message
+        and "job_id and container_mount_options are required" in r.message
+        for r in caplog.records
+    )
