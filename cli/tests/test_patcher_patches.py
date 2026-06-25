@@ -82,6 +82,20 @@ def _image_substitution_only_config() -> LocalCIConfig:
     )
 
 
+def _b2_source_cache_only_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=True,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+        )
+    )
+
+
 def _make_entry(name: str = "GCC 15: C++20") -> MatrixEntry:
     return MatrixEntry(
         index=0,
@@ -306,7 +320,7 @@ class TestBoostCachePatch:
         workflow = FIXTURES_DIR / "container_image.yml"
         original = workflow.read_text(encoding="utf-8")
         with caplog.at_level(logging.WARNING, logger=PATCH_LOGGER):
-            patched = patcher_paths(workflow)
+            patched = patcher_paths(workflow, config=_b2_source_cache_only_config())
         content = _assert_valid_yaml(patched)
         assert "LOCALCI_B2_SOURCE_DIR" not in content
         assert "cp -rL boost-source boost-root" not in content
