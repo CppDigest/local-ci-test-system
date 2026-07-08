@@ -287,11 +287,15 @@ class PatchesConfig(BaseModel):
         return bool(self.extra_steps.get(name, False))
 
 
+DEFAULT_REPO_FULL_NAME = "cppalliance/capy"
+DEFAULT_NATIVE_IMAGE_PREFIX = "capy-"
+
+
 class ProjectConfig(BaseModel):
     """Project identity and image conventions for act command building."""
 
-    repo_full_name: str = "cppalliance/capy"
-    native_image_prefix: str = "capy-"
+    repo_full_name: str = DEFAULT_REPO_FULL_NAME
+    native_image_prefix: str = DEFAULT_NATIVE_IMAGE_PREFIX
 
 
 # ---------------------------------------------------------------------------

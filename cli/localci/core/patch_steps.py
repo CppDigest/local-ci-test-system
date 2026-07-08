@@ -174,9 +174,8 @@ class CapyCopyPreservationStep(PatchStep):
         dest = proj.workspace_libs_copy_dest
         source_dir = proj.project_source_dir
         stats_file = proj.file_stats_basename
-        dest_prefix = dest.split("/")[0]
         for i, line in enumerate(ctx.lines):
-            if marker in line and dest_prefix in line:
+            if marker in line and dest in line:
                 ind = line[: len(line) - len(line.lstrip())]
                 ctx.lines[i] = (
                     f'{ind}cp -rp "$workspace_root"/{source_dir} "{dest}"\n'

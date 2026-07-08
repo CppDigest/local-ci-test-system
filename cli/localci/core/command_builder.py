@@ -13,7 +13,12 @@ import shlex
 import tempfile
 from pathlib import Path
 
-from localci.core.config import CacheConfig, ResolvedCachePaths
+from localci.core.config import (
+    DEFAULT_NATIVE_IMAGE_PREFIX,
+    DEFAULT_REPO_FULL_NAME,
+    CacheConfig,
+    ResolvedCachePaths,
+)
 from localci.core.executor import ActCommand
 from localci.core.github_token import SENTINEL_GITHUB_TOKEN
 from localci.core.workflow import MatrixEntry
@@ -62,8 +67,8 @@ class ActCommandBuilder:
         self.workflow_file = workflow_file
         self.project_dir = project_dir
         self.job_id = job_id
-        self.repo_full_name = repo_full_name or "cppalliance/capy"
-        self.native_image_prefix = native_image_prefix or "capy-"
+        self.repo_full_name = repo_full_name or DEFAULT_REPO_FULL_NAME
+        self.native_image_prefix = native_image_prefix or DEFAULT_NATIVE_IMAGE_PREFIX
         self.default_env = default_env or {}
         self.default_secrets = default_secrets or {}
         self.offline = offline

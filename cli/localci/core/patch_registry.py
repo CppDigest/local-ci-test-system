@@ -9,11 +9,14 @@ Additional steps register via the ``localci.patch_steps`` entry-point group::
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
 from localci.core.config import PATCH_STEP_NAMES
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from localci.core.patch_pipeline import PatchStep
@@ -28,7 +31,12 @@ def get_patch_step_registry() -> dict[str, type[PatchStep]]:
     for ep in entry_points(group="localci.patch_steps"):
         if ep.name in registry:
             continue
-        registry[ep.name] = ep.load()
+        try:
+            registry[ep.name] = ep.load()
+        except Exception:
+            logger.exception(
+                "Failed to load localci.patch_steps entry point %r", ep.name
+            )
     return registry
 
 

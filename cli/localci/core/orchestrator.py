@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING, Any
 
 from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.command_builder import ActCommandBuilder
-from localci.core.config import resolve_cache_paths
+from localci.core.config import (
+    DEFAULT_NATIVE_IMAGE_PREFIX,
+    DEFAULT_REPO_FULL_NAME,
+    resolve_cache_paths,
+)
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
 from localci.core.queue import PriorityJobQueue
@@ -65,8 +69,8 @@ class OrchestratorConfig:
     dispatch_interval: float = 0.1
     default_secrets: dict[str, str] | None = None
     default_env: dict[str, str] | None = None
-    repo_full_name: str = "cppalliance/capy"
-    native_image_prefix: str = "capy-"
+    repo_full_name: str = DEFAULT_REPO_FULL_NAME
+    native_image_prefix: str = DEFAULT_NATIVE_IMAGE_PREFIX
     image_registry_path: Path | None = None
     verbose: bool = False
     offline: bool = False
@@ -93,8 +97,10 @@ class OrchestratorConfig:
             stop_on_first_failure=getattr(
                 config.execution, "stop_on_first_failure", False
             ),
-            repo_full_name=getattr(project, "repo_full_name", "cppalliance/capy"),
-            native_image_prefix=getattr(project, "native_image_prefix", "capy-"),
+            repo_full_name=getattr(project, "repo_full_name", DEFAULT_REPO_FULL_NAME),
+            native_image_prefix=getattr(
+                project, "native_image_prefix", DEFAULT_NATIVE_IMAGE_PREFIX
+            ),
             image_registry_path=registry_path,
             auto_build=getattr(images, "auto_build", True) if images else True,
         )
