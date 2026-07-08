@@ -293,6 +293,22 @@ class ParallelExecutionManager:
             logger.info("Dispatching: %s", job.matrix_entry.name)
             pool = self._pool
             if pool is None:
+                logger.error(
+                    "Thread pool unavailable; marking job as failed: %s",
+                    job.matrix_entry.name,
+                )
+                failed = Future[JobResult]()
+                failed.set_result(
+                    JobResult(
+                        job_id=job.job_id,
+                        matrix_index=job.matrix_entry.index,
+                        matrix_name=job.matrix_entry.name,
+                        status=JobStatus.ERROR,
+                        error_message="Orchestrator thread pool unavailable",
+                    )
+                )
+                self._futures[job.queue_key] = failed
+                self._on_job_done(job, failed)
                 continue
             future = pool.submit(self._execute_job, job)
             self._futures[job.queue_key] = future

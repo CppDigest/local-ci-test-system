@@ -25,6 +25,7 @@ from localci.core.models import (
 )
 
 if TYPE_CHECKING:
+    from rich.console import RenderableType
     from rich.live import Live
 
     from localci.core.orchestrator import ExecutionRun
@@ -408,18 +409,18 @@ class ProgressTracker:
             self._live.stop()
             self._live = None
 
-    def _render_live(self) -> Any:
+    def _render_live(self) -> RenderableType:
         """Render the complete live display."""
         from rich.console import Group
 
-        parts: list[Any] = []
+        parts: list[RenderableType] = []
         parts.append(self._render_header())
         parts.append(self._render_progress_bar())
         parts.append(self._render_priority_levels())
         parts.append(self._render_job_table())
         return Group(*parts)
 
-    def _render_header(self) -> Any:
+    def _render_header(self) -> RenderableType:
         """Render execution header panel."""
         from rich.panel import Panel
 
@@ -436,7 +437,7 @@ class ProgressTracker:
         )
         return Panel(content, title="Local CI Execution", expand=True)
 
-    def _render_progress_bar(self) -> Any:
+    def _render_progress_bar(self) -> RenderableType:
         """Render progress bar with ETA."""
         from rich.text import Text
 
@@ -454,7 +455,7 @@ class ProgressTracker:
             f"Elapsed: {self._elapsed_display()}  {eta_str}\n"
         )
 
-    def _render_priority_levels(self) -> Any:
+    def _render_priority_levels(self) -> RenderableType:
         """Render priority level summary."""
         from rich.text import Text
 
@@ -471,7 +472,7 @@ class ProgressTracker:
             lines.append(f"Priority {level.priority} {icon} {label}{suffix}")
         return Text("\n".join(lines) + "\n")
 
-    def _render_job_table(self) -> Any:
+    def _render_job_table(self) -> RenderableType:
         """Render per-job status table with current step when running."""
         from rich.table import Table
 

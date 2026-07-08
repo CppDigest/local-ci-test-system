@@ -375,7 +375,10 @@ class YqWrapper:
 
     def job_runs_on(self, file: Path, job_id: str) -> str:
         """Extract job ``runs-on``."""
-        return self.query(file, f".jobs.{job_id}.runs-on") or "ubuntu-latest"
+        result = self.query(file, f".jobs.{job_id}.runs-on")
+        if isinstance(result, str):
+            return result
+        return "ubuntu-latest"
 
     def job_container(self, file: Path, job_id: str) -> dict[str, Any] | None:
         """Extract job container configuration."""
@@ -386,7 +389,19 @@ class YqWrapper:
 
     def job_timeout(self, file: Path, job_id: str) -> int:
         """Extract job timeout in minutes."""
-        return self.query(file, f".jobs.{job_id}.timeout-minutes") or 60
+        result = self.query(file, f".jobs.{job_id}.timeout-minutes")
+        if isinstance(result, bool):
+            return 60
+        if isinstance(result, int):
+            return result
+        if isinstance(result, float):
+            return int(result)
+        if isinstance(result, str):
+            try:
+                return int(result)
+            except ValueError:
+                return 60
+        return 60
 
     def job_defaults(self, file: Path, job_id: str) -> dict[str, Any] | None:
         """Extract job defaults."""
