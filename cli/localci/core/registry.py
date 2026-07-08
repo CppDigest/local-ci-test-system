@@ -47,7 +47,7 @@ class RegistryEntry:
     usage_count: int = 0
     # Optional fields from existing registry (preserved on load/save)
     variants: list[str] = field(default_factory=list)
-    raw: dict = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> RegistryEntry:
@@ -257,9 +257,9 @@ def select_image(
         )
 
     best_ess = max(s[0] for s in scored)
-    candidates = [(ext, r) for ess, ext, r in scored if ess == best_ess]
-    best_ext = max(e for e, _ in candidates)
-    base_candidates = [r for e, r in candidates if e == best_ext]
+    scored_candidates = [(ext, r) for ess, ext, r in scored if ess == best_ess]
+    best_ext = max(e for e, _ in scored_candidates)
+    base_candidates = [r for e, r in scored_candidates if e == best_ext]
     best = base_candidates[0]
     for other in base_candidates[1:]:
         best = _tie_break(best, other)

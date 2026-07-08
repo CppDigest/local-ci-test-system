@@ -33,7 +33,7 @@ repos:
     hooks:
       - id: mypy-cli
         name: mypy (cli)
-        entry: bash -c 'cd cli && mypy localci/'
+        entry: python -c "import pathlib, subprocess, sys; sys.exit(subprocess.call([sys.executable, '-m', 'mypy', 'localci/'], cwd=pathlib.Path('.').resolve() / 'cli'))"
         language: python
         pass_filenames: false
         always_run: true

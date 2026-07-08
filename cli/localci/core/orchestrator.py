@@ -16,7 +16,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from threading import Event as ThreadEvent
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.command_builder import ActCommandBuilder
@@ -174,7 +174,7 @@ class ParallelExecutionManager:
         self._state = OrchestratorState.IDLE
         self._run: ExecutionRun | None = None
         self._pool: ThreadPoolExecutor | None = None
-        self._futures: dict[str, Future] = {}
+        self._futures: dict[str, Future[JobResult]] = {}
         self._shutdown_event = ThreadEvent()
         self._listeners: list[Callable[[JobEvent], None]] = []
 
@@ -291,9 +291,12 @@ class ParallelExecutionManager:
                 time.sleep(self.config.dispatch_interval)
                 continue
             logger.info("Dispatching: %s", job.matrix_entry.name)
-            future = self._pool.submit(self._execute_job, job)
+            pool = self._pool
+            if pool is None:
+                continue
+            future = pool.submit(self._execute_job, job)
             self._futures[job.queue_key] = future
-            future.add_done_callback(lambda f, j=job: self._on_job_done(j, f))
+            future.add_done_callback(self._make_done_callback(job))
 
     def _wait_for_completion(self) -> None:
         for key, future in list(self._futures.items()):
@@ -549,7 +552,15 @@ class ParallelExecutionManager:
         )
         return None
 
-    def _on_job_done(self, job: QueuedJob, future: Future) -> None:
+    def _make_done_callback(
+        self, job: QueuedJob
+    ) -> Callable[[Future[JobResult]], None]:
+        def callback(future: Future[JobResult]) -> None:
+            self._on_job_done(job, future)
+
+        return callback
+
+    def _on_job_done(self, job: QueuedJob, future: Future[JobResult]) -> None:
         try:
             result = future.result()
         except Exception as e:
@@ -635,7 +646,7 @@ class ParallelExecutionManager:
     def active_workers(self) -> int:
         return len([f for f in self._futures.values() if not f.done()])
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, Any]:
         if not self._run:
             return {"state": "idle"}
         snap = self._resource_monitor.snapshot()

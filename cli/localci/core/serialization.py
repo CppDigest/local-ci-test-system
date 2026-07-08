@@ -11,7 +11,7 @@ import logging
 from dataclasses import asdict
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from localci.core.workflow import (
     Workflow,
@@ -52,12 +52,12 @@ def workflow_to_json(workflow: Workflow, indent: int = 2) -> str:
     return json.dumps(workflow, cls=WorkflowEncoder, indent=indent)
 
 
-def workflow_to_dict(workflow: Workflow) -> dict:
+def workflow_to_dict(workflow: Workflow) -> dict[str, Any]:
     """Convert *workflow* to a plain ``dict`` (JSON round-trip)."""
-    return json.loads(workflow_to_json(workflow))
+    return cast(dict[str, Any], json.loads(workflow_to_json(workflow)))
 
 
-def workflow_summary(workflow: Workflow) -> dict:
+def workflow_summary(workflow: Workflow) -> dict[str, Any]:
     """Generate a concise summary dict for *workflow*."""
     return {
         "name": workflow.name,

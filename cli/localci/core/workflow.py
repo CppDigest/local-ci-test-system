@@ -199,7 +199,7 @@ class MatrixEntry:
     is_latest: bool = False
     is_earliest: bool = False
     timeout_minutes: int = 120
-    raw: dict = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
     @property
     def image_requirements_key(self) -> str:
@@ -247,12 +247,12 @@ class Job:
     container: ContainerInfo | None = None
     needs: list[str] = field(default_factory=list)
     condition: str | None = None
-    strategy: dict | None = None
+    strategy: dict[str, Any] | None = None
     matrix: list[MatrixEntry] = field(default_factory=list)
     steps: list[StepInfo] = field(default_factory=list)
     timeout_minutes: int = 60
     env: dict[str, str] = field(default_factory=dict)
-    defaults: dict | None = None
+    defaults: dict[str, Any] | None = None
 
     @property
     def has_matrix(self) -> bool:
@@ -277,7 +277,7 @@ class Workflow:
     file_path: Path
     events: list[str]
     env: dict[str, str] = field(default_factory=dict)
-    concurrency: dict | None = None
+    concurrency: dict[str, Any] | None = None
     jobs: dict[str, Job] = field(default_factory=dict)
 
     @property
@@ -556,7 +556,7 @@ class WorkflowAnalyzer:
     # -----------------------------------------------------------------
 
     def _parse_matrix_entry(
-        self, index: int, entry: dict, job_data: dict
+        self, index: int, entry: dict[str, Any], job_data: dict[str, Any]
     ) -> MatrixEntry:
         """Parse a single matrix include entry."""
         compiler = self._parse_compiler(entry)
@@ -603,7 +603,7 @@ class WorkflowAnalyzer:
     # Field parsers
     # -----------------------------------------------------------------
 
-    def _parse_compiler(self, entry: dict) -> CompilerInfo:
+    def _parse_compiler(self, entry: dict[str, Any]) -> CompilerInfo:
         family_str = entry.get("compiler", "unknown")
         family = self._classify_compiler(family_str)
         return CompilerInfo(
@@ -628,7 +628,7 @@ class WorkflowAnalyzer:
             )
         return ContainerInfo()
 
-    def _parse_packages(self, entry: dict) -> PackageRequirements:
+    def _parse_packages(self, entry: dict[str, Any]) -> PackageRequirements:
         install_str = entry.get("install", "")
         apt_packages = (
             [p.strip() for p in install_str.split() if p.strip()] if install_str else []
@@ -650,7 +650,7 @@ class WorkflowAnalyzer:
             ccflags=entry.get("ccflags"),
         )
 
-    def _parse_step(self, step: dict) -> StepInfo:
+    def _parse_step(self, step: dict[str, Any]) -> StepInfo:
         return StepInfo(
             name=step.get("name", ""),
             uses=step.get("uses"),
@@ -697,7 +697,9 @@ class WorkflowAnalyzer:
     def _classify_compiler(self, compiler_str: str) -> CompilerFamily:
         return self._COMPILER_MAP.get(compiler_str.lower(), CompilerFamily.UNKNOWN)
 
-    def _detect_build_system(self, entry: dict, job_data: dict) -> BuildSystem:
+    def _detect_build_system(
+        self, entry: dict[str, Any], job_data: dict[str, Any]
+    ) -> BuildSystem:
         has_b2 = False
         has_cmake = False
 

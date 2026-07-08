@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 from localci.errors import DockerNotAvailableError
 
@@ -204,7 +205,7 @@ class DockerManager:
     # Resource monitoring
     # -----------------------------------------------------------------
 
-    def disk_usage(self) -> dict:
+    def disk_usage(self) -> dict[str, Any]:
         """Get Docker disk usage summary."""
         result = subprocess.run(
             self._docker_cmd("system", "df", "--format", "{{json .}}"),
