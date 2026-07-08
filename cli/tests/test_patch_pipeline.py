@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from localci.cli.run.patcher import _write_patched_workflow
-from localci.core.config import LocalCIConfig, PatchesConfig
-from localci.core.patch_pipeline import PatchContext, PatchPipeline
+from localci.core.config import LocalCIConfig, PatchesConfig, PatchProjectConfig
+from localci.core.patch_pipeline import PatchContext, PatchPipeline, PatchStep
 from localci.core.patch_steps import ContainerMountsStep
 from localci.core.workflow import (
     BuildSystem,
@@ -24,6 +24,26 @@ from localci.core.workflow import (
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 PIPELINE_WORKFLOW = FIXTURES_DIR / "patcher" / "pipeline_minimal.yml"
+GENERIC_CPP_WORKFLOW = FIXTURES_DIR / "patcher" / "generic_cpp.yml"
+
+
+def _generic_project_config() -> LocalCIConfig:
+    return LocalCIConfig(
+        patches=PatchesConfig(
+            project=PatchProjectConfig(
+                boost_source_copy_command="cp -rL dep-source dep-root",
+                boost_root_dir="dep-root",
+                patch_dependency_step_name="Patch Dependency",
+                project_source_dir="mylib-root",
+                restore_timestamps_step_title="Restore mylib source file timestamps",
+                file_stats_basename=".mylib-file-stats",
+                workspace_libs_copy_marker='cp -r "$workspace_root"',
+                workspace_libs_copy_dest="vendor/$pkg",
+                b2_workflow_action_marker="build-workflow",
+                cached_module_libs_path="vendor/mylib",
+            )
+        )
+    )
 
 
 @pytest.fixture
@@ -176,7 +196,10 @@ def test_from_config_raises_when_step_missing_from_registry(
         for name, cls in PATCH_STEP_REGISTRY.items()
         if name != "b2_source_cache"
     }
-    monkeypatch.setattr("localci.core.patch_steps.PATCH_STEP_REGISTRY", incomplete)
+    monkeypatch.setattr(
+        "localci.core.patch_registry.get_patch_step_registry",
+        lambda: incomplete,
+    )
     with pytest.raises(ValueError, match="b2_source_cache"):
         PatchPipeline.from_config(LocalCIConfig())
 
@@ -214,3 +237,83 @@ def test_patch_step_skip_emits_warning(sample_entry: MatrixEntry, caplog) -> Non
         and "job_id and container_mount_options are required" in r.message
         for r in caplog.records
     )
+
+
+def test_generic_cpp_workflow_patches_with_project_config(
+    sample_entry: MatrixEntry,
+) -> None:
+    """Non-Boost workflow patches through configurable project literals."""
+    assert GENERIC_CPP_WORKFLOW.is_file()
+    patched = _write_patched_workflow(
+        GENERIC_CPP_WORKFLOW,
+        sample_entry,
+        config=_generic_project_config(),
+    )
+    try:
+        content = patched.read_text()
+        assert "LOCALCI_B2_SOURCE_DIR" in content
+        assert "Restore mylib source file timestamps" in content
+        assert ".mylib-file-stats" in content
+        assert 'cp -rp "$workspace_root"/mylib-root "vendor/$pkg"' in content
+        assert "Skip b2 bootstrap" in content
+        assert "dep-root" in content
+        assert "boost-source" not in content
+        assert "capy-root" not in content
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+class _MarkerPluginStep(PatchStep):
+    """Test-only plugin step that prepends a marker comment."""
+
+    @property
+    def name(self) -> str:
+        return "marker_plugin"
+
+    def apply(self, ctx: PatchContext) -> None:
+        ctx.lines.insert(0, "# patched by marker_plugin\n")
+
+
+def test_custom_plugin_step_via_registry(
+    workflow_path: Path,
+    sample_entry: MatrixEntry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Entry-point-registered steps can be enabled via extra_steps."""
+    from localci.core.patch_steps import PATCH_STEP_REGISTRY
+
+    registry = dict(PATCH_STEP_REGISTRY)
+    registry["marker_plugin"] = _MarkerPluginStep
+    monkeypatch.setattr(
+        "localci.core.patch_registry.get_patch_step_registry",
+        lambda: registry,
+    )
+
+    cfg = LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=False,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+            extra_steps={"marker_plugin": True},
+            order=["marker_plugin"],
+        )
+    )
+    patched = _write_patched_workflow(workflow_path, sample_entry, config=cfg)
+    try:
+        assert patched.read_text().startswith("# patched by marker_plugin\n")
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+def test_extra_steps_rejects_unknown_plugin() -> None:
+    with pytest.raises(ValueError, match="Unknown extra patch steps"):
+        PatchesConfig(extra_steps={"not_registered": True})
+
+
+def test_extra_steps_rejects_builtin_duplicate() -> None:
+    with pytest.raises(ValueError, match="must not duplicate built-in"):
+        PatchesConfig(extra_steps={"codecov_skip": True})

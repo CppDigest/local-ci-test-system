@@ -1,0 +1,20 @@
+name: Generic C++ project
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+    strategy:
+      matrix:
+        include:
+          - name: "build (ubuntu-24.04, gcc-15)"
+            runs-on: ubuntu-latest
+            container: ubuntu:24.04
+    steps:
+      - name: Patch Dependency
+        run: |
+          cp -rL dep-source dep-root
+          cp -r "$workspace_root"/mylib-root "vendor/$pkg"
+      - name: Build Workflow
+        uses: org/cpp-actions/build-workflow@v1.0.0

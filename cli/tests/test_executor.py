@@ -948,6 +948,35 @@ class TestActCommandBuilder:
 
         assert cmd.container_architecture == "linux/386"
 
+    def test_x86_with_native_image_prefix_skips_386(self, tmp_path):
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+
+        builder = ActCommandBuilder(
+            workflow_file=wf,
+            native_image_prefix="myproj-",
+        )
+        entry = _make_entry(architecture="x86")
+        cmd = builder.build(entry, image_tag="myproj-ubuntu-24.04-gcc15:latest")
+
+        assert cmd.container_architecture is None
+
+    def test_custom_repo_full_name_in_event(self, tmp_path):
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+
+        builder = ActCommandBuilder(
+            workflow_file=wf,
+            repo_full_name="acme/widget",
+        )
+        entry = _make_entry()
+        cmd = builder.build(entry)
+
+        assert cmd.event_file is not None
+        content = json.loads(cmd.event_file.read_text())
+        assert content["push"]["repository"]["full_name"] == "acme/widget"
+        cmd.event_file.unlink()
+
     def test_x86_64_no_arch_flag(self, tmp_path):
         wf = tmp_path / "ci.yml"
         wf.write_text("name: CI")
