@@ -97,9 +97,8 @@ def run_options(command: F) -> F:
                 "Run in offline mode (no action downloads, requires pre-cached actions)."
             ),
         ),
-        click.pass_context,
     ]
-    wrapped: F = command
+    wrapped: F = click.pass_context(command)  # type: ignore[assignment]
     for opt in reversed(opts):
-        wrapped = opt(wrapped)  # type: ignore[assignment]
+        wrapped = opt(wrapped)
     return wrapped

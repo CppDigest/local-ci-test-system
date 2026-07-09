@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from localci.cli.run.container import RunDependencies, build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.patcher import _print_execution_plan, make_workflow_patcher
 from localci.core.config import LocalCIConfig
-from localci.core.executor import ActNotFoundError, DockerNotAvailableError
+from localci.core.executor import JobExecutor
 from localci.core.github_token import resolve_github_token, warn_sentinel_github_token
 from localci.core.models import JobEvent, JobEventType
 from localci.core.results import ExecutionSummary
-from localci.core.workflow import MatrixEntry, Platform
-from localci.errors import WorkflowError
+from localci.core.workflow import MatrixEntry, Platform, Workflow
+from localci.errors import ActNotFoundError, DockerNotAvailableError, WorkflowError
 from localci.utils.output import print_error, print_info, print_warning
 
 _PLATFORM_MAP = {
@@ -72,9 +73,10 @@ def execute_run(
         return 0
 
     priority_config = container.priority_config_factory(cfg)
-    registry_path = project_dir / "image-registry.yml"
-    if not registry_path.exists():
-        registry_path = None
+    registry_candidate = project_dir / "image-registry.yml"
+    registry_path: Path | None = (
+        registry_candidate if registry_candidate.exists() else None
+    )
 
     matrix_include, matrix_exclude = _resolve_matrix_filters(options, cfg)
     plat_filter = _PLATFORM_MAP.get(options.platform) if options.platform else None
@@ -176,7 +178,7 @@ def execute_run(
     return 0 if summary.all_passed else 1
 
 
-def _collect_matrix_pairs(wf) -> list[tuple[str, MatrixEntry]]:
+def _collect_matrix_pairs(wf: Workflow) -> list[tuple[str, MatrixEntry]]:
     pairs: list[tuple[str, MatrixEntry]] = []
     for job_id, job in wf.jobs.items():
         for entry in job.matrix:
@@ -229,8 +231,8 @@ def _filter_matrix_pairs(
 
 def _resolve_matrix_filters(
     options: RunOptions, cfg: LocalCIConfig
-) -> tuple[list[dict] | None, list[dict] | None]:
-    cli_matrix_include: list[dict] | None = None
+) -> tuple[list[dict[str, Any]] | None, list[dict[str, Any]] | None]:
+    cli_matrix_include: list[dict[str, Any]] | None = None
     if options.matrix_filters:
         cli_matrix_include = [{}]
         for s in options.matrix_filters:
@@ -257,7 +259,7 @@ def _resolve_matrix_filters(
     return matrix_include, matrix_exclude
 
 
-def _run_preflight(executor) -> int:
+def _run_preflight(executor: JobExecutor) -> int:
     try:
         act_version = executor.check_act()
         print_info(f"Using {act_version}")

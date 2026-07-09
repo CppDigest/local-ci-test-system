@@ -9,11 +9,14 @@ from pathlib import Path
 
 from localci.core.config import LocalCIConfig
 from localci.core.patch_pipeline import PatchContext, PatchPipeline
+from localci.core.queue import PriorityJobQueue
 from localci.core.workflow import MatrixEntry
 from localci.utils.output import console, print_info, print_key_value
 
 
-def _print_execution_plan(queue, workflow_path: Path, timeout: int) -> None:
+def _print_execution_plan(
+    queue: PriorityJobQueue, workflow_path: Path, timeout: int
+) -> None:
     """Print dry-run execution plan from the queue."""
     from rich.table import Table
 

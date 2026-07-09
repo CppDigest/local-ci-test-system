@@ -8,7 +8,7 @@ from pathlib import Path
 
 from localci.core.boost_cache import ensure_boost_cache
 from localci.core.ccache_stats import get_ccache_stats
-from localci.core.config import LocalCIConfig, resolve_cache_paths
+from localci.core.config import LocalCIConfig, ResolvedCachePaths, resolve_cache_paths
 from localci.core.executor import JobExecutor
 from localci.core.orchestrator import OrchestratorConfig, ParallelExecutionManager
 from localci.core.progress import ProgressTracker
@@ -30,7 +30,7 @@ class RunDependencies:
     priority_config_factory: Callable[[LocalCIConfig], PriorityConfig]
     ensure_boost_cache_fn: Callable[..., bool]
     get_ccache_stats_fn: Callable[..., str | None]
-    resolve_cache_paths_fn: Callable[..., object]
+    resolve_cache_paths_fn: Callable[..., ResolvedCachePaths | None]
     workflow_patcher: Callable[..., Path]
 
 

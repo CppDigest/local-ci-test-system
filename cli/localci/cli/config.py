@@ -6,6 +6,7 @@ View, initialise, and modify the ``.localci.yml`` configuration file.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import click
 import yaml
@@ -103,7 +104,7 @@ def config_set(ctx: click.Context, key: str, value: str) -> None:
         ctx.exit(1)
 
     with open(config_path, encoding="utf-8") as fh:
-        data: dict = yaml.safe_load(fh) or {}
+        data: dict[str, Any] = yaml.safe_load(fh) or {}
 
     # Navigate dot-notation key.
     keys = key.split(".")

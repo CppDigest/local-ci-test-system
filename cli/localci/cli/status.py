@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -178,13 +179,19 @@ def _safe_float(value: object, default: float = 0.0) -> float:
     """Coerce *value* to float, returning *default* on None or parse failure."""
     if value is None:
         return default
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+    if isinstance(value, bool):
         return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
 
 
-def _job_list(data: dict, key: str) -> list[dict]:
+def _job_list(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
     """Return a list of dict items from *data[key]*, skipping non-dict entries."""
     raw = data.get(key) if isinstance(data, dict) else None
     if not isinstance(raw, list):
@@ -247,7 +254,7 @@ def _follow_status(status_file: Path, output_format: str) -> None:
     """Poll status file and refresh display until Ctrl+C."""
     console.print("\nFollowing... (Ctrl+C to stop)")
     try:
-        last_data: dict | None = None
+        last_data: dict[str, Any] | None = None
         while True:
             time.sleep(1)
             if not status_file.exists():
