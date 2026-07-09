@@ -15,18 +15,7 @@ Before you start, install the runtime tools listed in the [README](README.md#pre
 
 ### yq (read this first)
 
-Several incompatible tools share the name `yq`. Local CI requires **[mikefarah/yq v4+](https://github.com/mikefarah/yq)** — **not** the PyPI `yq` package and **not** [kislyuk/yq](https://github.com/kislyuk/yq). Installing the wrong tool causes unclear runtime failures.
-
-**→ Full disambiguation table and per-OS install commands: [README — yq (mikefarah/yq v4 or newer)](README.md#yq-mikefarahyq-v4-or-newer)**
-
-Verify your install:
-
-```bash
-yq --version
-# Should reference mikefarah / github.com/mikefarah or report version v4+
-```
-
-If no suitable binary is on `PATH`, the CLI falls back to PyYAML with limited expression support and emits a warning (`localci.utils.yq`).
+Local CI requires **[mikefarah/yq v4+](https://github.com/mikefarah/yq)**. Disambiguation, per-OS install commands, and verification: [README — yq (mikefarah/yq v4 or newer)](README.md#yq-mikefarahyq-v4-or-newer).
 
 ## Development setup
 
