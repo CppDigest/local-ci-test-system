@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from localci.core.config import PATCH_STEP_NAMES, LocalCIConfig
+from localci.core.config import LocalCIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -66,19 +66,20 @@ class PatchPipeline:
     @classmethod
     def from_config(cls, config: LocalCIConfig) -> PatchPipeline:
         """Build a pipeline from ``.localci.yml`` patch settings."""
-        from localci.core.patch_steps import PATCH_STEP_REGISTRY
+        from localci.core.patch_registry import get_patch_step_registry
 
         patches = config.patches
-        order = patches.order or list(PATCH_STEP_NAMES)
+        order = patches.resolved_order()
+        registry = get_patch_step_registry()
         steps: list[PatchStep] = []
         for name in order:
-            if not getattr(patches, name, True):
+            if not patches.is_step_enabled(name):
                 continue
-            step_cls = PATCH_STEP_REGISTRY.get(name)
+            step_cls = registry.get(name)
             if step_cls is None:
                 raise ValueError(
                     f"Patch step {name!r} is enabled but not registered; "
-                    "check PATCH_STEP_NAMES / PATCH_STEP_REGISTRY alignment"
+                    "check PATCH_STEP_NAMES / patch step registry alignment"
                 )
             steps.append(step_cls())
         return cls(steps)

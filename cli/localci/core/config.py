@@ -184,7 +184,7 @@ class ExecutionConfig(BaseModel):
     stop_on_first_failure: bool = False
 
 
-# Known workflow patch steps (order matches default pipeline sequence).
+# Known built-in workflow patch steps (order matches default pipeline sequence).
 PATCH_STEP_NAMES: tuple[str, ...] = (
     "container_mounts",
     "b2_source_cache",
@@ -194,6 +194,24 @@ PATCH_STEP_NAMES: tuple[str, ...] = (
     "image_substitution",
     "codecov_skip",
 )
+
+
+class PatchProjectConfig(BaseModel):
+    """Project-specific literals for C++/Boost-oriented patch steps.
+
+    Defaults preserve Boost.Capy workflow behaviour. Override for other projects.
+    """
+
+    boost_source_copy_command: str = "cp -rL boost-source boost-root"
+    boost_root_dir: str = "boost-root"
+    patch_dependency_step_name: str = "Patch Boost"
+    project_source_dir: str = "capy-root"
+    restore_timestamps_step_title: str = "Restore capy source file timestamps"
+    file_stats_basename: str = ".capy-file-stats"
+    workspace_libs_copy_marker: str = 'cp -r "$workspace_root"'
+    workspace_libs_copy_dest: str = "libs/$module"
+    b2_workflow_action_marker: str = "b2-workflow"
+    cached_module_libs_path: str = "libs/capy"
 
 
 class PatchesConfig(BaseModel):
@@ -207,6 +225,29 @@ class PatchesConfig(BaseModel):
     image_substitution: bool = True
     codecov_skip: bool = True
     order: list[str] | None = None
+    project: PatchProjectConfig = Field(default_factory=PatchProjectConfig)
+    extra_steps: dict[str, bool] = Field(default_factory=dict)
+
+    @field_validator("extra_steps")
+    @classmethod
+    def validate_extra_steps(cls, v: dict[str, bool]) -> dict[str, bool]:
+        overlap = set(v.keys()) & set(PATCH_STEP_NAMES)
+        if overlap:
+            raise ValueError(
+                f"extra_steps must not duplicate built-in patch steps: "
+                f"{sorted(overlap)}"
+            )
+        from localci.core.patch_registry import get_patch_step_registry
+
+        builtin = set(PATCH_STEP_NAMES)
+        registered = set(get_patch_step_registry().keys()) - builtin
+        unknown = set(v.keys()) - registered
+        if unknown:
+            raise ValueError(
+                f"Unknown extra patch steps (register via localci.patch_steps "
+                f"entry points): {sorted(unknown)}"
+            )
+        return v
 
     @field_validator("order")
     @classmethod
@@ -219,7 +260,9 @@ class PatchesConfig(BaseModel):
             )
         if len(v) != len(set(v)):
             raise ValueError("Duplicate step names in 'order'")
-        unknown = set(v) - set(PATCH_STEP_NAMES)
+        from localci.core.patch_registry import get_patch_step_registry
+
+        unknown = set(v) - set(get_patch_step_registry().keys())
         if unknown:
             raise ValueError(f"Unknown patch steps: {sorted(unknown)}")
         return v
@@ -229,12 +272,40 @@ class PatchesConfig(BaseModel):
         if self.order is None:
             return self
         enabled = {n for n in PATCH_STEP_NAMES if getattr(self, n, True)}
+        enabled |= {n for n, on in self.extra_steps.items() if on}
         missing = enabled - set(self.order)
         if missing:
             raise ValueError(
                 f"Patch steps are enabled but missing from 'order': {sorted(missing)}"
             )
         return self
+
+    def is_step_enabled(self, name: str) -> bool:
+        """Return whether patch step *name* is enabled in this config."""
+        if name in PATCH_STEP_NAMES:
+            return bool(getattr(self, name, True))
+        return bool(self.extra_steps.get(name, False))
+
+    def resolved_order(self) -> list[str]:
+        """Return pipeline order: explicit ``order`` or built-ins + enabled plugins."""
+        if self.order is not None:
+            return self.order
+        order = list(PATCH_STEP_NAMES)
+        order.extend(
+            name for name in sorted(self.extra_steps) if self.extra_steps[name]
+        )
+        return order
+
+
+DEFAULT_REPO_FULL_NAME = "cppalliance/capy"
+DEFAULT_NATIVE_IMAGE_PREFIX = "capy-"
+
+
+class ProjectConfig(BaseModel):
+    """Project identity and image conventions for act command building."""
+
+    repo_full_name: str = DEFAULT_REPO_FULL_NAME
+    native_image_prefix: str = DEFAULT_NATIVE_IMAGE_PREFIX
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +338,7 @@ class LocalCIConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     patches: PatchesConfig = Field(default_factory=PatchesConfig)
+    project: ProjectConfig = Field(default_factory=ProjectConfig)
 
 
 # ---------------------------------------------------------------------------

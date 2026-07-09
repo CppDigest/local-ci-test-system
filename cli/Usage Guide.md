@@ -16,6 +16,7 @@
 - [Configuration](#configuration)
   - [Creating a Config File](#creating-a-config-file)
   - [Config File Reference](#config-file-reference)
+  - [Workflow patch pipeline](#workflow-patch-pipeline)
   - [Viewing and Editing Config](#viewing-and-editing-config)
 - [Commands](#commands)
   - [Global Options](#global-options)
@@ -310,7 +311,104 @@ There is no CLI flag for `stop_on_first_failure`; set it in `.localci.yml` or wi
 | `priorities` | Override execution order (lower number runs first) |
 | `images` | Where Docker images are stored, auto-build, cleanup |
 | `cache` | ccache, Boost dependency, and CMake config caching |
+| `patches` | Enable/disable workflow patch steps; project literals; plugin steps |
+| `project` | Repository name and native image prefix for `act` command building |
 | `execution` | Timeouts, container cleanup, failure behaviour |
+
+#### Workflow patch pipeline
+
+Before each job, Local CI copies your workflow YAML and applies a **patch
+pipeline** (text-line transforms, not a YAML round-trip) so jobs run under
+[act](https://github.com/nektos/act) with local images, cache bind mounts, and
+other local-CI adaptations.
+
+**Built-in steps** (enable/disable each under `patches:`):
+
+| Step | Applies to |
+|------|------------|
+| `container_mounts` | Any workflow with a job `container:` block |
+| `image_substitution` | Matrix jobs using a local Docker image |
+| `codecov_skip` | Workflows that upload coverage via Codecov |
+| `b2_source_cache`, `restore_capy_timestamps`, `capy_copy_preservation`, `b2_bootstrap_skip` | C++/B2 workflows whose shell/YAML literals match `patches.project` (Boost.Capy defaults) |
+
+**Project literals (`patches.project`)** — retarget the B2-oriented steps for
+your workflow without forking Local CI. Defaults match Boost.Capy; override when
+your workflow uses different directory names, step titles, or copy commands:
+
+```yaml
+patches:
+  # Optional: turn off steps that do not apply
+  b2_source_cache: true
+  restore_capy_timestamps: true
+  capy_copy_preservation: true
+  b2_bootstrap_skip: true
+
+  project:
+    boost_source_copy_command: "cp -rL dep-source dep-root"
+    boost_root_dir: dep-root
+    patch_dependency_step_name: "Patch Dependency"
+    project_source_dir: mylib-root
+    restore_timestamps_step_title: "Restore mylib source file timestamps"
+    file_stats_basename: .mylib-file-stats
+    workspace_libs_copy_marker: 'cp -r "$workspace_root"'
+    workspace_libs_copy_dest: "vendor/$pkg"
+    b2_workflow_action_marker: build-workflow
+    cached_module_libs_path: vendor/mylib
+```
+
+**Act event payload and images (`project`)** — override hard-coded Boost.Capy
+assumptions for the simulated GitHub event and x86 image handling:
+
+```yaml
+project:
+  repo_full_name: acme/my-cpp-lib
+  native_image_prefix: myproj-   # x86 jobs skip linux/386 when image tag starts with this
+```
+
+**Custom patch steps (plugins)** — publish a step class and register it via the
+`localci.patch_steps` entry-point group (see `localci.core.patch_registry`).
+Enable it in `.localci.yml` with `patches.extra_steps`; enabled plugins append
+after the built-in steps unless you set an explicit `patches.order`.
+
+Minimal plugin package:
+
+```python
+# my_localci_patches/steps.py
+from localci.core.patch_pipeline import PatchContext, PatchStep
+
+class MyPatchStep(PatchStep):
+    @property
+    def name(self) -> str:
+        return "my_patch"
+
+    def apply(self, ctx: PatchContext) -> None:
+        ctx.lines.insert(0, "# patched by my_patch\n")
+```
+
+```toml
+# pyproject.toml (install the package in the same environment as localci)
+[project.entry-points."localci.patch_steps"]
+my_patch = "my_localci_patches.steps:MyPatchStep"
+```
+
+```yaml
+# .localci.yml
+patches:
+  container_mounts: false
+  b2_source_cache: false
+  restore_capy_timestamps: false
+  capy_copy_preservation: false
+  b2_bootstrap_skip: false
+  image_substitution: false
+  codecov_skip: false
+  extra_steps:
+    my_patch: true
+  # Optional: explicit order (required if a plugin must run before a built-in step)
+  # order:
+  #   - my_patch
+  #   - container_mounts
+  #   - image_substitution
+```
 
 #### Build caching (Phase 2)
 

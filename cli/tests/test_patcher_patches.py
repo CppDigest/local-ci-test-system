@@ -326,7 +326,7 @@ class TestBoostCachePatch:
         assert "cp -rL boost-source boost-root" not in content
         assert content == original.replace("\r\n", "\n")
         _assert_skip_warning(
-            caplog, "b2_source_cache", "no cp -rL boost-source boost-root line found"
+            caplog, "b2_source_cache", "'cp -rL boost-source boost-root' line found"
         )
 
 
@@ -366,7 +366,7 @@ class TestCapyTimestampsPatch:
         content = _assert_valid_yaml(patched)
         assert "Restore capy source file timestamps" not in content
         _assert_skip_warning(
-            caplog, "restore_capy_timestamps", "Patch Boost step not found"
+            caplog, "restore_capy_timestamps", "'Patch Boost' step not found"
         )
 
 
@@ -399,7 +399,7 @@ class TestCapyCopyPatch:
         _assert_skip_warning(
             caplog,
             "capy_copy_preservation",
-            'no cp -r "$workspace_root" capy copy line found',
+            "no 'cp -r \"$workspace_root\"' workspace copy line found",
         )
 
 
@@ -425,7 +425,7 @@ class TestB2BootstrapPatch:
         content = _assert_valid_yaml(patched)
         assert "Skip b2 bootstrap (b2 binary cached)" not in content
         _assert_skip_warning(
-            caplog, "b2_bootstrap_skip", "no b2-workflow uses step found"
+            caplog, "b2_bootstrap_skip", "'b2-workflow' uses step found"
         )
 
 

@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING, Any
 
 from localci.core.cmake_cache import compute_cmake_input_digest
 from localci.core.command_builder import ActCommandBuilder
-from localci.core.config import resolve_cache_paths
+from localci.core.config import (
+    DEFAULT_NATIVE_IMAGE_PREFIX,
+    DEFAULT_REPO_FULL_NAME,
+    resolve_cache_paths,
+)
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
 from localci.core.queue import PriorityJobQueue
@@ -65,6 +69,8 @@ class OrchestratorConfig:
     dispatch_interval: float = 0.1
     default_secrets: dict[str, str] | None = None
     default_env: dict[str, str] | None = None
+    repo_full_name: str = DEFAULT_REPO_FULL_NAME
+    native_image_prefix: str = DEFAULT_NATIVE_IMAGE_PREFIX
     image_registry_path: Path | None = None
     verbose: bool = False
     offline: bool = False
@@ -80,6 +86,7 @@ class OrchestratorConfig:
         disk_gb = float(getattr(rl, "disk_min_free_gb", 10.0))
         images = getattr(config, "images", None)
         registry_path = getattr(images, "registry", None) if images else None
+        project = getattr(config, "project", None)
         return cls(
             max_parallel=getattr(config.parallel, "max_jobs", 8),
             cpu_threshold=float(cpu),
@@ -89,6 +96,10 @@ class OrchestratorConfig:
             keep_containers=getattr(config.execution, "keep_containers", False),
             stop_on_first_failure=getattr(
                 config.execution, "stop_on_first_failure", False
+            ),
+            repo_full_name=getattr(project, "repo_full_name", DEFAULT_REPO_FULL_NAME),
+            native_image_prefix=getattr(
+                project, "native_image_prefix", DEFAULT_NATIVE_IMAGE_PREFIX
             ),
             image_registry_path=registry_path,
             auto_build=getattr(images, "auto_build", True) if images else True,
@@ -434,6 +445,8 @@ class ParallelExecutionManager:
                     workflow_file=self.workflow_file,
                     project_dir=self.project_dir,
                     job_id=job.job_id,
+                    repo_full_name=self.config.repo_full_name,
+                    native_image_prefix=self.config.native_image_prefix,
                     default_secrets=self.config.default_secrets or {},
                     default_env=self.config.default_env or {},
                     offline=self.config.offline,
