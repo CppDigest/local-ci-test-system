@@ -35,7 +35,13 @@ def _build_act_command(
         job_id=INTEGRATION_JOB_ID,
         default_secrets={"GITHUB_TOKEN": "local-ci-test-token"},
     )
-    cmd = builder.build(entry, image_tag=act_runner_image)
+    cmd = builder.build(
+        entry,
+        image_tag=act_runner_image,
+        # Minimal fixture matrix has no cc/cxx; supply env so executor
+        # materializes an executor-owned env_file (mutation contract).
+        extra_env={"LOCALCI_TEST_ENV": "mutation-contract"},
+    )
     return entry, cmd
 
 
