@@ -154,7 +154,10 @@ class ActCommand:
     :meth:`JobExecutor._execute_process`:
 
     * :attr:`env_file` and :attr:`_executor_owned_env_file` are set when
-      :attr:`env` is non-empty (a ``0600`` temp file is created).
+      :attr:`env` is non-empty (a ``0600`` temp file is created). If a
+      caller-supplied, unowned :attr:`env_file` already exists, its contents
+      are copied into the new temp file before :attr:`env` entries are written;
+      the original caller file is left on disk.
     * :attr:`secret_file` and :attr:`_executor_owned_secret_file` are set when
       :attr:`secrets` is non-empty (a ``0600`` temp file is created).
 
