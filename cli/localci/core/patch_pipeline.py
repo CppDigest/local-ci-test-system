@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from localci.core.config import PATCH_STEP_NAMES, LocalCIConfig
+from localci.core.config import LocalCIConfig
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class PatchPipeline:
         from localci.core.patch_registry import get_patch_step_registry
 
         patches = config.patches
-        order = patches.order or list(PATCH_STEP_NAMES)
+        order = patches.resolved_order()
         registry = get_patch_step_registry()
         steps: list[PatchStep] = []
         for name in order:

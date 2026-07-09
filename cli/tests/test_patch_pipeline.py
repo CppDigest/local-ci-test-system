@@ -309,6 +309,40 @@ def test_custom_plugin_step_via_registry(
         patched.unlink(missing_ok=True)
 
 
+def test_custom_plugin_step_runs_without_explicit_order(
+    workflow_path: Path,
+    sample_entry: MatrixEntry,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enabled extra_steps append to the default built-in order when order is omitted."""
+    from localci.core.patch_steps import PATCH_STEP_REGISTRY
+
+    registry = dict(PATCH_STEP_REGISTRY)
+    registry["marker_plugin"] = _MarkerPluginStep
+    monkeypatch.setattr(
+        "localci.core.patch_registry.get_patch_step_registry",
+        lambda: registry,
+    )
+
+    cfg = LocalCIConfig(
+        patches=PatchesConfig(
+            container_mounts=False,
+            b2_source_cache=False,
+            restore_capy_timestamps=False,
+            capy_copy_preservation=False,
+            b2_bootstrap_skip=False,
+            image_substitution=False,
+            codecov_skip=False,
+            extra_steps={"marker_plugin": True},
+        )
+    )
+    patched = _write_patched_workflow(workflow_path, sample_entry, config=cfg)
+    try:
+        assert patched.read_text().startswith("# patched by marker_plugin\n")
+    finally:
+        patched.unlink(missing_ok=True)
+
+
 def test_extra_steps_rejects_unknown_plugin() -> None:
     with pytest.raises(ValueError, match="Unknown extra patch steps"):
         PatchesConfig(extra_steps={"not_registered": True})

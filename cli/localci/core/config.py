@@ -286,6 +286,16 @@ class PatchesConfig(BaseModel):
             return bool(getattr(self, name, True))
         return bool(self.extra_steps.get(name, False))
 
+    def resolved_order(self) -> list[str]:
+        """Return pipeline order: explicit ``order`` or built-ins + enabled plugins."""
+        if self.order is not None:
+            return self.order
+        order = list(PATCH_STEP_NAMES)
+        order.extend(
+            name for name in sorted(self.extra_steps) if self.extra_steps[name]
+        )
+        return order
+
 
 DEFAULT_REPO_FULL_NAME = "cppalliance/capy"
 DEFAULT_NATIVE_IMAGE_PREFIX = "capy-"

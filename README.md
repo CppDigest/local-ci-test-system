@@ -116,7 +116,7 @@ local-ci-test-system/
 
 ## Documentation
 
-- **[User Guide](cli/Usage%20Guide.md)** — Installation, configuration, commands, troubleshooting
+- **[User Guide](cli/Usage%20Guide.md)** — Installation, configuration, commands, troubleshooting (includes [workflow patch pipeline](cli/Usage%20Guide.md#workflow-patch-pipeline) and plugin registration)
 - **[Design Guide](docs/Design%20Guide.md)** — Architecture and caching
 - **[Performance and Caching](docs/Performance%20and%20Caching.md)** — Cache layout and config
 - **[Preparation and Plan](docs/Preparation%20and%20Plan.md)** — Implementation plan and issue breakdown
