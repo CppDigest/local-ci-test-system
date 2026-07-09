@@ -116,6 +116,8 @@ local-ci-test-system/
 
 ## Documentation
 
+- **[Contributing](CONTRIBUTING.md)** — Developer setup, tests, lint, pre-commit, and PR expectations (includes [yq prerequisite](README.md#yq-mikefarahyq-v4-or-newer) onboarding)
+- **[Changelog](CHANGELOG.md)** — Release history and pre-1.0 stability notes
 - **[User Guide](cli/Usage%20Guide.md)** — Installation, configuration, commands, troubleshooting (includes [workflow patch pipeline](cli/Usage%20Guide.md#workflow-patch-pipeline) and plugin registration)
 - **[Design Guide](docs/Design%20Guide.md)** — Architecture and caching
 - **[Performance and Caching](docs/Performance%20and%20Caching.md)** — Cache layout and config
