@@ -5,7 +5,7 @@ from __future__ import annotations
 import fnmatch
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from localci.core.image_tag import derive_image_tag
 from localci.core.models import QueuedJob
@@ -40,7 +40,7 @@ def _resolve_image_tag_and_build(
     return derived_tag, None, True
 
 
-def _matches_filter(entry: MatrixEntry, filters: list[dict]) -> bool:
+def _matches_filter(entry: MatrixEntry, filters: list[dict[str, Any]]) -> bool:
     """True if entry matches any of the filter dicts."""
     for f in filters:
         match = True
@@ -96,8 +96,8 @@ class QueueBuilder:
         platform_filter: Platform | None = None,
         job_filter: list[str] | None = None,
         compiler_filter: str | None = None,
-        matrix_include: list[dict] | None = None,
-        matrix_exclude: list[dict] | None = None,
+        matrix_include: list[dict[str, Any]] | None = None,
+        matrix_exclude: list[dict[str, Any]] | None = None,
         entries_include: set[tuple[str, int]] | None = None,
         registry_path: Path | None = None,
     ) -> PriorityJobQueue:

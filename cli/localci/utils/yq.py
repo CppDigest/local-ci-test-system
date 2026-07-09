@@ -50,7 +50,7 @@ class YqWrapper:
 
     def __init__(self) -> None:
         self._is_linux: bool = sys.platform.startswith("linux")
-        self._file_cache: dict[Path, dict] = {}
+        self._file_cache: dict[Path, dict[str, Any]] = {}
 
         raw_path: str | None = shutil.which("yq")
         self._yq_path: str | None = None
@@ -164,8 +164,10 @@ class YqWrapper:
 
     def _query_yq(self, file: Path, expression: str) -> Any:
         """Execute *expression* via ``yq -o json``."""
+        yq_path = self._yq_path
+        assert yq_path is not None
         result = subprocess.run(
-            [self._yq_path, "-o", "json", expression, str(file)],
+            [yq_path, "-o", "json", expression, str(file)],
             capture_output=True,
             text=True,
             timeout=30,
@@ -188,7 +190,7 @@ class YqWrapper:
     # PyYAML fallback backend
     # -----------------------------------------------------------------
 
-    def _load_yaml(self, file: Path) -> dict:
+    def _load_yaml(self, file: Path) -> dict[str, Any]:
         """Load *file* via PyYAML (result is cached).
 
         Caller must ensure file exists (e.g. query() checks before calling).
@@ -342,16 +344,17 @@ class YqWrapper:
             return {str(k): str(v) for k, v in env.items()}
         return {}
 
-    def concurrency(self, file: Path) -> dict | None:
+    def concurrency(self, file: Path) -> dict[str, Any] | None:
         """Extract concurrency configuration."""
-        return self.query(file, ".concurrency")
+        result = self.query(file, ".concurrency")
+        return result if isinstance(result, dict) else None
 
     def job_names(self, file: Path) -> list[str]:
         """Extract all job IDs."""
         result = self.query(file, "(.jobs // {}) | keys")
         return result if isinstance(result, list) else []
 
-    def job_data(self, file: Path, job_id: str) -> dict:
+    def job_data(self, file: Path, job_id: str) -> dict[str, Any]:
         """Extract full job data dict for *job_id*."""
         result = self.query(file, f".jobs.{job_id}")
         return result if isinstance(result, dict) else {}
@@ -367,26 +370,43 @@ class YqWrapper:
 
     def job_condition(self, file: Path, job_id: str) -> str | None:
         """Extract job ``if`` condition."""
-        return self.query(file, f".jobs.{job_id}.if")
+        result = self.query(file, f".jobs.{job_id}.if")
+        return result if isinstance(result, str) else None
 
     def job_runs_on(self, file: Path, job_id: str) -> str:
         """Extract job ``runs-on``."""
-        return self.query(file, f".jobs.{job_id}.runs-on") or "ubuntu-latest"
+        result = self.query(file, f".jobs.{job_id}.runs-on")
+        if isinstance(result, str):
+            return result
+        return "ubuntu-latest"
 
-    def job_container(self, file: Path, job_id: str) -> dict | None:
+    def job_container(self, file: Path, job_id: str) -> dict[str, Any] | None:
         """Extract job container configuration."""
         container = self.query(file, f".jobs.{job_id}.container")
         if isinstance(container, str):
             return {"image": container}
-        return container
+        return container if isinstance(container, dict) else None
 
     def job_timeout(self, file: Path, job_id: str) -> int:
         """Extract job timeout in minutes."""
-        return self.query(file, f".jobs.{job_id}.timeout-minutes") or 60
+        result = self.query(file, f".jobs.{job_id}.timeout-minutes")
+        if isinstance(result, bool):
+            return 60
+        if isinstance(result, int):
+            return result
+        if isinstance(result, float):
+            return int(result)
+        if isinstance(result, str):
+            try:
+                return int(result)
+            except ValueError:
+                return 60
+        return 60
 
-    def job_defaults(self, file: Path, job_id: str) -> dict | None:
+    def job_defaults(self, file: Path, job_id: str) -> dict[str, Any] | None:
         """Extract job defaults."""
-        return self.query(file, f".jobs.{job_id}.defaults")
+        result = self.query(file, f".jobs.{job_id}.defaults")
+        return result if isinstance(result, dict) else None
 
     def job_env(self, file: Path, job_id: str) -> dict[str, str]:
         """Extract job environment variables."""
@@ -395,16 +415,17 @@ class YqWrapper:
             return {str(k): str(v) for k, v in env.items()}
         return {}
 
-    def matrix_strategy(self, file: Path, job_id: str) -> dict | None:
+    def matrix_strategy(self, file: Path, job_id: str) -> dict[str, Any] | None:
         """Extract matrix strategy."""
-        return self.query(file, f".jobs.{job_id}.strategy")
+        result = self.query(file, f".jobs.{job_id}.strategy")
+        return result if isinstance(result, dict) else None
 
-    def matrix_include(self, file: Path, job_id: str) -> list[dict]:
+    def matrix_include(self, file: Path, job_id: str) -> list[dict[str, Any]]:
         """Extract matrix include entries."""
         result = self.query(file, f".jobs.{job_id}.strategy.matrix.include")
         return result if isinstance(result, list) else []
 
-    def matrix_entry(self, file: Path, job_id: str, index: int) -> dict:
+    def matrix_entry(self, file: Path, job_id: str, index: int) -> dict[str, Any]:
         """Extract specific matrix entry by *index*."""
         result = self.query(file, f".jobs.{job_id}.strategy.matrix.include[{index}]")
         return result if isinstance(result, dict) else {}
@@ -416,13 +437,13 @@ class YqWrapper:
 
     def matrix_filter_by_field(
         self, file: Path, job_id: str, field_name: str, value: str
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Filter matrix entries by a field value."""
         # For yq we can use select(); for fallback, use Python filtering
         entries = self.matrix_include(file, job_id)
         return [e for e in entries if str(e.get(field_name, "")) == value]
 
-    def steps(self, file: Path, job_id: str) -> list[dict]:
+    def steps(self, file: Path, job_id: str) -> list[dict[str, Any]]:
         """Extract job steps."""
         result = self.query(file, f".jobs.{job_id}.steps")
         return result if isinstance(result, list) else []

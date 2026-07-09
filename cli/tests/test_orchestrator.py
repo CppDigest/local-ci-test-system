@@ -1,14 +1,16 @@
 """Tests for parallel execution manager (Issue 7)."""
 
 import time
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from localci.core.executor import JobResult, JobStatus
-from localci.core.models import JobEventType
+from localci.core.models import JobEventType, QueuedJobStatus
 from localci.core.orchestrator import (
     ExecutionRun,
     OrchestratorConfig,
+    OrchestratorState,
     ParallelExecutionManager,
 )
 from localci.core.queue import PriorityJobQueue
@@ -286,3 +288,40 @@ class TestParallelExecutionManager:
         assert status["state"] in ("completed", "running")
         assert "total_jobs" in status
         assert "resources" in status
+
+    @patch("localci.core.orchestrator.ResourceMonitor")
+    @patch("localci.core.orchestrator.DockerManager")
+    @patch("localci.core.orchestrator.JobExecutor")
+    def test_dispatch_pool_none_marks_job_failed(
+        self, MockExecutor, MockDocker, MockMonitor, tmp_path
+    ):
+        mock_monitor = MockMonitor.return_value
+        mock_monitor.check_thresholds.return_value = (True, [])
+
+        queue = PriorityJobQueue()
+        job = make_job("GCC 15", priority=1)
+        queue.enqueue(job)
+
+        orchestrator = ParallelExecutionManager(
+            queue=queue,
+            workflow_file=Path("ci.yml"),
+            config=OrchestratorConfig(max_parallel=4),
+            logs_dir=tmp_path / "logs",
+        )
+        orchestrator._run = ExecutionRun(
+            execution_id="test",
+            started_at=datetime.now(),
+            state=OrchestratorState.RUNNING,
+        )
+        orchestrator._state = OrchestratorState.RUNNING
+        orchestrator._pool = None
+
+        orchestrator._dispatch_loop()
+
+        result = orchestrator._run.results[job.queue_key]
+        assert result.status == JobStatus.ERROR
+        assert result.error_message == "Orchestrator thread pool unavailable"
+        failed_jobs = queue.get_jobs_by_status(QueuedJobStatus.FAILED)
+        assert len(failed_jobs) == 1
+        assert failed_jobs[0].queue_key == job.queue_key
+        MockExecutor.return_value.run.assert_not_called()

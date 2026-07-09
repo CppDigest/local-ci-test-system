@@ -11,6 +11,7 @@ import platform
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,9 @@ class ResourceMonitor:
     """
 
     def __init__(self) -> None:
-        self._psutil: object | None = self._try_import_psutil()
+        self._psutil: Any = self._try_import_psutil()
 
-    def _try_import_psutil(self) -> object | None:
+    def _try_import_psutil(self) -> Any:
         try:
             import psutil
 
@@ -109,23 +110,23 @@ class ResourceMonitor:
         return ok, warnings
 
     def _get_cpu(self) -> float:
-        if self._psutil:
-            return self._psutil.cpu_percent(interval=0.1)
+        if self._psutil is not None:
+            return float(self._psutil.cpu_percent(interval=0.1))
         return 50.0
 
     def _get_memory(self) -> tuple[float, float]:
-        if self._psutil:
+        if self._psutil is not None:
             mem = self._psutil.virtual_memory()
-            return mem.percent, mem.available / (1024**3)
+            return float(mem.percent), mem.available / (1024**3)
         return 50.0, 8.0
 
     def _get_disk_free(self) -> float:
-        if self._psutil:
+        if self._psutil is not None:
             if platform.system() == "Windows":
                 usage = self._psutil.disk_usage("C:\\")
             else:
                 usage = self._psutil.disk_usage("/")
-            return usage.free / (1024**3)
+            return float(usage.free / (1024**3))
         return 50.0
 
     def _get_container_count(self) -> int:

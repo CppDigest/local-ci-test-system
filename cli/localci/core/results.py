@@ -10,6 +10,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from localci.core.executor import JobResult, JobStatus
 
@@ -151,7 +152,7 @@ class ExecutionSummary:
     # Persistence
     # -----------------------------------------------------------------
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict (JSON-safe)."""
         return {
             "execution_id": self.execution_id,
