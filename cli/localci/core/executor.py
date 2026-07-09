@@ -146,7 +146,32 @@ class JobResult:
 class ActCommand:
     """Builder for ``act`` CLI command.
 
-    Constructs the full command-line invocation for act.
+    Constructs the full command-line invocation for act. :meth:`build` is pure:
+    it only reads ``self`` to assemble an argv list.
+
+    **Executor mutation contract.** When passed to :meth:`JobExecutor.run`, the
+    executor mutates this instance in place during
+    :meth:`JobExecutor._execute_process`:
+
+    * :attr:`env_file` and :attr:`_executor_owned_env_file` are set when
+      :attr:`env` is non-empty (a ``0600`` temp file is created).
+    * When materializing that file, if a caller-supplied, unowned
+      :attr:`env_file` already exists on disk, its contents are copied into
+      the new temp file before :attr:`env` entries are written; the original
+      caller file is left on disk.
+    * :attr:`secret_file` and :attr:`_executor_owned_secret_file` are set when
+      :attr:`secrets` is non-empty (a ``0600`` temp file is created).
+
+    The ownership flags tell :meth:`JobExecutor._cleanup_temp_files` (called from
+    :meth:`JobExecutor.run`'s ``finally`` block) which temp files the executor
+    created and must delete. Caller-provided ``env_file`` / ``secret_file`` paths
+    without the ownership flag are left on disk.
+
+    **Single-use per execution.** Build a fresh :class:`ActCommand` for each
+    call to :meth:`JobExecutor.run`. Reusing the same instance across runs is
+    unsupported: stale paths, ownership flags, and merged env state from a prior
+    run produce undefined behavior. Sharing one instance across concurrent
+    executions is likewise unsupported.
     """
 
     # Required
@@ -440,6 +465,15 @@ class JobExecutor:
         -------
         JobResult
             Complete execution result with status, output, and timing.
+
+        Notes
+        -----
+        Mutates *cmd* in place: :meth:`_execute_process` writes
+        :attr:`ActCommand.env_file` / :attr:`ActCommand.secret_file` and the
+        ``_executor_owned_*`` flags on the passed-in instance. Temp files the
+        executor creates are removed in this method's ``finally`` block via
+        :meth:`_cleanup_temp_files`. See :class:`ActCommand` for the full
+        mutation contract.
         """
         result = JobResult(
             job_id=cmd.job_id,
@@ -550,6 +584,13 @@ class JobExecutor:
         ``--secret-file`` (paths only on argv). Workflow ``${{ secrets.* }}`` uses
         the secret file; :attr:`ActCommand.secrets` is also injected into the
         subprocess environment for act's GitHub auth.
+
+        **Mutates *act_cmd* in place.** When :attr:`ActCommand.env` or
+        :attr:`ActCommand.secrets` is non-empty, this method creates temp files
+        and sets :attr:`ActCommand.env_file` / :attr:`ActCommand.secret_file`
+        plus the corresponding ``_executor_owned_*`` flags on *act_cmd*. The
+        caller's object is the cleanup target for :meth:`_cleanup_temp_files`.
+        Do not reuse *act_cmd* across calls; see :class:`ActCommand`.
 
         Returns ``(exit_code, stdout, stderr)``.
         """
