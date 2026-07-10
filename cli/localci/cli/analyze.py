@@ -13,7 +13,8 @@ import yaml
 
 from localci.cli.list import _MATRIX_TABLE_COLUMNS, _PLATFORM_COLOR
 from localci.core.serialization import workflow_summary, workflow_to_json
-from localci.core.workflow import Workflow, WorkflowAnalyzer, WorkflowError
+from localci.core.workflow import Workflow, WorkflowAnalyzer
+from localci.errors import WorkflowError
 from localci.utils.output import (
     console,
     make_table,
@@ -39,7 +40,7 @@ def _print_workflow_header(wf: Workflow) -> None:
     console.print()
 
 
-def _print_jobs_table(wf) -> None:
+def _print_jobs_table(wf: Workflow) -> None:
     """Print summary of all jobs."""
     table = make_table(
         "#", "Job ID", "Matrix", "Steps", "Depends On", "Timeout", title="Jobs"
@@ -84,7 +85,7 @@ def _print_matrix_table(wf: Workflow) -> None:
     console.print()
 
 
-def _print_platform_summary(wf) -> None:
+def _print_platform_summary(wf: Workflow) -> None:
     """Print platform breakdown."""
     summary = wf.platform_summary()
     if not summary:

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import click
 
+from localci.core.executor import JobResult
 from localci.core.results import ExecutionSummary
 from localci.utils.output import (
     console,
@@ -151,7 +152,7 @@ def logs(
     click.echo(content)
 
 
-def _find_job(summary: ExecutionSummary, query: str):
+def _find_job(summary: ExecutionSummary, query: str) -> JobResult | None:
     """Find a job by index or name.
 
     Matching priority:

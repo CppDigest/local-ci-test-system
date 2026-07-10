@@ -15,8 +15,8 @@ from localci.core.workflow import (
     CompilerFamily,
     Platform,
     WorkflowAnalyzer,
-    WorkflowError,
 )
+from localci.errors import WorkflowError
 from localci.utils.output import (
     console,
     make_table,

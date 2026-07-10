@@ -42,10 +42,7 @@ markers = [
 ]
 norecursedirs = ["integration"]
 
-# Mypy baseline: legacy CLI modules suppressed via per-module ignore_errors
-# overrides below. localci.core.* and localci.utils.* pass strict mypy with
-# zero errors. New modules must not use ignore_errors; remove overrides as
-# legacy CLI modules are typed.
+# Mypy: strict mode for all localci packages (core, utils, cli).
 [tool.mypy]
 python_version = "3.10"
 strict = true
@@ -53,19 +50,6 @@ warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 packages = ["localci"]
-
-[[tool.mypy.overrides]]
-module = [
-    "localci.cli.analyze",
-    "localci.cli.config",
-    "localci.cli.list",
-    "localci.cli.logs",
-    "localci.cli.run.click_options",
-    "localci.cli.run.patcher",
-    "localci.cli.run.run_flow",
-    "localci.cli.status",
-]
-ignore_errors = true
 
 [tool.ruff]
 target-version = "py310"
