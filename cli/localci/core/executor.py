@@ -207,7 +207,7 @@ class ActCommand:
 
     # Event
     event_file: Path | None = None
-    _executor_owned_event_file: bool = field(default=False, repr=False)
+    _executor_owned_event_file: bool = field(default=False, init=False, repr=False)
 
     # Container
     container_architecture: str | None = None
