@@ -60,8 +60,6 @@ def sample_config() -> LocalCIConfig:
 
 
 class TestResolveMatrixFilters:
-    """CLI ``--matrix`` replaces (shadows) config ``matrix.include``; it does not merge."""
-
     def test_cli_matrix_shadows_config_include(self) -> None:
         cfg = LocalCIConfig(
             workflow=SAMPLE_WORKFLOW,
@@ -90,7 +88,7 @@ class TestResolveMatrixFilters:
         ]
         assert matrix_exclude is None
 
-    def test_matrix_exclude_always_from_config(self) -> None:
+    def test_matrix_exclude_from_config(self) -> None:
         cfg = LocalCIConfig(
             workflow=SAMPLE_WORKFLOW,
             matrix=MatrixConfig(

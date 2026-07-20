@@ -161,9 +161,8 @@ class ActCommand:
       caller file is left on disk.
     * :attr:`secret_file` and :attr:`_executor_owned_secret_file` are set when
       :attr:`secrets` is non-empty (a ``0600`` temp file is created).
-    * :attr:`event_file` and :attr:`_executor_owned_event_file` are set when
-      :class:`~localci.core.command_builder.ActCommandBuilder` creates the
-      default event payload temp file.
+    * :attr:`event_file` and :attr:`_executor_owned_event_file` are set by
+      :class:`~localci.core.command_builder.ActCommandBuilder`.
 
     The ownership flags tell :meth:`JobExecutor._cleanup_temp_files` (called from
     :meth:`JobExecutor.run`'s ``finally`` block) which temp files the executor
@@ -205,10 +204,10 @@ class ActCommand:
     secret_file: Path | None = None
     _executor_owned_env_file: bool = field(default=False, repr=False)
     _executor_owned_secret_file: bool = field(default=False, repr=False)
-    _executor_owned_event_file: bool = field(default=False, repr=False)
 
     # Event
     event_file: Path | None = None
+    _executor_owned_event_file: bool = field(default=False, repr=False)
 
     # Container
     container_architecture: str | None = None
@@ -779,27 +778,13 @@ class JobExecutor:
     @staticmethod
     def _cleanup_temp_files(cmd: ActCommand | None) -> None:
         """Remove temporary files created during execution."""
-        if (
-            cmd
-            and cmd._executor_owned_event_file
-            and cmd.event_file
-            and cmd.event_file.exists()
+        if not cmd:
+            return
+        for owned, path in (
+            (cmd._executor_owned_event_file, cmd.event_file),
+            (cmd._executor_owned_env_file, cmd.env_file),
+            (cmd._executor_owned_secret_file, cmd.secret_file),
         ):
-            with suppress(OSError):
-                cmd.event_file.unlink()
-        if (
-            cmd
-            and cmd._executor_owned_env_file
-            and cmd.env_file
-            and cmd.env_file.exists()
-        ):
-            with suppress(OSError):
-                cmd.env_file.unlink()
-        if (
-            cmd
-            and cmd._executor_owned_secret_file
-            and cmd.secret_file
-            and cmd.secret_file.exists()
-        ):
-            with suppress(OSError):
-                cmd.secret_file.unlink()
+            if owned and path and path.exists():
+                with suppress(OSError):
+                    path.unlink()

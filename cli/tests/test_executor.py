@@ -813,7 +813,7 @@ class TestJobExecutor:
                 on_output=None,
             )
 
-    def test_cleanup_temp_files_preserves_caller_owned_paths(self, tmp_path):
+    def test_cleanup_temp_files_skips_unowned(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")
         secret = tmp_path / "secrets.env"

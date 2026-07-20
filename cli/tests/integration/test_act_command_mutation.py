@@ -108,6 +108,4 @@ def test_act_command_mutation_and_cleanup(
         "executor-owned secret file must be removed after run"
     )
     assert cmd.event_file is not None
-    assert not cmd.event_file.exists(), (
-        "executor-owned event file must be removed after run"
-    )
+    assert not cmd.event_file.exists()
