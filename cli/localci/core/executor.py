@@ -161,11 +161,14 @@ class ActCommand:
       caller file is left on disk.
     * :attr:`secret_file` and :attr:`_executor_owned_secret_file` are set when
       :attr:`secrets` is non-empty (a ``0600`` temp file is created).
+    * :attr:`event_file` and :attr:`_executor_owned_event_file` are set when
+      :class:`~localci.core.command_builder.ActCommandBuilder` creates the
+      default event payload temp file.
 
     The ownership flags tell :meth:`JobExecutor._cleanup_temp_files` (called from
     :meth:`JobExecutor.run`'s ``finally`` block) which temp files the executor
-    created and must delete. Caller-provided ``env_file`` / ``secret_file`` paths
-    without the ownership flag are left on disk.
+    created and must delete. Caller-provided ``env_file`` / ``secret_file`` /
+    ``event_file`` paths without the ownership flag are left on disk.
 
     **Single-use per execution.** Build a fresh :class:`ActCommand` for each
     call to :meth:`JobExecutor.run`. Reusing the same instance across runs is
@@ -202,6 +205,7 @@ class ActCommand:
     secret_file: Path | None = None
     _executor_owned_env_file: bool = field(default=False, repr=False)
     _executor_owned_secret_file: bool = field(default=False, repr=False)
+    _executor_owned_event_file: bool = field(default=False, repr=False)
 
     # Event
     event_file: Path | None = None
@@ -775,7 +779,12 @@ class JobExecutor:
     @staticmethod
     def _cleanup_temp_files(cmd: ActCommand | None) -> None:
         """Remove temporary files created during execution."""
-        if cmd and cmd.event_file and cmd.event_file.exists():
+        if (
+            cmd
+            and cmd._executor_owned_event_file
+            and cmd.event_file
+            and cmd.event_file.exists()
+        ):
             with suppress(OSError):
                 cmd.event_file.unlink()
         if (
