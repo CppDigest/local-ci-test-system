@@ -26,6 +26,7 @@ from localci.core.workflow import (
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "patcher"
 PATCH_LOGGER = "localci.core.patch_pipeline"
+CAPY_CONFIG = LocalCIConfig(patches=PatchesConfig(profile="capy"))
 
 
 def _assert_skip_warning(caplog, step_name: str, reason_fragment: str) -> None:
@@ -125,6 +126,7 @@ def patcher_paths():
         patched = _write_patched_workflow(
             workflow_path,
             entry or _make_entry(),
+            config=kwargs.pop("config", CAPY_CONFIG),
             **kwargs,
         )
         paths.append(patched)

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from localci.cli.run import _write_patched_workflow
+from localci.core.config import LocalCIConfig, PatchesConfig
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -20,6 +21,7 @@ from localci.core.workflow import (
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 CAPY_WORKFLOW = FIXTURES_DIR / "capy" / ".github" / "workflows" / "ci.yml"
+CAPY_CONFIG = LocalCIConfig(patches=PatchesConfig(profile="capy"))
 
 
 @pytest.fixture
@@ -65,6 +67,7 @@ def patched_workflow(capy_workflow_path, sample_entry):
             image_tag=image_tag,
             job_id=job_id,
             container_mount_options=container_mount_options,
+            config=CAPY_CONFIG,
         )
         paths.append(p)
         return p

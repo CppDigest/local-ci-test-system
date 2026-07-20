@@ -27,9 +27,17 @@ PIPELINE_WORKFLOW = FIXTURES_DIR / "patcher" / "pipeline_minimal.yml"
 GENERIC_CPP_WORKFLOW = FIXTURES_DIR / "patcher" / "generic_cpp.yml"
 
 
+def _capy_config() -> LocalCIConfig:
+    return LocalCIConfig(patches=PatchesConfig(profile="capy"))
+
+
 def _generic_project_config() -> LocalCIConfig:
     return LocalCIConfig(
         patches=PatchesConfig(
+            b2_source_cache=True,
+            restore_capy_timestamps=True,
+            capy_copy_preservation=True,
+            b2_bootstrap_skip=True,
             project=PatchProjectConfig(
                 boost_source_copy_command="cp -rL dep-source dep-root",
                 boost_root_dir="dep-root",
@@ -41,7 +49,7 @@ def _generic_project_config() -> LocalCIConfig:
                 workspace_libs_copy_dest="vendor/$pkg",
                 b2_workflow_action_marker="build-workflow",
                 cached_module_libs_path="vendor/mylib",
-            )
+            ),
         )
     )
 
@@ -70,14 +78,29 @@ def workflow_path() -> Path:
     return PIPELINE_WORKFLOW
 
 
-def test_pipeline_default_enables_all_steps(workflow_path, sample_entry) -> None:
-    """Default config runs the full patch pipeline (baseline behaviour)."""
-    patched = _write_patched_workflow(workflow_path, sample_entry)
+def test_pipeline_capy_profile_enables_all_steps(workflow_path, sample_entry) -> None:
+    """Capy profile runs the full patch pipeline (Boost.Capy baseline behaviour)."""
+    patched = _write_patched_workflow(
+        workflow_path, sample_entry, config=_capy_config()
+    )
     try:
         content = patched.read_text()
         assert "LOCALCI_B2_SOURCE_DIR" in content
         assert "Restore capy source file timestamps" in content
         assert "Skip b2 bootstrap" in content
+    finally:
+        patched.unlink(missing_ok=True)
+
+
+def test_pipeline_generic_default_skips_capy_steps(workflow_path, sample_entry) -> None:
+    """Default generic profile does not apply Capy/B2-specific patches."""
+    patched = _write_patched_workflow(workflow_path, sample_entry)
+    try:
+        content = patched.read_text()
+        assert "LOCALCI_B2_SOURCE_DIR" not in content
+        assert "Restore capy source file timestamps" not in content
+        assert "Skip b2 bootstrap" not in content
+        assert "cp -rL boost-source boost-root" in content
     finally:
         patched.unlink(missing_ok=True)
 
@@ -136,6 +159,7 @@ def test_pipeline_custom_order() -> None:
     """Custom order lists all enabled steps in the requested sequence."""
     cfg = LocalCIConfig(
         patches=PatchesConfig(
+            profile="capy",
             order=[
                 "codecov_skip",
                 "b2_source_cache",
@@ -144,7 +168,7 @@ def test_pipeline_custom_order() -> None:
                 "b2_bootstrap_skip",
                 "container_mounts",
                 "image_substitution",
-            ]
+            ],
         )
     )
     pipeline = PatchPipeline.from_config(cfg)
@@ -201,7 +225,7 @@ def test_from_config_raises_when_step_missing_from_registry(
         lambda: incomplete,
     )
     with pytest.raises(ValueError, match="b2_source_cache"):
-        PatchPipeline.from_config(LocalCIConfig())
+        PatchPipeline.from_config(LocalCIConfig(patches=PatchesConfig(profile="capy")))
 
 
 def test_patches_config_rejects_enabled_step_missing_from_order() -> None:

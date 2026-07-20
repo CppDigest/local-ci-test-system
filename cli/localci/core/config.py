@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
@@ -196,10 +196,30 @@ PATCH_STEP_NAMES: tuple[str, ...] = (
 )
 
 
+PatchProfile = Literal["generic", "capy"]
+
+CAPY_REPO_FULL_NAME = "cppalliance/capy"
+CAPY_NATIVE_IMAGE_PREFIX = "capy-"
+GENERIC_REPO_FULL_NAME = ""
+GENERIC_NATIVE_IMAGE_PREFIX = ""
+
+# Backward-compatible aliases for Capy-oriented call sites.
+DEFAULT_REPO_FULL_NAME = CAPY_REPO_FULL_NAME
+DEFAULT_NATIVE_IMAGE_PREFIX = CAPY_NATIVE_IMAGE_PREFIX
+
+_CAPY_PATCH_STEPS: tuple[str, ...] = (
+    "b2_source_cache",
+    "restore_capy_timestamps",
+    "capy_copy_preservation",
+    "b2_bootstrap_skip",
+)
+
+
 class PatchProjectConfig(BaseModel):
     """Project-specific literals for C++/Boost-oriented patch steps.
 
-    Defaults preserve Boost.Capy workflow behaviour. Override for other projects.
+    Defaults preserve Boost.Capy workflow behaviour when ``patches.profile`` is
+    ``capy``. Override for other projects.
     """
 
     boost_source_copy_command: str = "cp -rL boost-source boost-root"
@@ -217,16 +237,29 @@ class PatchProjectConfig(BaseModel):
 class PatchesConfig(BaseModel):
     """Workflow patch pipeline settings (enable/disable individual patch types)."""
 
+    profile: PatchProfile = "generic"
     container_mounts: bool = True
-    b2_source_cache: bool = True
-    restore_capy_timestamps: bool = True
-    capy_copy_preservation: bool = True
-    b2_bootstrap_skip: bool = True
+    b2_source_cache: bool = False
+    restore_capy_timestamps: bool = False
+    capy_copy_preservation: bool = False
+    b2_bootstrap_skip: bool = False
     image_substitution: bool = True
     codecov_skip: bool = True
     order: list[str] | None = None
     project: PatchProjectConfig = Field(default_factory=PatchProjectConfig)
     extra_steps: dict[str, bool] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def apply_profile_defaults(cls, data: Any) -> Any:
+        """Enable Capy patch steps when ``profile: capy`` unless explicitly set."""
+        if not isinstance(data, dict):
+            return data
+        if data.get("profile") != "capy":
+            return data
+        for step in _CAPY_PATCH_STEPS:
+            data.setdefault(step, True)
+        return data
 
     @field_validator("extra_steps")
     @classmethod
@@ -271,7 +304,7 @@ class PatchesConfig(BaseModel):
     def validate_order_completeness(self) -> PatchesConfig:
         if self.order is None:
             return self
-        enabled = {n for n in PATCH_STEP_NAMES if getattr(self, n, True)}
+        enabled = {n for n in PATCH_STEP_NAMES if self.is_step_enabled(n)}
         enabled |= {n for n, on in self.extra_steps.items() if on}
         missing = enabled - set(self.order)
         if missing:
@@ -297,15 +330,11 @@ class PatchesConfig(BaseModel):
         return order
 
 
-DEFAULT_REPO_FULL_NAME = "cppalliance/capy"
-DEFAULT_NATIVE_IMAGE_PREFIX = "capy-"
-
-
 class ProjectConfig(BaseModel):
     """Project identity and image conventions for act command building."""
 
-    repo_full_name: str = DEFAULT_REPO_FULL_NAME
-    native_image_prefix: str = DEFAULT_NATIVE_IMAGE_PREFIX
+    repo_full_name: str = GENERIC_REPO_FULL_NAME
+    native_image_prefix: str = GENERIC_NATIVE_IMAGE_PREFIX
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +344,32 @@ class ProjectConfig(BaseModel):
 
 class LocalCIConfig(BaseModel):
     """Root configuration model for .localci.yml."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def apply_capy_project_defaults(cls, data: Any) -> Any:
+        """Restore Capy project identity when ``patches.profile`` is ``capy``."""
+        if not isinstance(data, dict):
+            return data
+        patches = data.get("patches")
+        profile = (
+            patches.get("profile")
+            if isinstance(patches, dict)
+            else getattr(patches, "profile", None)
+        )
+        if profile != "capy":
+            return data
+        project = data.get("project")
+        if project is None:
+            data["project"] = {
+                "repo_full_name": CAPY_REPO_FULL_NAME,
+                "native_image_prefix": CAPY_NATIVE_IMAGE_PREFIX,
+            }
+            return data
+        if isinstance(project, dict):
+            project.setdefault("repo_full_name", CAPY_REPO_FULL_NAME)
+            project.setdefault("native_image_prefix", CAPY_NATIVE_IMAGE_PREFIX)
+        return data
 
     version: int = 1
     workflow: Path = Field(

@@ -14,8 +14,8 @@ import tempfile
 from pathlib import Path
 
 from localci.core.config import (
-    DEFAULT_NATIVE_IMAGE_PREFIX,
-    DEFAULT_REPO_FULL_NAME,
+    GENERIC_NATIVE_IMAGE_PREFIX,
+    GENERIC_REPO_FULL_NAME,
     CacheConfig,
     ResolvedCachePaths,
 )
@@ -67,8 +67,14 @@ class ActCommandBuilder:
         self.workflow_file = workflow_file
         self.project_dir = project_dir
         self.job_id = job_id
-        self.repo_full_name = repo_full_name or DEFAULT_REPO_FULL_NAME
-        self.native_image_prefix = native_image_prefix or DEFAULT_NATIVE_IMAGE_PREFIX
+        self.repo_full_name = (
+            GENERIC_REPO_FULL_NAME if repo_full_name is None else repo_full_name
+        )
+        self.native_image_prefix = (
+            GENERIC_NATIVE_IMAGE_PREFIX
+            if native_image_prefix is None
+            else native_image_prefix
+        )
         self.default_env = default_env or {}
         self.default_secrets = default_secrets or {}
         self.offline = offline
@@ -193,10 +199,14 @@ class ActCommandBuilder:
         # (e.g. ubuntu:24.04). Project-specific native images (e.g. capy x86)
         # are amd64 with multilib, so we must not request 386 when using them.
         container_arch: str | None = None
-        if entry.architecture == "x86" and (
-            not image_tag or not str(image_tag).startswith(self.native_image_prefix)
-        ):
-            container_arch = "linux/386"
+        if entry.architecture == "x86":
+            uses_native_image = (
+                bool(self.native_image_prefix)
+                and bool(image_tag)
+                and str(image_tag).startswith(self.native_image_prefix)
+            )
+            if not uses_native_image:
+                container_arch = "linux/386"
 
         # Event file
         event_file = self._create_event_file()
