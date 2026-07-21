@@ -11,8 +11,11 @@ import yaml
 from pydantic import ValidationError
 
 from localci.core.config import (
+    CAPY_NATIVE_IMAGE_PREFIX,
+    CAPY_REPO_FULL_NAME,
     CacheConfig,
     LocalCIConfig,
+    PatchesConfig,
     default_config_yaml,
     find_config_file,
     load_config,
@@ -44,6 +47,50 @@ class TestDefaultConfig:
         assert cfg.workflow.is_absolute()
         assert cfg.workflow.name == "ci.yml"
         assert ".github" in cfg.workflow.parts and "workflows" in cfg.workflow.parts
+
+    def test_generic_profile_patch_defaults(self):
+        cfg = LocalCIConfig()
+        assert cfg.patches.profile == "generic"
+        assert cfg.patches.container_mounts is True
+        assert cfg.patches.image_substitution is True
+        assert cfg.patches.codecov_skip is True
+        assert cfg.patches.b2_source_cache is False
+        assert cfg.patches.restore_capy_timestamps is False
+        assert cfg.patches.capy_copy_preservation is False
+        assert cfg.patches.b2_bootstrap_skip is False
+
+    def test_generic_profile_project_defaults(self):
+        cfg = LocalCIConfig()
+        assert cfg.project.repo_full_name == ""
+        assert cfg.project.native_image_prefix == ""
+
+    def test_capy_profile_restores_patch_and_project_defaults(self):
+        cfg = LocalCIConfig(patches=PatchesConfig(profile="capy"))
+        assert cfg.patches.profile == "capy"
+        assert cfg.patches.b2_source_cache is True
+        assert cfg.patches.restore_capy_timestamps is True
+        assert cfg.patches.capy_copy_preservation is True
+        assert cfg.patches.b2_bootstrap_skip is True
+        assert cfg.project.repo_full_name == CAPY_REPO_FULL_NAME
+        assert cfg.project.native_image_prefix == CAPY_NATIVE_IMAGE_PREFIX
+
+    def test_capy_profile_applies_project_defaults_to_project_config_instance(self):
+        from localci.core.config import ProjectConfig
+
+        cfg = LocalCIConfig(
+            patches=PatchesConfig(profile="capy"),
+            project=ProjectConfig(),
+        )
+        assert cfg.project.repo_full_name == CAPY_REPO_FULL_NAME
+        assert cfg.project.native_image_prefix == CAPY_NATIVE_IMAGE_PREFIX
+
+    def test_capy_profile_yaml_round_trip(self, tmp_path):
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("patches:\n  profile: capy\n")
+        cfg = load_config(cfg_file)
+        assert cfg.patches.profile == "capy"
+        assert cfg.patches.b2_source_cache is True
+        assert cfg.project.repo_full_name == CAPY_REPO_FULL_NAME
 
 
 # ---------------------------------------------------------------------------

@@ -27,9 +27,17 @@ PIPELINE_WORKFLOW = FIXTURES_DIR / "patcher" / "pipeline_minimal.yml"
 GENERIC_CPP_WORKFLOW = FIXTURES_DIR / "patcher" / "generic_cpp.yml"
 
 
+def _capy_config() -> LocalCIConfig:
+    return LocalCIConfig(patches=PatchesConfig(profile="capy"))
+
+
 def _generic_project_config() -> LocalCIConfig:
     return LocalCIConfig(
         patches=PatchesConfig(
+            b2_source_cache=True,
+            restore_capy_timestamps=True,
+            capy_copy_preservation=True,
+            b2_bootstrap_skip=True,
             project=PatchProjectConfig(
                 boost_source_copy_command="cp -rL dep-source dep-root",
                 boost_root_dir="dep-root",
@@ -41,7 +49,7 @@ def _generic_project_config() -> LocalCIConfig:
                 workspace_libs_copy_dest="vendor/$pkg",
                 b2_workflow_action_marker="build-workflow",
                 cached_module_libs_path="vendor/mylib",
-            )
+            ),
         )
     )
 
@@ -70,72 +78,99 @@ def workflow_path() -> Path:
     return PIPELINE_WORKFLOW
 
 
-def test_pipeline_default_enables_all_steps(workflow_path, sample_entry) -> None:
-    """Default config runs the full patch pipeline (baseline behaviour)."""
-    patched = _write_patched_workflow(workflow_path, sample_entry)
-    try:
-        content = patched.read_text()
-        assert "LOCALCI_B2_SOURCE_DIR" in content
-        assert "Restore capy source file timestamps" in content
-        assert "Skip b2 bootstrap" in content
-    finally:
-        patched.unlink(missing_ok=True)
+@pytest.fixture
+def patched_workflow(workflow_path: Path, sample_entry: MatrixEntry):
+    """Write patched workflow with optional args; yield writer; unlink on teardown."""
+    paths: list[Path] = []
+
+    def _write(
+        workflow: Path | None = None,
+        entry: MatrixEntry | None = None,
+        *,
+        image_tag: str | None = None,
+        job_id: str | None = None,
+        container_mount_options: str | None = None,
+        config: LocalCIConfig | None = None,
+    ) -> Path:
+        patched = _write_patched_workflow(
+            workflow or workflow_path,
+            entry or sample_entry,
+            image_tag=image_tag,
+            job_id=job_id,
+            container_mount_options=container_mount_options,
+            config=config,
+        )
+        paths.append(patched)
+        return patched
+
+    yield _write
+    for path in paths:
+        path.unlink(missing_ok=True)
 
 
-def test_pipeline_disable_b2_patches(workflow_path, sample_entry) -> None:
+def test_pipeline_capy_profile_enables_all_steps(patched_workflow) -> None:
+    """Capy profile runs the full patch pipeline (Boost.Capy baseline behaviour)."""
+    content = patched_workflow(config=_capy_config()).read_text()
+    assert "LOCALCI_B2_SOURCE_DIR" in content
+    assert "Restore capy source file timestamps" in content
+    assert "Skip b2 bootstrap" in content
+    assert 'cp -rp "$workspace_root"/capy-root "libs/$module"' in content
+    assert 'cp -r "$workspace_root"' not in content
+
+
+def test_pipeline_generic_default_skips_capy_steps(patched_workflow) -> None:
+    """Default generic profile does not apply Capy/B2-specific patches."""
+    content = patched_workflow().read_text()
+    assert "LOCALCI_B2_SOURCE_DIR" not in content
+    assert "Restore capy source file timestamps" not in content
+    assert "Skip b2 bootstrap" not in content
+    assert "cp -rL boost-source boost-root" in content
+    assert 'cp -r "$workspace_root"/capy-root "libs/$module"' in content
+    assert 'cp -rp "$workspace_root"/capy-root "libs/$module"' not in content
+
+
+def test_pipeline_disable_b2_patches(patched_workflow) -> None:
     """Disabling b2-related patches leaves the workflow unchanged for those steps."""
     cfg = LocalCIConfig(
         patches=PatchesConfig(
+            profile="capy",
             b2_source_cache=False,
             restore_capy_timestamps=False,
             capy_copy_preservation=False,
             b2_bootstrap_skip=False,
         )
     )
-    patched = _write_patched_workflow(workflow_path, sample_entry, config=cfg)
-    try:
-        content = patched.read_text()
-        assert "LOCALCI_B2_SOURCE_DIR" not in content
-        assert "Restore capy source file timestamps" not in content
-        assert "Skip b2 bootstrap" not in content
-        assert "cp -rL boost-source boost-root" in content
-    finally:
-        patched.unlink(missing_ok=True)
+    content = patched_workflow(config=cfg).read_text()
+    assert "LOCALCI_B2_SOURCE_DIR" not in content
+    assert "Restore capy source file timestamps" not in content
+    assert "Skip b2 bootstrap" not in content
+    assert "cp -rL boost-source boost-root" in content
 
 
-def test_pipeline_disable_container_mounts(workflow_path, sample_entry) -> None:
+def test_pipeline_disable_container_mounts(patched_workflow) -> None:
     mounts = "-v /host/boost:/tmp/localci-cache/boost"
     mount_fragment = "/host/boost:/tmp/localci-cache/boost"
 
-    patched_enabled = _write_patched_workflow(
-        workflow_path,
-        sample_entry,
+    patched_enabled = patched_workflow(
         job_id="build",
         container_mount_options=mounts,
         config=LocalCIConfig(patches=PatchesConfig(container_mounts=True)),
     )
-    try:
-        assert mount_fragment in patched_enabled.read_text()
-    finally:
-        patched_enabled.unlink(missing_ok=True)
+    assert mount_fragment in patched_enabled.read_text()
 
-    patched_disabled = _write_patched_workflow(
-        workflow_path,
-        sample_entry,
+    patched_disabled = patched_workflow(
         job_id="build",
         container_mount_options=mounts,
         config=LocalCIConfig(patches=PatchesConfig(container_mounts=False)),
     )
-    try:
-        assert mount_fragment not in patched_disabled.read_text()
-    finally:
-        patched_disabled.unlink(missing_ok=True)
+    assert mount_fragment not in patched_disabled.read_text()
 
 
 def test_pipeline_custom_order() -> None:
     """Custom order lists all enabled steps in the requested sequence."""
     cfg = LocalCIConfig(
         patches=PatchesConfig(
+            profile="capy",
             order=[
                 "codecov_skip",
                 "b2_source_cache",
@@ -144,7 +179,7 @@ def test_pipeline_custom_order() -> None:
                 "b2_bootstrap_skip",
                 "container_mounts",
                 "image_substitution",
-            ]
+            ],
         )
     )
     pipeline = PatchPipeline.from_config(cfg)
@@ -201,7 +236,7 @@ def test_from_config_raises_when_step_missing_from_registry(
         lambda: incomplete,
     )
     with pytest.raises(ValueError, match="b2_source_cache"):
-        PatchPipeline.from_config(LocalCIConfig())
+        PatchPipeline.from_config(LocalCIConfig(patches=PatchesConfig(profile="capy")))
 
 
 def test_patches_config_rejects_enabled_step_missing_from_order() -> None:
@@ -240,27 +275,21 @@ def test_patch_step_skip_emits_warning(sample_entry: MatrixEntry, caplog) -> Non
 
 
 def test_generic_cpp_workflow_patches_with_project_config(
-    sample_entry: MatrixEntry,
+    patched_workflow,
 ) -> None:
     """Non-Boost workflow patches through configurable project literals."""
     assert GENERIC_CPP_WORKFLOW.is_file()
-    patched = _write_patched_workflow(
-        GENERIC_CPP_WORKFLOW,
-        sample_entry,
-        config=_generic_project_config(),
-    )
-    try:
-        content = patched.read_text()
-        assert "LOCALCI_B2_SOURCE_DIR" in content
-        assert "Restore mylib source file timestamps" in content
-        assert ".mylib-file-stats" in content
-        assert 'cp -rp "$workspace_root"/mylib-root "vendor/$pkg"' in content
-        assert "Skip b2 bootstrap" in content
-        assert "dep-root" in content
-        assert "boost-source" not in content
-        assert "capy-root" not in content
-    finally:
-        patched.unlink(missing_ok=True)
+    content = patched_workflow(
+        GENERIC_CPP_WORKFLOW, config=_generic_project_config()
+    ).read_text()
+    assert "LOCALCI_B2_SOURCE_DIR" in content
+    assert "Restore mylib source file timestamps" in content
+    assert ".mylib-file-stats" in content
+    assert 'cp -rp "$workspace_root"/mylib-root "vendor/$pkg"' in content
+    assert "Skip b2 bootstrap" in content
+    assert "dep-root" in content
+    assert "boost-source" not in content
+    assert "capy-root" not in content
 
 
 class _MarkerPluginStep(PatchStep):
@@ -275,8 +304,7 @@ class _MarkerPluginStep(PatchStep):
 
 
 def test_custom_plugin_step_via_registry(
-    workflow_path: Path,
-    sample_entry: MatrixEntry,
+    patched_workflow,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Entry-point-registered steps can be enabled via extra_steps."""
@@ -302,16 +330,12 @@ def test_custom_plugin_step_via_registry(
             order=["marker_plugin"],
         )
     )
-    patched = _write_patched_workflow(workflow_path, sample_entry, config=cfg)
-    try:
-        assert patched.read_text().startswith("# patched by marker_plugin\n")
-    finally:
-        patched.unlink(missing_ok=True)
+    content = patched_workflow(config=cfg).read_text()
+    assert content.startswith("# patched by marker_plugin\n")
 
 
 def test_custom_plugin_step_runs_without_explicit_order(
-    workflow_path: Path,
-    sample_entry: MatrixEntry,
+    patched_workflow,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Enabled extra_steps append to the default built-in order when order is omitted."""
@@ -336,11 +360,8 @@ def test_custom_plugin_step_runs_without_explicit_order(
             extra_steps={"marker_plugin": True},
         )
     )
-    patched = _write_patched_workflow(workflow_path, sample_entry, config=cfg)
-    try:
-        assert patched.read_text().startswith("# patched by marker_plugin\n")
-    finally:
-        patched.unlink(missing_ok=True)
+    content = patched_workflow(config=cfg).read_text()
+    assert content.startswith("# patched by marker_plugin\n")
 
 
 def test_extra_steps_rejects_unknown_plugin() -> None:
