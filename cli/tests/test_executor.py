@@ -1241,16 +1241,20 @@ class TestDockerManager:
 
         dm = DockerManager()
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="abc123\ndef456\n")
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="abc123\tact-runner-1\ndef456\tact-runner-2\n",
+        )
         count = dm.cleanup_act_containers(session_id="sess1")
         assert count == 2
         ps_call = mock_run.call_args_list[1]
         assert f"label={LOCALCI_SESSION_LABEL_KEY}=sess1" in ps_call[0][0]
+        assert "name=act-" not in ps_call[0][0]
 
     @patch("subprocess.run")
     @patch("shutil.which")
     def test_cleanup_act_containers_decoy_survives(self, mock_which, mock_run):
-        """Only session-labeled containers are returned by the scoped ps filter."""
+        """Session-labeled decoys without an act- name prefix are not removed."""
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
@@ -1258,7 +1262,10 @@ class TestDockerManager:
 
         dm = DockerManager()
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="labeled123\n")
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=("labeled123\tact-job-1\ndecoy456\tmy-act-decoy\n"),
+        )
         count = dm.cleanup_act_containers(session_id="sess1")
         assert count == 1
         rm_call = mock_run.call_args_list[-1]

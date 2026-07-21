@@ -30,6 +30,11 @@ def session_container_label_options(session_id: str) -> str:
     )
 
 
+def _is_act_container_name(name: str) -> bool:
+    """True when *name* is an act-managed container (starts with ``act-``)."""
+    return name.lstrip("/").startswith("act-")
+
+
 class DockerManager:
     """Manage Docker images and containers for local CI.
 
@@ -204,10 +209,9 @@ class DockerManager:
                 "ps",
                 "-a",
                 "--filter",
-                "name=act-",
-                "--filter",
                 f"label={LOCALCI_SESSION_LABEL_KEY}={session_id}",
-                "-q",
+                "--format",
+                "{{.ID}}\t{{.Names}}",
             ),
             capture_output=True,
             text=True,
@@ -217,9 +221,14 @@ class DockerManager:
         if result.returncode != 0 or not result.stdout.strip():
             return 0
 
-        container_ids = [
-            c.strip() for c in result.stdout.strip().split("\n") if c.strip()
-        ]
+        container_ids: list[str] = []
+        for line in result.stdout.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            container_id, _, name = line.partition("\t")
+            if container_id and name and _is_act_container_name(name):
+                container_ids.append(container_id.strip())
 
         if container_ids:
             subprocess.run(
