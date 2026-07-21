@@ -311,8 +311,8 @@ There is no CLI flag for `stop_on_first_failure`; set it in `.localci.yml` or wi
 | `priorities` | Override execution order (lower number runs first) |
 | `images` | Where Docker images are stored, auto-build, cleanup |
 | `cache` | ccache, Boost dependency, and CMake config caching |
-| `patches` | Enable/disable workflow patch steps; project literals; plugin steps |
-| `project` | Repository name and native image prefix for `act` command building |
+| `patches` | Patch profile, enable/disable workflow patch steps, project literals, plugin steps |
+| `project` | Repository name and native image prefix for `act` command building (neutral by default) |
 | `execution` | Timeouts, container cleanup, failure behaviour |
 
 #### Workflow patch pipeline
@@ -322,26 +322,42 @@ pipeline** (text-line transforms, not a YAML round-trip) so jobs run under
 [act](https://github.com/nektos/act) with local images, cache bind mounts, and
 other local-CI adaptations.
 
-**Built-in steps** (enable/disable each under `patches:`):
+**Patch profile (`patches.profile`)** — default `generic`. A near-empty config
+applies only repo-agnostic steps and does not assume Boost.Capy workflow
+literals or project identity. Set `profile: capy` to restore the previous
+Boost.Capy defaults (all B2/Capy patch steps on, plus `project.repo_full_name`
+`cppalliance/capy` and `project.native_image_prefix` `capy-` unless you
+override them). Individual step toggles still override the profile.
 
-| Step | Applies to |
-|------|------------|
-| `container_mounts` | Any workflow with a job `container:` block |
-| `image_substitution` | Matrix jobs using a local Docker image |
-| `codecov_skip` | Workflows that upload coverage via Codecov |
-| `b2_source_cache`, `restore_capy_timestamps`, `capy_copy_preservation`, `b2_bootstrap_skip` | C++/B2 workflows whose shell/YAML literals match `patches.project` (Boost.Capy defaults) |
+```yaml
+# Stock / non-Capy repo (default — no patches: section required)
+version: 1
+
+# Boost.Capy or other B2 workflows matching patches.project literals
+patches:
+  profile: capy
+```
+
+**Built-in steps** (enable/disable each under `patches:`; defaults depend on
+`profile`):
+
+| Step | Default (`generic`) | Applies to |
+|------|---------------------|------------|
+| `container_mounts` | on | Any workflow with a job `container:` block |
+| `image_substitution` | on | Matrix jobs using a local Docker image |
+| `codecov_skip` | on | Workflows that upload coverage via Codecov |
+| `b2_source_cache`, `restore_capy_timestamps`, `capy_copy_preservation`, `b2_bootstrap_skip` | off (`capy` profile enables) | C++/B2 workflows whose shell/YAML literals match `patches.project` (Boost.Capy defaults) |
 
 **Project literals (`patches.project`)** — retarget the B2-oriented steps for
-your workflow without forking Local CI. Defaults match Boost.Capy; override when
-your workflow uses different directory names, step titles, or copy commands:
+your workflow without forking Local CI. With `profile: capy`, defaults match
+Boost.Capy; override when your workflow uses different directory names, step
+titles, or copy commands:
 
 ```yaml
 patches:
-  # Optional: turn off steps that do not apply
-  b2_source_cache: true
-  restore_capy_timestamps: true
-  capy_copy_preservation: true
-  b2_bootstrap_skip: true
+  profile: capy
+  # Optional: turn off individual steps even under the capy profile
+  # b2_bootstrap_skip: false
 
   project:
     boost_source_copy_command: "cp -rL dep-source dep-root"
@@ -356,8 +372,10 @@ patches:
     cached_module_libs_path: vendor/mylib
 ```
 
-**Act event payload and images (`project`)** — override hard-coded Boost.Capy
-assumptions for the simulated GitHub event and x86 image handling:
+**Act event payload and images (`project`)** — on the generic path,
+`repo_full_name` and `native_image_prefix` default to empty; set them for your
+repository and image naming. With `profile: capy`, Boost.Capy values are
+applied unless you override:
 
 ```yaml
 project:
