@@ -201,7 +201,7 @@ class ActCommandBuilder:
         # Event file
         event_file = self._create_event_file()
 
-        return ActCommand(
+        cmd = ActCommand(
             workflow_file=wf_path,
             job_id=self.job_id,
             matrix_filters=matrix_filters,
@@ -221,6 +221,8 @@ class ActCommandBuilder:
             workdir=self.project_dir,
             act_version=self.act_version,
         )
+        cmd._executor_owned_event_file = True
+        return cmd
 
     # -----------------------------------------------------------------
     # Matrix filters

@@ -813,7 +813,7 @@ class TestJobExecutor:
                 on_output=None,
             )
 
-    def test_cleanup_temp_files(self, tmp_path):
+    def test_cleanup_temp_files_skips_unowned(self, tmp_path):
         event = tmp_path / "event.json"
         event.write_text("{}")
         secret = tmp_path / "secrets.env"
@@ -827,8 +827,21 @@ class TestJobExecutor:
         assert event.exists()
         assert secret.exists()
         JobExecutor._cleanup_temp_files(cmd)
-        assert not event.exists()
+        assert event.exists()
         assert secret.exists()
+
+    def test_cleanup_temp_files_deletes_executor_owned_event(self, tmp_path):
+        event = tmp_path / "localci-event-owned.json"
+        event.write_text("{}")
+        cmd = ActCommand(
+            workflow_file=Path("ci.yml"),
+            job_id="build",
+            event_file=event,
+        )
+        cmd._executor_owned_event_file = True
+        assert event.exists()
+        JobExecutor._cleanup_temp_files(cmd)
+        assert not event.exists()
 
     def test_cleanup_temp_files_deletes_executor_owned_secret(self, tmp_path):
         secret = tmp_path / "localci-secrets-owned.env"
@@ -1062,11 +1075,12 @@ class TestActCommandBuilder:
 
         assert cmd.event_file is not None
         assert cmd.event_file.exists()
+        assert cmd._executor_owned_event_file
         content = json.loads(cmd.event_file.read_text())
         assert "push" in content
 
-        # Cleanup
-        cmd.event_file.unlink()
+        JobExecutor._cleanup_temp_files(cmd)
+        assert not cmd.event_file.exists()
 
     def test_ccache_env_and_compress(self, tmp_path):
         """Issue 9: CCACHE_DIR, CCACHE_MAXSIZE, CCACHE_COMPRESS when cache enabled."""

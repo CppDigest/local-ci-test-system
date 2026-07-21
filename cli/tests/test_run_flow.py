@@ -11,8 +11,8 @@ from click.testing import CliRunner
 
 from localci.cli.run.container import build_run_container
 from localci.cli.run.params import RunOptions
-from localci.cli.run.run_flow import execute_run
-from localci.core.config import LocalCIConfig, PatchesConfig
+from localci.cli.run.run_flow import _resolve_matrix_filters, execute_run
+from localci.core.config import LocalCIConfig, MatrixConfig, MatrixFilter, PatchesConfig
 from localci.core.executor import ActNotFoundError
 from localci.core.workflow import (
     BuildSystem,
@@ -57,6 +57,49 @@ def _dry_run_options(**overrides: object) -> RunOptions:
 @pytest.fixture
 def sample_config() -> LocalCIConfig:
     return LocalCIConfig(workflow=SAMPLE_WORKFLOW)
+
+
+class TestResolveMatrixFilters:
+    def test_cli_matrix_shadows_config_include(self) -> None:
+        cfg = LocalCIConfig(
+            workflow=SAMPLE_WORKFLOW,
+            matrix=MatrixConfig(
+                include=[MatrixFilter(compiler="gcc", version="15", name="GCC 15")]
+            ),
+        )
+        options = _dry_run_options(
+            matrix_filters=("compiler=clang", "version=20"),
+        )
+        matrix_include, matrix_exclude = _resolve_matrix_filters(options, cfg)
+        assert matrix_include == [{"compiler": "clang", "version": "20"}]
+        assert matrix_exclude is None
+
+    def test_config_matrix_include_when_no_cli_filters(self) -> None:
+        cfg = LocalCIConfig(
+            workflow=SAMPLE_WORKFLOW,
+            matrix=MatrixConfig(
+                include=[MatrixFilter(compiler="gcc", version="15", name="GCC 15")]
+            ),
+        )
+        options = _dry_run_options(matrix_filters=())
+        matrix_include, matrix_exclude = _resolve_matrix_filters(options, cfg)
+        assert matrix_include == [
+            {"compiler": "gcc", "version": "15", "name": "GCC 15"}
+        ]
+        assert matrix_exclude is None
+
+    def test_matrix_exclude_from_config(self) -> None:
+        cfg = LocalCIConfig(
+            workflow=SAMPLE_WORKFLOW,
+            matrix=MatrixConfig(
+                include=[MatrixFilter(compiler="gcc", version="15")],
+                exclude=[MatrixFilter(compiler="clang", version="20")],
+            ),
+        )
+        options = _dry_run_options(matrix_filters=("compiler=gcc",))
+        matrix_include, matrix_exclude = _resolve_matrix_filters(options, cfg)
+        assert matrix_include == [{"compiler": "gcc"}]
+        assert matrix_exclude == [{"compiler": "clang", "version": "20"}]
 
 
 class TestExecuteRunDryRun:
