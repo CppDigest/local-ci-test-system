@@ -114,6 +114,8 @@ def test_pipeline_capy_profile_enables_all_steps(patched_workflow) -> None:
     assert "LOCALCI_B2_SOURCE_DIR" in content
     assert "Restore capy source file timestamps" in content
     assert "Skip b2 bootstrap" in content
+    assert 'cp -rp "$workspace_root"/capy-root "libs/$module"' in content
+    assert 'cp -r "$workspace_root"' not in content
 
 
 def test_pipeline_generic_default_skips_capy_steps(patched_workflow) -> None:
@@ -123,12 +125,15 @@ def test_pipeline_generic_default_skips_capy_steps(patched_workflow) -> None:
     assert "Restore capy source file timestamps" not in content
     assert "Skip b2 bootstrap" not in content
     assert "cp -rL boost-source boost-root" in content
+    assert 'cp -r "$workspace_root"/capy-root "libs/$module"' in content
+    assert 'cp -rp "$workspace_root"/capy-root "libs/$module"' not in content
 
 
 def test_pipeline_disable_b2_patches(patched_workflow) -> None:
     """Disabling b2-related patches leaves the workflow unchanged for those steps."""
     cfg = LocalCIConfig(
         patches=PatchesConfig(
+            profile="capy",
             b2_source_cache=False,
             restore_capy_timestamps=False,
             capy_copy_preservation=False,
