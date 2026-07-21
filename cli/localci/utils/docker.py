@@ -7,6 +7,7 @@ Handles loading pre-built images from ``.tar`` files, tagging for
 from __future__ import annotations
 
 import logging
+import shlex
 import shutil
 import subprocess
 import time
@@ -16,6 +17,17 @@ from typing import Any
 from localci.errors import DockerNotAvailableError
 
 logger = logging.getLogger(__name__)
+
+LOCALCI_LABEL_KEY = "localci"
+LOCALCI_SESSION_LABEL_KEY = "localci.session"
+
+
+def session_container_label_options(session_id: str) -> str:
+    """Return Docker CLI flags tagging containers with a localci run session."""
+    return (
+        f"--label {LOCALCI_LABEL_KEY} "
+        f"--label {LOCALCI_SESSION_LABEL_KEY}={shlex.quote(session_id)}"
+    )
 
 
 class DockerManager:
@@ -158,10 +170,19 @@ class DockerManager:
     # Container cleanup
     # -----------------------------------------------------------------
 
-    def list_containers(self, label: str = "localci") -> list[str]:
+    def list_containers(
+        self,
+        label: str = LOCALCI_LABEL_KEY,
+        session_id: str | None = None,
+    ) -> list[str]:
         """List container IDs with a specific label."""
+        label_filter = (
+            f"label={LOCALCI_SESSION_LABEL_KEY}={session_id}"
+            if session_id is not None
+            else f"label={label}"
+        )
         result = subprocess.run(
-            self._docker_cmd("ps", "-a", "--filter", f"label={label}", "-q"),
+            self._docker_cmd("ps", "-a", "--filter", label_filter, "-q"),
             capture_output=True,
             text=True,
             timeout=10,
@@ -170,14 +191,24 @@ class DockerManager:
             return [c.strip() for c in result.stdout.strip().split("\n") if c.strip()]
         return []
 
-    def cleanup_act_containers(self) -> int:
-        """Remove all containers created by ``act``.
+    def cleanup_act_containers(self, session_id: str) -> int:
+        """Remove ``act`` containers tagged for *session_id*.
 
-        ``act`` container names typically start with ``act-``.
+        Only containers whose names start with ``act-`` and carry the
+        ``localci.session`` label for this run are removed. Parallel runs
+        and standalone ``act`` containers without the label are left alone.
         Returns the number of containers removed.
         """
         result = subprocess.run(
-            self._docker_cmd("ps", "-a", "--filter", "name=act-", "-q"),
+            self._docker_cmd(
+                "ps",
+                "-a",
+                "--filter",
+                "name=act-",
+                "--filter",
+                f"label={LOCALCI_SESSION_LABEL_KEY}={session_id}",
+                "-q",
+            ),
             capture_output=True,
             text=True,
             timeout=10,
@@ -198,7 +229,11 @@ class DockerManager:
                 timeout=60,
             )
 
-        logger.info("Cleaned up %d act containers", len(container_ids))
+        logger.info(
+            "Cleaned up %d act containers for session %s",
+            len(container_ids),
+            session_id,
+        )
         return len(container_ids)
 
     # -----------------------------------------------------------------

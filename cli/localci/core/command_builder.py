@@ -22,6 +22,7 @@ from localci.core.config import (
 from localci.core.executor import ActCommand
 from localci.core.github_token import SENTINEL_GITHUB_TOKEN
 from localci.core.workflow import MatrixEntry
+from localci.utils.docker import session_container_label_options
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,7 @@ class ActCommandBuilder:
         action_cache_path: Path | None = None,
         resolved_cache_paths: ResolvedCachePaths | None = None,
         cache_config: CacheConfig | None = None,
+        session_id: str | None = None,
     ) -> ActCommand:
         """Build an :class:`ActCommand` for a specific matrix entry.
 
@@ -183,6 +185,14 @@ class ActCommandBuilder:
                 env["LOCALCI_CMAKE_CACHE_DIR"] = resolved_cache_paths.cmake_container
             if resolved_cache_paths.b2_source_host is not None:
                 env["LOCALCI_B2_SOURCE_DIR"] = resolved_cache_paths.b2_source_container
+
+        label_parts: list[str] = []
+        if session_id:
+            label_parts.append(session_container_label_options(session_id))
+        if container_options:
+            label_parts.append(container_options)
+        if label_parts:
+            container_options = " ".join(label_parts)
 
         # Secrets: copy caller-provided secrets; only fill GITHUB_TOKEN when absent
         # (setdefault — never override a real token from the orchestrator path).

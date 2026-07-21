@@ -974,6 +974,18 @@ class TestActCommandBuilder:
 
         assert cmd.container_architecture is None
 
+    def test_session_labels_in_container_options(self, tmp_path):
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+
+        builder = ActCommandBuilder(workflow_file=wf)
+        entry = _make_entry()
+        cmd = builder.build(entry, session_id="abc12345")
+
+        assert cmd.container_options is not None
+        assert "--label localci" in cmd.container_options
+        assert "--label localci.session=abc12345" in cmd.container_options
+
     def test_custom_repo_full_name_in_event(self, tmp_path):
         wf = tmp_path / "ci.yml"
         wf.write_text("name: CI")
@@ -1225,13 +1237,33 @@ class TestDockerManager:
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
-        from localci.utils.docker import DockerManager
+        from localci.utils.docker import LOCALCI_SESSION_LABEL_KEY, DockerManager
 
         dm = DockerManager()
 
         mock_run.return_value = MagicMock(returncode=0, stdout="abc123\ndef456\n")
-        count = dm.cleanup_act_containers()
+        count = dm.cleanup_act_containers(session_id="sess1")
         assert count == 2
+        ps_call = mock_run.call_args_list[1]
+        assert f"label={LOCALCI_SESSION_LABEL_KEY}=sess1" in ps_call[0][0]
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_cleanup_act_containers_decoy_survives(self, mock_which, mock_run):
+        """Only session-labeled containers are returned by the scoped ps filter."""
+        mock_which.return_value = "/usr/bin/docker"
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
+
+        from localci.utils.docker import DockerManager
+
+        dm = DockerManager()
+
+        mock_run.return_value = MagicMock(returncode=0, stdout="labeled123\n")
+        count = dm.cleanup_act_containers(session_id="sess1")
+        assert count == 1
+        rm_call = mock_run.call_args_list[-1]
+        assert "labeled123" in rm_call[0][0]
+        assert "decoy456" not in rm_call[0][0]
 
     @patch("subprocess.run")
     @patch("shutil.which")
@@ -1244,7 +1276,7 @@ class TestDockerManager:
         dm = DockerManager()
 
         mock_run.return_value = MagicMock(returncode=0, stdout="")
-        count = dm.cleanup_act_containers()
+        count = dm.cleanup_act_containers(session_id="sess1")
         assert count == 0
 
     @patch("shutil.which")
