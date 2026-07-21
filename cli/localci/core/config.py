@@ -203,16 +203,35 @@ CAPY_NATIVE_IMAGE_PREFIX = "capy-"
 GENERIC_REPO_FULL_NAME = ""
 GENERIC_NATIVE_IMAGE_PREFIX = ""
 
-# Backward-compatible aliases for Capy-oriented call sites.
-DEFAULT_REPO_FULL_NAME = CAPY_REPO_FULL_NAME
-DEFAULT_NATIVE_IMAGE_PREFIX = CAPY_NATIVE_IMAGE_PREFIX
-
 _CAPY_PATCH_STEPS: tuple[str, ...] = (
     "b2_source_cache",
     "restore_capy_timestamps",
     "capy_copy_preservation",
     "b2_bootstrap_skip",
 )
+
+
+def _is_capy_profile(patches: Any) -> bool:
+    """Return whether raw or parsed patch config selects the Capy profile."""
+    if isinstance(patches, dict):
+        return patches.get("profile") == "capy"
+    if patches is not None:
+        return getattr(patches, "profile", None) == "capy"
+    return False
+
+
+def _apply_capy_project_defaults(project_data: dict[str, Any]) -> None:
+    """Fill Capy project identity when fields are omitted or still generic."""
+    if (
+        "repo_full_name" not in project_data
+        or project_data["repo_full_name"] == GENERIC_REPO_FULL_NAME
+    ):
+        project_data["repo_full_name"] = CAPY_REPO_FULL_NAME
+    if (
+        "native_image_prefix" not in project_data
+        or project_data["native_image_prefix"] == GENERIC_NATIVE_IMAGE_PREFIX
+    ):
+        project_data["native_image_prefix"] = CAPY_NATIVE_IMAGE_PREFIX
 
 
 class PatchProjectConfig(BaseModel):
@@ -255,7 +274,7 @@ class PatchesConfig(BaseModel):
         """Enable Capy patch steps when ``profile: capy`` unless explicitly set."""
         if not isinstance(data, dict):
             return data
-        if data.get("profile") != "capy":
+        if not _is_capy_profile(data):
             return data
         for step in _CAPY_PATCH_STEPS:
             data.setdefault(step, True)
@@ -351,13 +370,7 @@ class LocalCIConfig(BaseModel):
         """Restore Capy project identity when ``patches.profile`` is ``capy``."""
         if not isinstance(data, dict):
             return data
-        patches = data.get("patches")
-        profile = (
-            patches.get("profile")
-            if isinstance(patches, dict)
-            else getattr(patches, "profile", None)
-        )
-        if profile != "capy":
+        if not _is_capy_profile(data.get("patches")):
             return data
         project = data.get("project")
         if project is None:
@@ -367,8 +380,13 @@ class LocalCIConfig(BaseModel):
             }
             return data
         if isinstance(project, dict):
-            project.setdefault("repo_full_name", CAPY_REPO_FULL_NAME)
-            project.setdefault("native_image_prefix", CAPY_NATIVE_IMAGE_PREFIX)
+            project_data = project
+        elif isinstance(project, BaseModel):
+            project_data = project.model_dump()
+        else:
+            return data
+        _apply_capy_project_defaults(project_data)
+        data["project"] = project_data
         return data
 
     version: int = 1

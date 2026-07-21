@@ -74,6 +74,16 @@ class TestDefaultConfig:
         assert cfg.project.repo_full_name == CAPY_REPO_FULL_NAME
         assert cfg.project.native_image_prefix == CAPY_NATIVE_IMAGE_PREFIX
 
+    def test_capy_profile_applies_project_defaults_to_project_config_instance(self):
+        from localci.core.config import ProjectConfig
+
+        cfg = LocalCIConfig(
+            patches=PatchesConfig(profile="capy"),
+            project=ProjectConfig(),
+        )
+        assert cfg.project.repo_full_name == CAPY_REPO_FULL_NAME
+        assert cfg.project.native_image_prefix == CAPY_NATIVE_IMAGE_PREFIX
+
     def test_capy_profile_yaml_round_trip(self, tmp_path):
         cfg_file = tmp_path / ".localci.yml"
         cfg_file.write_text("patches:\n  profile: capy\n")
