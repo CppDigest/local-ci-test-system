@@ -251,6 +251,7 @@ class ParallelExecutionManager:
             logger.warning("No jobs in queue; nothing to execute")
             self._run.finished_at = datetime.now()
             self._run.state = OrchestratorState.COMPLETED
+            self._state = OrchestratorState.COMPLETED
             return self._run
 
         try:
