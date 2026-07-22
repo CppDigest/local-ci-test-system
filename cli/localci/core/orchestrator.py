@@ -247,6 +247,12 @@ class ParallelExecutionManager:
             self.config.max_parallel,
         )
 
+        if self.queue.total_jobs == 0:
+            logger.warning("No jobs in queue; nothing to execute")
+            self._run.finished_at = datetime.now()
+            self._run.state = OrchestratorState.COMPLETED
+            return self._run
+
         try:
             sig = getattr(signal, "SIGINT", None)
             original_sigint = signal.signal(sig, self._handle_sigint) if sig else None
@@ -345,16 +351,6 @@ class ParallelExecutionManager:
 
     def _execute_job(self, job: QueuedJob) -> JobResult:
         try:
-            if job.platform_outcome == PlatformOutcome.FAIL:
-                return JobResult(
-                    job_id=job.job_id,
-                    matrix_index=job.matrix_entry.index,
-                    matrix_name=job.matrix_entry.name,
-                    status=JobStatus.FAILED,
-                    error_message=unsupported_platform_message(
-                        job.job_id, job.matrix_entry
-                    ),
-                )
             if job.platform_outcome == PlatformOutcome.SKIP:
                 return JobResult(
                     job_id=job.job_id,
@@ -362,6 +358,16 @@ class ParallelExecutionManager:
                     matrix_name=job.matrix_entry.name,
                     status=JobStatus.SKIPPED,
                     error_message=skipped_platform_message(
+                        job.job_id, job.matrix_entry
+                    ),
+                )
+            if job.matrix_entry.platform != Platform.LINUX:
+                return JobResult(
+                    job_id=job.job_id,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    status=JobStatus.FAILED,
+                    error_message=unsupported_platform_message(
                         job.job_id, job.matrix_entry
                     ),
                 )
@@ -375,16 +381,6 @@ class ParallelExecutionManager:
                     matrix_name=job.matrix_entry.name,
                     status=JobStatus.ERROR,
                     error_message=f"Image not available: {job.image_tag} (not in Docker cache and load from .tar failed or not attempted)",
-                )
-            if image_tag is None and job.matrix_entry.platform != Platform.LINUX:
-                return JobResult(
-                    job_id=job.job_id,
-                    matrix_index=job.matrix_entry.index,
-                    matrix_name=job.matrix_entry.name,
-                    status=JobStatus.FAILED,
-                    error_message=unsupported_platform_message(
-                        job.job_id, job.matrix_entry
-                    ),
                 )
             self.queue.mark_running(job)
             # Phase 2: resolve cache paths before patcher (patcher may inject mounts into workflow)

@@ -28,6 +28,13 @@ class TestResolvePlatformOutcome:
         entry = make_entry("GCC 15", platform=Platform.LINUX)
         assert resolve_platform_outcome(entry, PlatformConfig()) == PlatformOutcome.RUN
 
+    def test_linux_disabled_skips(self) -> None:
+        entry = make_entry("GCC 15", platform=Platform.LINUX)
+        assert (
+            resolve_platform_outcome(entry, PlatformConfig(linux=False))
+            == PlatformOutcome.SKIP
+        )
+
     def test_windows_default_fails(self) -> None:
         entry = make_entry("MSVC", platform=Platform.WINDOWS, compiler="msvc")
         entry.runs_on = "windows-2022"
@@ -154,6 +161,44 @@ class TestOrchestratorUnsupportedPlatform:
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")
     @patch("localci.core.orchestrator.JobExecutor")
+    def test_non_linux_run_outcome_still_rejected(
+        self, MockExecutor, MockDocker, MockMonitor, tmp_path: Path
+    ) -> None:
+        mock_executor = MockExecutor.return_value
+        mock_docker = MockDocker.return_value
+        mock_docker.image_exists.return_value = True
+        mock_docker.cleanup_act_containers.return_value = 0
+        mock_monitor = MockMonitor.return_value
+        mock_monitor.check_thresholds.return_value = (True, [])
+        mock_monitor.snapshot.return_value = MagicMock(summary=lambda: "OK")
+
+        entry = make_entry("MSVC 14.42", platform=Platform.WINDOWS, compiler="msvc")
+        entry.runs_on = "windows-2022"
+        job = make_job("MSVC 14.42", compiler="msvc")
+        job.matrix_entry = entry
+        job.platform_outcome = PlatformOutcome.RUN
+        job.image_tag = "some-image:latest"
+
+        queue = PriorityJobQueue()
+        queue.enqueue(job)
+
+        orchestrator = ParallelExecutionManager(
+            queue=queue,
+            workflow_file=Path("ci.yml"),
+            config=OrchestratorConfig(max_parallel=1),
+            logs_dir=tmp_path / "logs",
+        )
+        run = orchestrator.execute()
+
+        assert run.failed == 1
+        result = next(iter(run.results.values()))
+        assert result.status == JobStatus.FAILED
+        assert "Linux jobs only" in (result.error_message or "")
+        mock_executor.run.assert_not_called()
+
+    @patch("localci.core.orchestrator.ResourceMonitor")
+    @patch("localci.core.orchestrator.DockerManager")
+    @patch("localci.core.orchestrator.JobExecutor")
     def test_mixed_platform_no_clean_pass_with_default_config(
         self, MockExecutor, MockDocker, MockMonitor, tmp_path: Path
     ) -> None:
@@ -174,12 +219,6 @@ class TestOrchestratorUnsupportedPlatform:
 
         analyzer = WorkflowAnalyzer()
         workflow = analyzer.analyze(SAMPLE_WORKFLOW)
-        queue = QueueBuilder(workflow).build(
-            platform_filter=Platform.LINUX,
-            platform_config=PlatformConfig(),
-        )
-        # Include one failing windows job alongside linux-only filter bypass test:
-        # build full mixed queue like a default run (no platform filter).
         queue = QueueBuilder(workflow).build(platform_config=PlatformConfig())
         linux_job = next(
             j for j in queue.get_all_jobs() if j.platform_outcome == PlatformOutcome.RUN
@@ -187,7 +226,8 @@ class TestOrchestratorUnsupportedPlatform:
         windows_job = next(
             j
             for j in queue.get_all_jobs()
-            if j.platform_outcome == PlatformOutcome.FAIL
+            if j.matrix_entry.platform == Platform.WINDOWS
+            and j.platform_outcome == PlatformOutcome.FAIL
         )
 
         mixed_queue = PriorityJobQueue()
@@ -309,3 +349,45 @@ class TestExecutionSummarySkipped:
             ],
         )
         assert summary.all_passed is False
+
+    def test_progress_line_counts_skipped(self) -> None:
+        from datetime import datetime
+
+        summary = ExecutionSummary(
+            execution_id="test",
+            started_at=datetime.now(),
+            results=[
+                JobResult(
+                    job_id="build",
+                    matrix_index=0,
+                    matrix_name="GCC 15",
+                    status=JobStatus.PASSED,
+                ),
+                JobResult(
+                    job_id="build",
+                    matrix_index=1,
+                    matrix_name="MSVC",
+                    status=JobStatus.SKIPPED,
+                ),
+            ],
+        )
+        assert summary.completed == 2
+        assert summary.progress_line() == "2/2 jobs completed"
+
+
+class TestOrchestratorEmptyQueue:
+    @patch("localci.core.orchestrator.DockerManager")
+    def test_execute_empty_queue_returns_immediately(
+        self, MockDocker, tmp_path: Path
+    ) -> None:
+        MockDocker.return_value.cleanup_act_containers.return_value = 0
+        queue = PriorityJobQueue()
+        orchestrator = ParallelExecutionManager(
+            queue=queue,
+            workflow_file=Path("ci.yml"),
+            config=OrchestratorConfig(max_parallel=1),
+            logs_dir=tmp_path / "logs",
+        )
+        run = orchestrator.execute()
+        assert run.total == 0
+        assert run.all_passed is False

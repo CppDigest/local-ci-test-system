@@ -13,7 +13,7 @@ from localci.cli.run.container import build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.run_flow import _resolve_matrix_filters, execute_run
 from localci.core.config import LocalCIConfig, MatrixConfig, MatrixFilter, PatchesConfig
-from localci.core.executor import ActNotFoundError
+from localci.core.executor import ActNotFoundError, JobResult, JobStatus
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -52,6 +52,17 @@ def _dry_run_options(**overrides: object) -> RunOptions:
     )
     base.update(overrides)
     return RunOptions(**base)  # type: ignore[arg-type]
+
+
+def _passed_mock_run_results() -> dict[str, JobResult]:
+    return {
+        "build:0": JobResult(
+            job_id="build",
+            matrix_index=0,
+            matrix_name="GCC 15",
+            status=JobStatus.PASSED,
+        )
+    }
 
 
 @pytest.fixture
@@ -203,7 +214,7 @@ class TestExecuteRunDryRun:
         mock_run.execution_id = "test"
         mock_run.started_at = now
         mock_run.finished_at = now
-        mock_run.results = {}
+        mock_run.results = _passed_mock_run_results()
         mock_manager.execute.return_value = mock_run
         deps.parallel_manager_factory = lambda **_kwargs: mock_manager
 
@@ -264,7 +275,7 @@ class TestExecuteRunDryRun:
         mock_run.execution_id = "test"
         mock_run.started_at = now
         mock_run.finished_at = now
-        mock_run.results = {}
+        mock_run.results = _passed_mock_run_results()
         mock_manager = MagicMock()
         mock_manager.execute.return_value = mock_run
         deps.progress_tracker_factory = lambda **_kwargs: MagicMock()

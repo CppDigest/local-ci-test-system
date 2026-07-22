@@ -1421,7 +1421,7 @@ class TestExecutionSummary:
             started_at=datetime.now(),
         )
         assert summary.total == 0
-        assert summary.all_passed is True
+        assert summary.all_passed is False
         assert summary.longest_job is None
         assert summary.shortest_job is None
 
