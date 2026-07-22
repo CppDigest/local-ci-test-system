@@ -1462,6 +1462,7 @@ class TestExecutionSummary:
         assert d["total"] == 1
         assert d["passed"] == 1
         assert d["failed"] == 0
+        assert d["skipped"] == 0
         assert len(d["results"]) == 1
 
     def test_load_with_missing_finished_at(self, tmp_path):

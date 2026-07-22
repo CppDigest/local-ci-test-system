@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from localci.core.config import PlatformConfig
 from localci.core.image_tag import derive_image_tag
-from localci.core.models import QueuedJob
+from localci.core.models import PlatformOutcome, QueuedJob
 from localci.core.platform_support import resolve_platform_outcome
 from localci.core.queue import PriorityConfig, PriorityJobQueue
 from localci.core.workflow import MatrixEntry, Platform
@@ -147,9 +147,13 @@ class QueueBuilder:
             dep_keys = []
             for dep in job.needs:
                 dep_keys.extend(job_keys.get(dep, []))
-            image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
-                entry, registry
-            )
+            platform_outcome = resolve_platform_outcome(entry, plat_cfg)
+            if platform_outcome == PlatformOutcome.RUN:
+                image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
+                    entry, registry
+                )
+            else:
+                image_tag, base_image_tag, needs_build = None, None, False
 
             queued = QueuedJob(
                 job_id=job.id,
@@ -159,7 +163,7 @@ class QueueBuilder:
                 image_tag=image_tag,
                 base_image_tag=base_image_tag,
                 needs_build=needs_build,
-                platform_outcome=resolve_platform_outcome(entry, plat_cfg),
+                platform_outcome=platform_outcome,
             )
             queued.priority = self.priority_config.resolve_priority(queued)
             queue.enqueue(queued)

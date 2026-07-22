@@ -362,6 +362,16 @@ class ParallelExecutionManager:
                         job.job_id, job.matrix_entry
                     ),
                 )
+            if job.platform_outcome == PlatformOutcome.FAIL:
+                return JobResult(
+                    job_id=job.job_id,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    status=JobStatus.FAILED,
+                    error_message=unsupported_platform_message(
+                        job.job_id, job.matrix_entry
+                    ),
+                )
             if job.matrix_entry.platform != Platform.LINUX:
                 return JobResult(
                     job_id=job.job_id,

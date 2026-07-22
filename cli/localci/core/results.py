@@ -115,6 +115,7 @@ class ExecutionSummary:
             f"Passed:   {self.passed}",
             f"Failed:   {self.failed}",
             f"Errors:   {self.errors}",
+            f"Skipped:  {self.skipped}",
             f"Duration: {self.total_duration:.1f}s",
             "",
         ]
@@ -165,6 +166,7 @@ class ExecutionSummary:
             "passed": self.passed,
             "failed": self.failed,
             "errors": self.errors,
+            "skipped": self.skipped,
             "duration": self.total_duration,
             "results": [
                 {

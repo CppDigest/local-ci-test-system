@@ -100,6 +100,8 @@ class TestQueueBuilderPlatformOutcomes:
         assert all(j.platform_outcome == PlatformOutcome.FAIL for j in windows_jobs)
         assert all(j.platform_outcome == PlatformOutcome.FAIL for j in macos_jobs)
         assert all(j.platform_outcome == PlatformOutcome.RUN for j in linux_jobs)
+        assert all(j.image_tag is not None for j in linux_jobs)
+        assert all(j.image_tag is None for j in windows_jobs + macos_jobs)
 
     def test_mixed_platform_opt_in_skip(self) -> None:
         analyzer = WorkflowAnalyzer()
@@ -325,6 +327,31 @@ class TestExecutionSummarySkipped:
             ],
         )
         assert summary.all_passed is True
+
+    def test_summary_report_includes_skipped_count(self) -> None:
+        from datetime import datetime
+
+        summary = ExecutionSummary(
+            execution_id="test",
+            started_at=datetime.now(),
+            results=[
+                JobResult(
+                    job_id="build",
+                    matrix_index=0,
+                    matrix_name="GCC 15",
+                    status=JobStatus.PASSED,
+                ),
+                JobResult(
+                    job_id="build",
+                    matrix_index=1,
+                    matrix_name="MSVC",
+                    status=JobStatus.SKIPPED,
+                ),
+            ],
+        )
+        report = summary.summary_report()
+        assert "Skipped:  1" in report
+        assert "ALL PASSED" in report
 
     def test_failed_unsupported_blocks_all_passed(self) -> None:
         from datetime import datetime
