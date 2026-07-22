@@ -124,6 +124,9 @@ class TestParallelExecutionManager:
         assert run.total == 1
         assert run.passed == 1
         assert run.all_passed is True
+        mock_docker.cleanup_act_containers.assert_called_once()
+        session_arg = mock_docker.cleanup_act_containers.call_args[0][0]
+        assert session_arg == run.execution_id
 
     @patch("localci.core.orchestrator.ResourceMonitor")
     @patch("localci.core.orchestrator.DockerManager")

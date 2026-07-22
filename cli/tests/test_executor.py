@@ -879,6 +879,19 @@ class TestJobExecutor:
 # =====================================================================
 
 
+def _assert_session_label_options(container_options: str, session_id: str) -> None:
+    from localci.utils.docker import (
+        LOCALCI_LABEL_KEY,
+        LOCALCI_SESSION_LABEL_KEY,
+        session_container_label_options,
+    )
+
+    assert session_container_label_options(session_id) in container_options
+    assert container_options.count("--label") >= 2
+    assert f"--label {LOCALCI_LABEL_KEY} " in container_options
+    assert f"--label {LOCALCI_SESSION_LABEL_KEY}={session_id}" in container_options
+
+
 class TestActCommandBuilder:
     """Test command builder translation."""
 
@@ -973,6 +986,49 @@ class TestActCommandBuilder:
         cmd = builder.build(entry, image_tag="myproj-ubuntu-24.04-gcc15:latest")
 
         assert cmd.container_architecture is None
+
+    def test_session_labels_in_container_options(self, tmp_path):
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+
+        builder = ActCommandBuilder(workflow_file=wf)
+        entry = _make_entry()
+        cmd = builder.build(entry, session_id="abc12345")
+
+        assert cmd.container_options is not None
+        _assert_session_label_options(cmd.container_options, "abc12345")
+
+    def test_session_labels_merged_with_cache_mounts(self, tmp_path):
+        from localci.core.config import CacheConfig, CcacheConfig, ResolvedCachePaths
+
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+        ccache_dir = tmp_path / "ccache"
+        ccache_dir.mkdir()
+        paths = ResolvedCachePaths(
+            ccache_host=ccache_dir, boost_host=None, cmake_host=None
+        )
+        cfg = CacheConfig(
+            ccache=CcacheConfig(enabled=True, max_size="2G", compress=True),
+        )
+
+        builder = ActCommandBuilder(workflow_file=wf)
+        entry = _make_entry()
+        cmd = builder.build(
+            entry,
+            session_id="abc12345",
+            resolved_cache_paths=paths,
+            cache_config=cfg,
+        )
+
+        assert cmd.container_options is not None
+        _assert_session_label_options(cmd.container_options, "abc12345")
+        assert str(ccache_dir) in cmd.container_options
+        from localci.utils.docker import session_container_label_options
+
+        assert cmd.container_options.index(
+            session_container_label_options("abc12345")
+        ) < cmd.container_options.index("-v")
 
     def test_custom_repo_full_name_in_event(self, tmp_path):
         wf = tmp_path / "ci.yml"
@@ -1225,13 +1281,40 @@ class TestDockerManager:
         mock_which.return_value = "/usr/bin/docker"
         mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
 
+        from localci.utils.docker import LOCALCI_SESSION_LABEL_KEY, DockerManager
+
+        dm = DockerManager()
+
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="abc123\tact-runner-1\ndef456\tact-runner-2\n",
+        )
+        count = dm.cleanup_act_containers(session_id="sess1")
+        assert count == 2
+        ps_call = mock_run.call_args_list[1]
+        assert f"label={LOCALCI_SESSION_LABEL_KEY}=sess1" in ps_call[0][0]
+        assert "name=act-" not in ps_call[0][0]
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_cleanup_act_containers_decoy_survives(self, mock_which, mock_run):
+        """Session-labeled decoys without an act- name prefix are not removed."""
+        mock_which.return_value = "/usr/bin/docker"
+        mock_run.return_value = MagicMock(returncode=0, stdout="docker 24.0")
+
         from localci.utils.docker import DockerManager
 
         dm = DockerManager()
 
-        mock_run.return_value = MagicMock(returncode=0, stdout="abc123\ndef456\n")
-        count = dm.cleanup_act_containers()
-        assert count == 2
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=("labeled123\tact-job-1\ndecoy456\tmy-act-decoy\n"),
+        )
+        count = dm.cleanup_act_containers(session_id="sess1")
+        assert count == 1
+        rm_call = mock_run.call_args_list[-1]
+        assert "labeled123" in rm_call[0][0]
+        assert "decoy456" not in rm_call[0][0]
 
     @patch("subprocess.run")
     @patch("shutil.which")
@@ -1244,7 +1327,7 @@ class TestDockerManager:
         dm = DockerManager()
 
         mock_run.return_value = MagicMock(returncode=0, stdout="")
-        count = dm.cleanup_act_containers()
+        count = dm.cleanup_act_containers(session_id="sess1")
         assert count == 0
 
     @patch("shutil.which")

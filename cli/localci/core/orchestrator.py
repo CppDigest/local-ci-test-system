@@ -28,7 +28,7 @@ from localci.core.config import (
 from localci.core.executor import JobExecutor, JobResult, JobStatus
 from localci.core.models import JobEvent, JobEventType, QueuedJob
 from localci.core.queue import PriorityJobQueue
-from localci.utils.docker import DockerManager
+from localci.utils.docker import DockerManager, session_container_label_options
 from localci.utils.resources import ResourceMonitor
 
 if TYPE_CHECKING:
@@ -349,6 +349,11 @@ class ParallelExecutionManager:
             # Phase 2: resolve cache paths before patcher (patcher may inject mounts into workflow)
             resolved_cache_paths = None
             container_mount_options: str | None = None
+            session_label_options = (
+                session_container_label_options(self._run.execution_id)
+                if self._run
+                else None
+            )
             if self._cache_config is not None:
                 cmake_digest = None
                 if (
@@ -396,7 +401,12 @@ class ParallelExecutionManager:
                         f"-v {shlex.quote(str(resolved_cache_paths.apt_host))}:{shlex.quote(str(resolved_cache_paths.apt_container))}"
                     )
                 if mount_parts:
-                    container_mount_options = " ".join(mount_parts)
+                    container_mount_options = " ".join(
+                        filter(
+                            None,
+                            [session_label_options, " ".join(mount_parts)],
+                        )
+                    )
                     parts = []
                     if resolved_cache_paths.ccache_host is not None:
                         parts.append("ccache")
@@ -413,6 +423,8 @@ class ParallelExecutionManager:
                         job.matrix_entry.name,
                         ", ".join(parts),
                     )
+            elif session_label_options is not None:
+                container_mount_options = session_label_options
             elif (
                 self._cache_config is not None
                 and not self._no_cache
@@ -460,6 +472,7 @@ class ParallelExecutionManager:
                     action_cache_path=act_cache_dir,
                     resolved_cache_paths=resolved_cache_paths,
                     cache_config=self._cache_config,
+                    session_id=self._run.execution_id if self._run else None,
                 )
                 result = self._executor.run(
                     cmd,
@@ -618,10 +631,8 @@ class ParallelExecutionManager:
             getattr(result, "duration_seconds", 0.0),
         )
         # Do not clean up act containers here when running in parallel:
-        # cleanup_act_containers() removes ALL act-* containers, which would
-        # kill containers still in use by other running jobs (causing
-        # "No such container" when act tries to docker cp). Cleanup runs
-        # once at the end of the run in execute() finally block.
+        # end-of-run cleanup is scoped to this execution's session label so
+        # parallel runs and standalone act containers are not disturbed.
 
     def _check_resources(self) -> None:
         ok, warnings = self._resource_monitor.check_thresholds(
@@ -644,8 +655,10 @@ class ParallelExecutionManager:
             self._state = OrchestratorState.RUNNING
 
     def _cleanup_all_containers(self) -> None:
+        if not self._run:
+            return
         try:
-            count = self._docker.cleanup_act_containers()
+            count = self._docker.cleanup_act_containers(self._run.execution_id)
             if count > 0:
                 logger.info("Cleaned up %d act containers", count)
         except Exception as e:
