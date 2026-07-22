@@ -7,8 +7,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from localci.core.config import PlatformConfig
 from localci.core.image_tag import derive_image_tag
 from localci.core.models import QueuedJob
+from localci.core.platform_support import resolve_platform_outcome
 from localci.core.queue import PriorityConfig, PriorityJobQueue
 from localci.core.workflow import MatrixEntry, Platform
 
@@ -100,9 +102,11 @@ class QueueBuilder:
         matrix_exclude: list[dict[str, Any]] | None = None,
         entries_include: set[tuple[str, int]] | None = None,
         registry_path: Path | None = None,
+        platform_config: PlatformConfig | None = None,
     ) -> PriorityJobQueue:
         """Build queue. entries_include: when set, only (job_id, entry.index) in this set."""
         queue = PriorityJobQueue()
+        plat_cfg = platform_config or PlatformConfig()
 
         # First pass: collect (job, entry) that pass filters and build job_id -> [keys]
         job_keys: dict[str, list[str]] = {}
@@ -155,6 +159,7 @@ class QueueBuilder:
                 image_tag=image_tag,
                 base_image_tag=base_image_tag,
                 needs_build=needs_build,
+                platform_outcome=resolve_platform_outcome(entry, plat_cfg),
             )
             queued.priority = self.priority_config.resolve_priority(queued)
             queue.enqueue(queued)

@@ -64,13 +64,17 @@ class ExecutionSummary:
 
     @property
     def all_passed(self) -> bool:
-        """Whether every job passed.
+        """Whether every job passed or was intentionally skipped.
 
         Note: returns ``True`` for an empty summary (no jobs).  This is
         intentional -- an empty run has no failures -- but callers should
         check :attr:`total` separately when a zero-job run is unexpected.
         """
-        return self.failed == 0 and self.errors == 0 and self.completed == self.total
+        if self.total == 0:
+            return True
+        return all(
+            r.status in (JobStatus.PASSED, JobStatus.SKIPPED) for r in self.results
+        )
 
     # -----------------------------------------------------------------
     # Timing

@@ -55,6 +55,14 @@ class JobEventType(Enum):
     ALL_COMPLETE = "all_complete"
 
 
+class PlatformOutcome(str, Enum):
+    """How a queued job should be handled based on platform config."""
+
+    RUN = "run"
+    FAIL = "fail"
+    SKIP = "skip"
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
@@ -73,6 +81,7 @@ class QueuedJob:
         None  # When needs_build, tag of base image to build from
     )
     needs_build: bool = False
+    platform_outcome: PlatformOutcome = PlatformOutcome.RUN
     status: QueuedJobStatus = field(default=QueuedJobStatus.QUEUED)
 
     @property
