@@ -879,6 +879,19 @@ class TestJobExecutor:
 # =====================================================================
 
 
+def _assert_session_label_options(container_options: str, session_id: str) -> None:
+    from localci.utils.docker import (
+        LOCALCI_LABEL_KEY,
+        LOCALCI_SESSION_LABEL_KEY,
+        session_container_label_options,
+    )
+
+    assert session_container_label_options(session_id) in container_options
+    assert container_options.count("--label") >= 2
+    assert f"--label {LOCALCI_LABEL_KEY} " in container_options
+    assert f"--label {LOCALCI_SESSION_LABEL_KEY}={session_id}" in container_options
+
+
 class TestActCommandBuilder:
     """Test command builder translation."""
 
@@ -983,8 +996,39 @@ class TestActCommandBuilder:
         cmd = builder.build(entry, session_id="abc12345")
 
         assert cmd.container_options is not None
-        assert "--label localci" in cmd.container_options
-        assert "--label localci.session=abc12345" in cmd.container_options
+        _assert_session_label_options(cmd.container_options, "abc12345")
+
+    def test_session_labels_merged_with_cache_mounts(self, tmp_path):
+        from localci.core.config import CacheConfig, CcacheConfig, ResolvedCachePaths
+
+        wf = tmp_path / "ci.yml"
+        wf.write_text("name: CI")
+        ccache_dir = tmp_path / "ccache"
+        ccache_dir.mkdir()
+        paths = ResolvedCachePaths(
+            ccache_host=ccache_dir, boost_host=None, cmake_host=None
+        )
+        cfg = CacheConfig(
+            ccache=CcacheConfig(enabled=True, max_size="2G", compress=True),
+        )
+
+        builder = ActCommandBuilder(workflow_file=wf)
+        entry = _make_entry()
+        cmd = builder.build(
+            entry,
+            session_id="abc12345",
+            resolved_cache_paths=paths,
+            cache_config=cfg,
+        )
+
+        assert cmd.container_options is not None
+        _assert_session_label_options(cmd.container_options, "abc12345")
+        assert str(ccache_dir) in cmd.container_options
+        from localci.utils.docker import session_container_label_options
+
+        assert cmd.container_options.index(
+            session_container_label_options("abc12345")
+        ) < cmd.container_options.index("-v")
 
     def test_custom_repo_full_name_in_event(self, tmp_path):
         wf = tmp_path / "ci.yml"
