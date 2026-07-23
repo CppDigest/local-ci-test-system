@@ -242,6 +242,29 @@ class TestProgressTracker:
         assert tracker._jobs[job.queue_key].status == QueuedJobStatus.PASSED
         assert tracker._jobs[job.queue_key].duration_seconds == 30.0
 
+    def test_track_skipped_job_not_shown_as_passed(self, tracker):
+        """A SKIPPED result on JOB_COMPLETED must not render as PASSED."""
+        job = make_job("MSVC", priority=1)
+
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
+
+        result = JobResult(
+            job_id="build",
+            matrix_index=0,
+            matrix_name="MSVC",
+            status=JobStatus.SKIPPED,
+            error_message="platform not supported",
+        )
+        tracker.on_event(
+            JobEvent(
+                event_type=JobEventType.JOB_COMPLETED,
+                job=job,
+                data={"result": result},
+            )
+        )
+        assert tracker._jobs[job.queue_key].status == QueuedJobStatus.SKIPPED
+        assert tracker._jobs[job.queue_key].error_message == "platform not supported"
+
     def test_track_failure(self, tracker):
         job = make_job("Fail", priority=1)
 

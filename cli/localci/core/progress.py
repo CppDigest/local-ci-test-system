@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from localci.core.executor import JobResult
+from localci.core.executor import JobResult, JobStatus
 from localci.core.models import (
     JobEvent,
     JobEventType,
@@ -283,9 +283,13 @@ class ProgressTracker:
                         (prev_name, (ts - prev_start).total_seconds())
                     )
                 progress.current_step = None
-                progress.status = QueuedJobStatus.PASSED
                 progress.finished_at = ts
                 result = event.data.get("result")
+                if isinstance(result, JobResult) and result.status == JobStatus.SKIPPED:
+                    progress.status = QueuedJobStatus.SKIPPED
+                    progress.error_message = result.error_message
+                else:
+                    progress.status = QueuedJobStatus.PASSED
                 if isinstance(result, JobResult):
                     progress.duration_seconds = result.duration_seconds
                     progress.exit_code = result.exit_code

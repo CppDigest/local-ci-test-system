@@ -305,6 +305,31 @@ class TestOrchestratorUnsupportedPlatform:
 
 
 class TestExecutionSummarySkipped:
+    def test_all_skipped_run_is_all_passed(self) -> None:
+        """Zero PASSED, all SKIPPED must still count as a clean run."""
+        from datetime import datetime
+
+        summary = ExecutionSummary(
+            execution_id="test",
+            started_at=datetime.now(),
+            results=[
+                JobResult(
+                    job_id="build",
+                    matrix_index=0,
+                    matrix_name="MSVC",
+                    status=JobStatus.SKIPPED,
+                ),
+                JobResult(
+                    job_id="build",
+                    matrix_index=1,
+                    matrix_name="Apple-Clang",
+                    status=JobStatus.SKIPPED,
+                ),
+            ],
+        )
+        assert summary.passed == 0
+        assert summary.all_passed is True
+
     def test_skipped_jobs_allow_all_passed(self) -> None:
         from datetime import datetime
 
