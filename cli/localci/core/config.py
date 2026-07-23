@@ -46,7 +46,12 @@ class ParallelConfig(BaseModel):
 
 
 class PlatformConfig(BaseModel):
-    """Which platforms to run locally."""
+    """Which platforms to run locally.
+
+    Local CI executes Linux jobs in Docker. Windows and macOS workflow entries
+    are not runnable; with the platform flag off (default) they fail loud,
+    and when set to ``true`` they are skipped without failing the run.
+    """
 
     linux: bool = True
     windows: bool = False

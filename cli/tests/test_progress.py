@@ -242,6 +242,29 @@ class TestProgressTracker:
         assert tracker._jobs[job.queue_key].status == QueuedJobStatus.PASSED
         assert tracker._jobs[job.queue_key].duration_seconds == 30.0
 
+    def test_track_skipped_job_not_shown_as_passed(self, tracker):
+        """A SKIPPED result on JOB_COMPLETED must not render as PASSED."""
+        job = make_job("MSVC", priority=1)
+
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=job))
+
+        result = JobResult(
+            job_id="build",
+            matrix_index=0,
+            matrix_name="MSVC",
+            status=JobStatus.SKIPPED,
+            error_message="platform not supported",
+        )
+        tracker.on_event(
+            JobEvent(
+                event_type=JobEventType.JOB_COMPLETED,
+                job=job,
+                data={"result": result},
+            )
+        )
+        assert tracker._jobs[job.queue_key].status == QueuedJobStatus.SKIPPED
+        assert tracker._jobs[job.queue_key].error_message == "platform not supported"
+
     def test_track_failure(self, tracker):
         job = make_job("Fail", priority=1)
 
@@ -345,6 +368,44 @@ class TestProgressTracker:
         assert len(status["failed_jobs"]) == 1
         assert len(status["running_jobs"]) == 1
         assert status["failed_jobs"][0]["error_message"] == "error"
+
+    def test_get_status_dict_skipped_distinct_from_cancelled(self, tracker):
+        """Skipped jobs are reported separately from cancelled, with reasons."""
+        skipped_job = make_job("MSVC", priority=1, index=0)
+        tracker.on_event(JobEvent(event_type=JobEventType.JOB_QUEUED, job=skipped_job))
+        tracker.on_event(
+            JobEvent(
+                event_type=JobEventType.JOB_COMPLETED,
+                job=skipped_job,
+                data={
+                    "result": JobResult(
+                        job_id="build",
+                        matrix_index=0,
+                        matrix_name="MSVC",
+                        status=JobStatus.SKIPPED,
+                        error_message="platform not supported",
+                    )
+                },
+            )
+        )
+
+        cancelled_job = make_job("GCC", priority=1, index=1)
+        tracker.on_event(
+            JobEvent(event_type=JobEventType.JOB_QUEUED, job=cancelled_job)
+        )
+        tracker.on_event(
+            JobEvent(event_type=JobEventType.JOB_CANCELLED, job=cancelled_job)
+        )
+
+        status = tracker.get_status_dict()
+
+        assert status["skipped_count"] == 1
+        assert status["cancelled_count"] == 1
+        assert len(status["skipped_jobs"]) == 1
+        assert status["skipped_jobs"][0]["name"] == "MSVC"
+        assert status["skipped_jobs"][0]["status"] == QueuedJobStatus.SKIPPED.value
+        assert status["skipped_jobs"][0]["error_message"] == "platform not supported"
+        assert status["completed_count"] == 2
 
     def test_priority_levels(self, tracker):
         for i, (name, priority) in enumerate(

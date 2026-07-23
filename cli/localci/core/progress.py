@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from localci.core.executor import JobResult
+from localci.core.executor import JobResult, JobStatus
 from localci.core.models import (
     JobEvent,
     JobEventType,
@@ -283,9 +283,13 @@ class ProgressTracker:
                         (prev_name, (ts - prev_start).total_seconds())
                     )
                 progress.current_step = None
-                progress.status = QueuedJobStatus.PASSED
                 progress.finished_at = ts
                 result = event.data.get("result")
+                if isinstance(result, JobResult) and result.status == JobStatus.SKIPPED:
+                    progress.status = QueuedJobStatus.SKIPPED
+                    progress.error_message = result.error_message
+                else:
+                    progress.status = QueuedJobStatus.PASSED
                 if isinstance(result, JobResult):
                     progress.duration_seconds = result.duration_seconds
                     progress.exit_code = result.exit_code
@@ -643,11 +647,8 @@ class ProgressTracker:
                 QueuedJobStatus.TIMEOUT,
             )
         ]
-        cancelled = [
-            j
-            for j in jobs
-            if j.status in (QueuedJobStatus.CANCELLED, QueuedJobStatus.SKIPPED)
-        ]
+        cancelled = [j for j in jobs if j.status == QueuedJobStatus.CANCELLED]
+        skipped = [j for j in jobs if j.status == QueuedJobStatus.SKIPPED]
         running = [
             j
             for j in jobs
@@ -666,7 +667,7 @@ class ProgressTracker:
         ]
 
         total = len(jobs)
-        done = len(completed) + len(failed) + len(cancelled)
+        done = len(completed) + len(failed) + len(cancelled) + len(skipped)
 
         result = {
             "progress": f"{done}/{total} jobs completed",
@@ -676,6 +677,7 @@ class ProgressTracker:
             "passed_count": len(completed),
             "failed_count": len(failed),
             "cancelled_count": len(cancelled),
+            "skipped_count": len(skipped),
             "running_count": len(running),
             "pending_count": len(pending),
             "elapsed_seconds": self._elapsed_seconds(),
@@ -742,6 +744,16 @@ class ProgressTracker:
                     "status": j.status.value,
                 }
                 for j in pending
+            ],
+            "skipped_jobs": [
+                {
+                    "name": j.name,
+                    "index": j.index,
+                    "priority": j.priority,
+                    "status": j.status.value,
+                    "error_message": j.error_message,
+                }
+                for j in skipped
             ],
             "priority_levels": {
                 level.priority: {

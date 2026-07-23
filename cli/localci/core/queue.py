@@ -249,6 +249,14 @@ class PriorityJobQueue:
             self._running_keys.discard(key)
             self._check_priority_advance()
 
+    def mark_skipped(self, job: QueuedJob) -> None:
+        with self._lock:
+            key = job.queue_key
+            job.status = QueuedJobStatus.SKIPPED
+            self._completed_keys.add(key)
+            self._running_keys.discard(key)
+            self._check_priority_advance()
+
     def mark_running(self, job: QueuedJob) -> None:
         with self._lock:
             job.status = QueuedJobStatus.RUNNING

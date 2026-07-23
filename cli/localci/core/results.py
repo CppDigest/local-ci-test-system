@@ -47,6 +47,10 @@ class ExecutionSummary:
         )
 
     @property
+    def skipped(self) -> int:
+        return sum(1 for r in self.results if r.status == JobStatus.SKIPPED)
+
+    @property
     def pending(self) -> int:
         return sum(
             1
@@ -60,17 +64,16 @@ class ExecutionSummary:
 
     @property
     def completed(self) -> int:
-        return self.passed + self.failed + self.errors
+        return self.passed + self.failed + self.errors + self.skipped
 
     @property
     def all_passed(self) -> bool:
-        """Whether every job passed.
-
-        Note: returns ``True`` for an empty summary (no jobs).  This is
-        intentional -- an empty run has no failures -- but callers should
-        check :attr:`total` separately when a zero-job run is unexpected.
-        """
-        return self.failed == 0 and self.errors == 0 and self.completed == self.total
+        """Whether every job passed or was intentionally skipped."""
+        if self.total == 0:
+            return False
+        return all(
+            r.status in (JobStatus.PASSED, JobStatus.SKIPPED) for r in self.results
+        )
 
     # -----------------------------------------------------------------
     # Timing
@@ -112,6 +115,7 @@ class ExecutionSummary:
             f"Passed:   {self.passed}",
             f"Failed:   {self.failed}",
             f"Errors:   {self.errors}",
+            f"Skipped:  {self.skipped}",
             f"Duration: {self.total_duration:.1f}s",
             "",
         ]
@@ -162,6 +166,7 @@ class ExecutionSummary:
             "passed": self.passed,
             "failed": self.failed,
             "errors": self.errors,
+            "skipped": self.skipped,
             "duration": self.total_duration,
             "results": [
                 {

@@ -26,8 +26,13 @@ from localci.core.config import (
     resolve_cache_paths,
 )
 from localci.core.executor import JobExecutor, JobResult, JobStatus
-from localci.core.models import JobEvent, JobEventType, QueuedJob
+from localci.core.models import JobEvent, JobEventType, PlatformOutcome, QueuedJob
+from localci.core.platform_support import (
+    skipped_platform_message,
+    unsupported_platform_message,
+)
 from localci.core.queue import PriorityJobQueue
+from localci.core.workflow import Platform
 from localci.utils.docker import DockerManager, session_container_label_options
 from localci.utils.resources import ResourceMonitor
 
@@ -139,7 +144,12 @@ class ExecutionRun:
 
     @property
     def all_passed(self) -> bool:
-        return self.failed == 0 and self.total > 0
+        if self.total == 0:
+            return False
+        return all(
+            r.status in (JobStatus.PASSED, JobStatus.SKIPPED)
+            for r in self.results.values()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -236,6 +246,13 @@ class ParallelExecutionManager:
             self.queue.total_jobs,
             self.config.max_parallel,
         )
+
+        if self.queue.total_jobs == 0:
+            logger.warning("No jobs in queue; nothing to execute")
+            self._run.finished_at = datetime.now()
+            self._run.state = OrchestratorState.COMPLETED
+            self._state = OrchestratorState.COMPLETED
+            return self._run
 
         try:
             sig = getattr(signal, "SIGINT", None)
@@ -335,6 +352,37 @@ class ParallelExecutionManager:
 
     def _execute_job(self, job: QueuedJob) -> JobResult:
         try:
+            if job.platform_outcome == PlatformOutcome.SKIP:
+                return JobResult(
+                    job_id=job.job_id,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    status=JobStatus.SKIPPED,
+                    error_message=skipped_platform_message(
+                        job.job_id, job.matrix_entry
+                    ),
+                )
+            if job.platform_outcome == PlatformOutcome.FAIL:
+                return JobResult(
+                    job_id=job.job_id,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    status=JobStatus.FAILED,
+                    error_message=unsupported_platform_message(
+                        job.job_id, job.matrix_entry
+                    ),
+                )
+            if job.matrix_entry.platform != Platform.LINUX:
+                return JobResult(
+                    job_id=job.job_id,
+                    matrix_index=job.matrix_entry.index,
+                    matrix_name=job.matrix_entry.name,
+                    status=JobStatus.FAILED,
+                    error_message=unsupported_platform_message(
+                        job.job_id, job.matrix_entry
+                    ),
+                )
+
             self.queue.mark_preparing(job)
             image_tag = self._prepare_image(job)
             if job.image_tag and image_tag is None:
@@ -615,18 +663,25 @@ class ParallelExecutionManager:
             )
         if self._run:
             self._run.results[job.queue_key] = result
-        success = result.status == JobStatus.PASSED
-        self.queue.mark_completed(job, success=success)
-        if result.status == JobStatus.TIMEOUT:
-            event_type = JobEventType.JOB_TIMEOUT
-        elif success:
+        if result.status == JobStatus.SKIPPED:
+            self.queue.mark_skipped(job)
             event_type = JobEventType.JOB_COMPLETED
+            success = False
         else:
-            event_type = JobEventType.JOB_FAILED
+            success = result.status == JobStatus.PASSED
+            self.queue.mark_completed(job, success=success)
+            if result.status == JobStatus.TIMEOUT:
+                event_type = JobEventType.JOB_TIMEOUT
+            elif success:
+                event_type = JobEventType.JOB_COMPLETED
+            else:
+                event_type = JobEventType.JOB_FAILED
         self._emit(event_type, job, result=result)
         logger.info(
             "%s: %s (%.1fs)",
-            "PASSED" if success else "FAILED",
+            "PASSED"
+            if success
+            else ("SKIPPED" if result.status == JobStatus.SKIPPED else "FAILED"),
             job.matrix_entry.name,
             getattr(result, "duration_seconds", 0.0),
         )

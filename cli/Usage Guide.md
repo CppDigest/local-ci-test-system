@@ -216,11 +216,11 @@ parallel:
     cpu_percent: 80        # Pause new jobs above this CPU usage
     memory_percent: 70     # Pause new jobs above this memory usage
 
-# Which platforms to enable
+# Which platforms to run locally (Linux-only execution)
 platforms:
   linux: true
-  windows: false           # Requires Windows host with Docker Desktop
-  macos: false             # Not containerisable
+  windows: false           # false: fail loud; true: skip Windows jobs without failing run
+  macos: false             # false: fail loud; true: skip macOS jobs without failing run
 
 # Job filters
 jobs:
@@ -300,12 +300,25 @@ execution:
 
 There is no CLI flag for `stop_on_first_failure`; set it in `.localci.yml` or with `localci config set execution.stop_on_first_failure true`.
 
+#### Platform support
+
+Local CI runs Linux jobs in Docker via act. Windows and macOS matrix entries are
+**not executable** on the Linux container path.
+
+| Config | Windows / macOS jobs in workflow |
+|--------|----------------------------------|
+| `platforms.windows: false` / `platforms.macos: false` (default) | **Fail** with an explicit message naming the job, platform, and `runs-on` value |
+| `platforms.windows: true` / `platforms.macos: true` | **Skip** without failing the overall run |
+
+Use `--platform linux` to queue only Linux matrix entries. Linux jobs honor
+`platforms.linux` (when `false`, Linux entries are skipped).
+
 #### Key sections
 
 | Section | Purpose |
 |---------|---------|
 | `parallel` | Control how many jobs run at once and resource limits |
-| `platforms` | Enable/disable Linux, Windows, macOS jobs |
+| `platforms` | Enable Linux jobs; opt-in skip for Windows/macOS (see below) |
 | `jobs` | Include or exclude specific job names |
 | `matrix` | Filter matrix entries by compiler, version, asan, etc. |
 | `priorities` | Override execution order (lower number runs first) |

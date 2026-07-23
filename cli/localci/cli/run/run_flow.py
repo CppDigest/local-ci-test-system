@@ -93,6 +93,7 @@ def execute_run(
         matrix_exclude=matrix_exclude,
         entries_include=selected_set,
         registry_path=registry_path,
+        platform_config=cfg.platforms,
     )
 
     if options.dry_run:

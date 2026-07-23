@@ -18,11 +18,11 @@ parallel:
     cpu_percent: 80        # Max CPU usage before throttling
     memory_percent: 70     # Max memory usage before throttling
 
-# Platform configuration
+# Platform configuration (Linux-only execution)
 platforms:
   linux: true              # Enable Linux jobs
-  windows: false           # Disable Windows (requires Windows host)
-  macos: false             # Disable macOS (not containerisable)
+  windows: false           # false: fail loud; true: skip without failing run
+  macos: false             # false: fail loud; true: skip without failing run
 
 # Job filters
 jobs:

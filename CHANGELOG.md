@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CHANGELOG.md` — this file
 - `.github/CODEOWNERS` — maintainer routing for reviews
 - `patches.profile` — `generic` (default) or `capy`; opt-in profile for Boost.Capy/B2 workflow patches and project identity
+- **Unsupported-platform handling** — Windows and macOS matrix entries fail with an explicit Linux-only message (job name, platform, `runs-on`) instead of invoking act without an image; set `platforms.windows` / `platforms.macos` to `true` to skip those jobs without failing the run
 
 ### Changed
 

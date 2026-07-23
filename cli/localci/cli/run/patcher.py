@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from localci.core.config import LocalCIConfig
+from localci.core.models import PlatformOutcome
 from localci.core.patch_pipeline import PatchContext, PatchPipeline
 from localci.core.queue import PriorityJobQueue
 from localci.core.workflow import MatrixEntry
@@ -31,17 +32,27 @@ def _print_execution_plan(
     table.add_column("#", justify="right", style="dim")
     table.add_column("Name", style="bold")
     table.add_column("Compiler", style="cyan")
+    table.add_column("Outcome")
     table.add_column("Image")
     for job in sorted(
         queue.get_all_jobs(),
         key=lambda j: (j.priority, j.matrix_entry.index),
     ):
+        outcome = job.platform_outcome.value
+        outcome_style = {
+            PlatformOutcome.RUN.value: "green",
+            PlatformOutcome.FAIL.value: "red",
+            PlatformOutcome.SKIP.value: "yellow",
+        }.get(outcome, "white")
         table.add_row(
             str(job.priority),
             str(job.matrix_entry.index),
             job.matrix_entry.name,
             f"{job.matrix_entry.compiler.family.value}-{job.matrix_entry.compiler.version}",
-            job.image_tag or "none",
+            f"[{outcome_style}]{outcome}[/{outcome_style}]",
+            job.image_tag or "none"
+            if job.platform_outcome == PlatformOutcome.RUN
+            else "-",
         )
     console.print(table)
     summary = queue.get_priority_summary()
