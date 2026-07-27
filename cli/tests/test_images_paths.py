@@ -56,7 +56,9 @@ class TestResolveRegistryPath:
         registry = _write_registry(tmp_path)
         assert resolve_registry_path(registry) == registry.resolve()
 
-    def test_find_from_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_find_from_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         repo = tmp_path / "repo"
         nested = repo / "examples" / "validation-project"
         nested.mkdir(parents=True)
@@ -77,9 +79,7 @@ class TestResolveRegistryPath:
         outside.mkdir()
         monkeypatch.chdir(outside)
 
-        assert (
-            resolve_registry_path(module_file=module) == registry.resolve()
-        )
+        assert resolve_registry_path(module_file=module) == registry.resolve()
 
     def test_simulated_site_packages_install_uses_cwd(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -101,11 +101,11 @@ class TestResolveRegistryPath:
         module.write_text("# installed copy\n", encoding="utf-8")
         monkeypatch.chdir(repo)
 
-        assert (
-            resolve_registry_path(module_file=module) == registry.resolve()
-        )
+        assert resolve_registry_path(module_file=module) == registry.resolve()
 
-    def test_missing_registry_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_registry_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         module = tmp_path / "site-packages" / "localci" / "cli" / "images.py"
         module.parent.mkdir(parents=True, exist_ok=True)
         module.write_text("# stub\n", encoding="utf-8")
