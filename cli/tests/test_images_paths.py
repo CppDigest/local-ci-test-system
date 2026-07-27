@@ -188,11 +188,9 @@ class TestImagesRegistryCli:
     def test_build_site_packages_layout_uses_registry_scripts(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repo = tmp_path / "checkout"
-        registry = _write_registry(repo)
-        images_dir = _write_images_capy(repo)
+        project = tmp_path / "project"
         site_module = (
-            tmp_path
+            project
             / "venv"
             / "lib"
             / "python3.10"
@@ -203,7 +201,11 @@ class TestImagesRegistryCli:
         )
         site_module.parent.mkdir(parents=True, exist_ok=True)
         site_module.write_text("# installed copy\n", encoding="utf-8")
-        monkeypatch.chdir(repo)
+        _write_registry(project)
+        images_dir = _write_images_capy(project)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
 
         captured: list[list[str]] = []
 
@@ -215,10 +217,7 @@ class TestImagesRegistryCli:
             patch("localci.cli.images._IMAGES_MODULE", site_module),
             patch("localci.cli.images._run", side_effect=fake_run),
         ):
-            result = runner.invoke(
-                cli,
-                ["images", "build", "--all", "--registry", str(registry)],
-            )
+            result = runner.invoke(cli, ["images", "build", "--all"])
 
         assert result.exit_code == 0
         assert captured[0][1] == str(images_dir / "build-all.sh")
