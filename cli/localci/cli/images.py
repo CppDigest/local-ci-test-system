@@ -16,7 +16,6 @@ import yaml
 from localci.core.registry import ImageRegistry
 from localci.errors import DockerNotAvailableError
 from localci.utils.docker import DockerManager
-from localci.utils.paths import resolve_images_dir, resolve_registry_path
 from localci.utils.output import (
     console,
     make_table,
@@ -25,6 +24,7 @@ from localci.utils.output import (
     print_success,
     print_warning,
 )
+from localci.utils.paths import resolve_images_dir, resolve_registry_path
 
 _IMAGES_MODULE = Path(__file__)
 
