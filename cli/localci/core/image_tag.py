@@ -11,11 +11,16 @@ def _is_linux_runner(runs_on: str) -> bool:
     return r.startswith("linux") or "ubuntu" in r
 
 
-def derive_image_tag(entry: MatrixEntry) -> str | None:
+def derive_image_tag(
+    entry: MatrixEntry,
+    *,
+    native_image_prefix: str = "",
+) -> str | None:
     """Derive a Docker image tag from a matrix entry.
 
-    Uses capy image names (e.g. capy-ubuntu-24.04-clang20-x86:latest).
-    Only builds a synthesized capy tag when:
+    Uses ``native_image_prefix`` when synthesising a tag (e.g.
+    ``capy-ubuntu-24.04-clang20-x86:latest`` when the prefix is ``capy-``).
+    Only builds a tag when:
     - entry.container.image is present (normalized img/os_label behavior), or
     - entry.runs_on is a Linux runner (e.g. startswith "linux" or project Linux identifiers).
     When container.image is absent and runs_on is not Linux, returns None so callers
@@ -29,7 +34,7 @@ def derive_image_tag(entry: MatrixEntry) -> str | None:
             return None
         os_label = entry.runs_on
     compiler_label = f"{entry.compiler.family.value}{entry.compiler.version}"
-    base = f"capy-{os_label}-{compiler_label}"
+    base = f"{native_image_prefix}{os_label}-{compiler_label}"
     if entry.variant.coverage:
         base += "-cov"
     elif entry.variant.asan:

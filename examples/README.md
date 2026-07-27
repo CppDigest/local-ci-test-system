@@ -75,20 +75,20 @@ localci run --platform linux --dry-run
 
 ### 4. Prepare the Docker image (one-time)
 
-The workflow targets `ubuntu-latest` with GCC 15. Local CI derives the image tag **`capy-ubuntu-latest-gcc15:latest`**. The example registry points at that tag but does not ship image tarballs (`auto_build: false`).
+The workflow targets `ubuntu-latest` with GCC 15. Local CI derives the image tag **`ubuntu-latest-gcc15:latest`**. The example registry points at that tag but does not ship image tarballs (`auto_build: false`).
 
 Pull the standard act runner and tag it:
 
 ```bash
 docker pull catthehacker/ubuntu:act-24.04
-docker tag catthehacker/ubuntu:act-24.04 capy-ubuntu-latest-gcc15:latest
+docker tag catthehacker/ubuntu:act-24.04 ubuntu-latest-gcc15:latest
 ```
 
 If `act-24.04` is not yet available locally, `act-latest` is an acceptable substitute:
 
 ```bash
 docker pull catthehacker/ubuntu:act-latest
-docker tag catthehacker/ubuntu:act-latest capy-ubuntu-latest-gcc15:latest
+docker tag catthehacker/ubuntu:act-latest ubuntu-latest-gcc15:latest
 ```
 
 This matches how integration tests bootstrap images without building full capy layers.
@@ -144,7 +144,7 @@ localci logs "Validation smoke"
 
   ```powershell
   docker pull catthehacker/ubuntu:act-24.04
-  docker tag catthehacker/ubuntu:act-24.04 capy-ubuntu-latest-gcc15:latest
+  docker tag catthehacker/ubuntu:act-24.04 ubuntu-latest-gcc15:latest
   ```
 
 See [Cross-platform prerequisites](../cli/Usage%20Guide.md#cross-platform-prerequisites) for more detail.

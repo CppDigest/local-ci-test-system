@@ -57,7 +57,7 @@ def _run_localci(
     return runner.invoke(cli, args)
 
 
-@pytest.mark.usefixtures("capy_image_tag")
+@pytest.mark.usefixtures("derived_image_tag")
 def test_run_success(
     integration_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
@@ -77,7 +77,7 @@ def test_run_success(
     assert summary.results[0].status == JobStatus.PASSED
 
 
-@pytest.mark.usefixtures("capy_image_tag")
+@pytest.mark.usefixtures("derived_image_tag")
 def test_run_failure(
     integration_project: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,

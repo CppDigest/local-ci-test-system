@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from localci.core.config import GENERIC_NATIVE_IMAGE_PREFIX
 from localci.core.executor import JobExecutor
 from localci.core.image_tag import derive_image_tag
 from localci.errors import DockerNotAvailableError
@@ -67,15 +68,15 @@ def act_runner_image(require_act_and_docker: None) -> str:
 
 
 @pytest.fixture(scope="session")
-def capy_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
-    """Tag the act runner image as the derived capy name for localci run."""
+def derived_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
+    """Tag the act runner image as the derived name for localci run (generic profile)."""
     from localci.core.workflow import WorkflowAnalyzer
 
     # Derive tag from test.yml; test-fail.yml uses the same matrix.include shape today.
     # If failure fixture matrix diverges, derive from that workflow (or both) instead.
     workflow_path = FIXTURE_PROJECT / ".github/workflows/test.yml"
     entry = WorkflowAnalyzer().analyze(workflow_path).jobs[INTEGRATION_JOB_ID].matrix[0]
-    tag = derive_image_tag(entry)
+    tag = derive_image_tag(entry, native_image_prefix=GENERIC_NATIVE_IMAGE_PREFIX)
     assert tag is not None
 
     try:

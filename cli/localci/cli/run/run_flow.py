@@ -94,6 +94,7 @@ def execute_run(
         entries_include=selected_set,
         registry_path=registry_path,
         platform_config=cfg.platforms,
+        native_image_prefix=cfg.project.native_image_prefix,
     )
 
     if options.dry_run:
