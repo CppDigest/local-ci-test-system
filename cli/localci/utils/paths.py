@@ -46,3 +46,63 @@ def ensure_directory(path: Path) -> Path:
 def localci_home() -> Path:
     """Return the root data directory for localci (``~/.localci``)."""
     return ensure_directory(Path.home() / ".localci")
+
+
+REGISTRY_FILENAME = "image-registry.yml"
+IMAGES_CAPY_REL = Path("images") / "capy"
+
+
+def find_file_upward(filename: str, start_dir: Path) -> Path | None:
+    """Return the first *filename* found walking up from *start_dir*."""
+    directory = start_dir.resolve()
+    while True:
+        candidate = directory / filename
+        if candidate.is_file():
+            return candidate
+        parent = directory.parent
+        if parent == directory:
+            return None
+        directory = parent
+
+
+def resolve_registry_path(
+    registry_path: Path | None = None,
+    *,
+    start_dir: Path | None = None,
+    module_file: Path | None = None,
+) -> Path:
+    """Resolve the image registry file for ``localci images`` commands.
+
+    Priority:
+    1. Explicit *registry_path* (e.g. ``--registry``)
+    2. Walk upward from *start_dir* or the current working directory
+    3. Walk upward from *module_file*'s directory (editable/source installs)
+
+    Raises
+    ------
+    FileNotFoundError
+        If no registry file can be located.
+    """
+    if registry_path is not None:
+        resolved = Path(registry_path).resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(f"Registry file not found: {resolved}")
+        return resolved
+
+    found = find_file_upward(REGISTRY_FILENAME, start_dir or Path.cwd())
+    if found is None and module_file is not None:
+        found = find_file_upward(REGISTRY_FILENAME, Path(module_file).resolve().parent)
+
+    if found is None:
+        origin = start_dir or Path.cwd()
+        raise FileNotFoundError(
+            f"Registry file not found: {REGISTRY_FILENAME} "
+            f"(searched upward from {origin} and the installed package; "
+            f"use --registry or run from a directory containing {REGISTRY_FILENAME})"
+        )
+    return found
+
+
+def resolve_images_dir(registry_path: Path) -> Path:
+    """Return ``images/capy`` beside the resolved registry file."""
+    return registry_path.resolve().parent / IMAGES_CAPY_REL
