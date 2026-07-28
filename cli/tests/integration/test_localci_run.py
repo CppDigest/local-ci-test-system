@@ -84,6 +84,13 @@ def test_run_success_capy_profile(
 ) -> None:
     project, logs_dir = capy_integration_project
     monkeypatch.chdir(project)
+
+    dry_result = _run_localci(
+        project, ".github/workflows/test.yml", extra_args=["--dry-run"]
+    )
+    assert dry_result.exit_code == 0, dry_result.output
+    assert "capy-ubuntu-latest-gcc15" in dry_result.output
+
     result = _run_localci(project, ".github/workflows/test.yml")
 
     assert result.exit_code == 0, result.output

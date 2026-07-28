@@ -12,8 +12,15 @@ from click.testing import CliRunner
 from localci.cli.run.container import build_run_container
 from localci.cli.run.params import RunOptions
 from localci.cli.run.run_flow import _resolve_matrix_filters, execute_run
-from localci.core.config import LocalCIConfig, MatrixConfig, MatrixFilter, PatchesConfig
+from localci.core.config import (
+    CAPY_NATIVE_IMAGE_PREFIX,
+    LocalCIConfig,
+    MatrixConfig,
+    MatrixFilter,
+    PatchesConfig,
+)
 from localci.core.executor import ActNotFoundError, JobResult, JobStatus
+from localci.core.models import PlatformOutcome
 from localci.core.workflow import (
     BuildSystem,
     BuildVariant,
@@ -125,6 +132,39 @@ class TestExecuteRunDryRun:
             )
         assert code == 0
         mock_plan.assert_called_once()
+
+    def test_capy_profile_passes_native_image_prefix_to_queue(self) -> None:
+        """``run_flow`` must thread ``cfg.project.native_image_prefix`` into ``build()``."""
+        cfg = LocalCIConfig(
+            workflow=SAMPLE_WORKFLOW,
+            patches=PatchesConfig(profile="capy"),
+        )
+        assert cfg.project.native_image_prefix == CAPY_NATIVE_IMAGE_PREFIX
+
+        captured_queues: list = []
+
+        def capture_plan(queue, workflow_path, timeout):
+            captured_queues.append(queue)
+
+        with patch(
+            "localci.cli.run.run_flow._print_execution_plan",
+            side_effect=capture_plan,
+        ):
+            code = execute_run(
+                cfg=cfg,
+                options=_dry_run_options(),
+                deps=build_run_container(),
+            )
+
+        assert code == 0
+        assert captured_queues
+        runnable = [
+            job
+            for job in captured_queues[0].get_all_jobs()
+            if job.platform_outcome == PlatformOutcome.RUN and job.image_tag
+        ]
+        assert runnable
+        assert all(job.image_tag.startswith("capy-") for job in runnable)
 
     def test_dry_run_skips_preflight_and_parallel_execute(
         self, sample_config: LocalCIConfig
