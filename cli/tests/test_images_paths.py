@@ -128,6 +128,32 @@ class TestResolveImagesDir:
 
 
 class TestImagesRegistryCli:
+    def test_list_discovers_registry_from_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        nested = repo / "subdir"
+        nested.mkdir(parents=True)
+        _write_registry(repo)
+        monkeypatch.chdir(nested)
+
+        result = runner.invoke(cli, ["images", "list", "--format", "json"])
+
+        assert result.exit_code == 0
+        assert '"images": []' in result.output or "[]" in result.output
+
+    def test_build_without_targets_skips_registry_resolution(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        result = runner.invoke(cli, ["images", "build"])
+
+        assert result.exit_code == 0
+        assert "No images specified" in result.output
+
     def test_list_uses_explicit_registry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

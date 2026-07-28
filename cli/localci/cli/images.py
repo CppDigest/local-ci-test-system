@@ -156,7 +156,6 @@ def images_info(ctx: click.Context, image: str, registry_path: Path | None) -> N
 @images.command("build")
 @click.option("--all", "build_all", is_flag=True, help="Build all missing images.")
 @click.option("--force", is_flag=True, help="Rebuild even if image exists.")
-@click.argument("image_names", nargs=-1)
 @click.option(
     "--registry",
     "-r",
@@ -165,6 +164,7 @@ def images_info(ctx: click.Context, image: str, registry_path: Path | None) -> N
     default=None,
     help="Path to image-registry.yml.",
 )
+@click.argument("image_names", nargs=-1)
 @click.pass_context
 def images_build(
     ctx: click.Context,
@@ -179,6 +179,10 @@ def images_build(
     """
     if force:
         print_warning("--force is not yet implemented; proceeding without force logic.")
+
+    if not build_all and not image_names:
+        print_info("No images specified. Use --all or provide image names.")
+        return
 
     try:
         images_dir = resolve_images_dir(_resolve_registry_file(registry_path))
@@ -215,8 +219,6 @@ def images_build(
                 return
             print_success(f"Built image: {image}")
         return
-
-    print_info("No images specified. Use --all or provide image names.")
 
 
 # ---------------------------------------------------------------------------

@@ -78,6 +78,11 @@ def resolve_registry_path(
     2. Walk upward from *start_dir* or the current working directory
     3. Walk upward from *module_file*'s directory (editable/source installs)
 
+    Image assets are not bundled in the installed wheel. If the working
+    directory has no ``image-registry.yml`` ancestor and the installed package
+    path (for example ``site-packages``) is not under a checkout that contains
+    the registry, resolution fails unless ``--registry`` is provided.
+
     Raises
     ------
     FileNotFoundError
