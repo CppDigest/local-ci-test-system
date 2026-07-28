@@ -32,17 +32,24 @@ def _write_images_capy(repo_root: Path) -> Path:
     return images_dir
 
 
-def _write_registry_with_image(directory: Path) -> Path:
+def _write_registry_with_image(
+    directory: Path,
+    *,
+    name: str = "test-image",
+    docker_tag: str = "test:latest",
+    created: str = "2026-02-10T00:00:00Z",
+) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / REGISTRY_FILENAME
     path.write_text(
         "version: '1.0'\n"
         "images:\n"
-        "  - name: test-image\n"
+        f"  - name: {name}\n"
         "    file: images/test.tar\n"
-        "    docker_tag: test:latest\n"
+        f"    docker_tag: {docker_tag}\n"
         "    os: ubuntu:24.04\n"
-        "    architecture: x86_64\n",
+        "    architecture: x86_64\n"
+        f"    created: {created}\n",
         encoding="utf-8",
     )
     return path
@@ -86,22 +93,16 @@ class TestResolveRegistryPath:
     ) -> None:
         repo = tmp_path / "checkout"
         repo.mkdir()
-        registry = _write_registry(repo)
-        site_packages = (
-            tmp_path
-            / "venv"
-            / "lib"
-            / "python3.10"
-            / "site-packages"
-            / "localci"
-            / "cli"
-        )
+        cwd_registry = _write_registry_with_image(repo, name="cwd-registry-image")
+        site_packages_root = tmp_path / "venv" / "lib" / "python3.10" / "site-packages"
+        site_packages = site_packages_root / "localci" / "cli"
         site_packages.mkdir(parents=True, exist_ok=True)
+        _write_registry_with_image(site_packages_root, name="module-registry-image")
         module = site_packages / "images.py"
         module.write_text("# installed copy\n", encoding="utf-8")
         monkeypatch.chdir(repo)
 
-        assert resolve_registry_path(module_file=module) == registry.resolve()
+        assert resolve_registry_path(module_file=module) == cwd_registry.resolve()
 
     def test_missing_registry_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -134,13 +135,13 @@ class TestImagesRegistryCli:
         repo = tmp_path / "repo"
         nested = repo / "subdir"
         nested.mkdir(parents=True)
-        _write_registry(repo)
+        _write_registry_with_image(repo)
         monkeypatch.chdir(nested)
 
         result = runner.invoke(cli, ["images", "list", "--format", "json"])
 
         assert result.exit_code == 0
-        assert '"images": []' in result.output or "[]" in result.output
+        assert "test-image" in result.output
 
     def test_build_without_targets_skips_registry_resolution(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -149,15 +150,16 @@ class TestImagesRegistryCli:
         outside.mkdir()
         monkeypatch.chdir(outside)
 
-        result = runner.invoke(cli, ["images", "build"])
+        with patch("localci.cli.images._resolve_registry_file") as mock_resolve:
+            result = runner.invoke(cli, ["images", "build"])
 
+        mock_resolve.assert_not_called()
         assert result.exit_code == 0
-        assert "No images specified" in result.output
 
     def test_list_uses_explicit_registry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        registry = _write_registry(tmp_path / "repo")
+        registry = _write_registry_with_image(tmp_path / "repo")
         outside = tmp_path / "outside"
         outside.mkdir()
         monkeypatch.chdir(outside)
@@ -167,7 +169,8 @@ class TestImagesRegistryCli:
         )
 
         assert result.exit_code == 0
-        assert '"images": []' in result.output or "[]" in result.output
+        assert "test-image" in result.output
+        assert "2026-02-10T00:00:00Z" in result.output
 
     def test_info_uses_explicit_registry(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
