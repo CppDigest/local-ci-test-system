@@ -77,6 +77,10 @@ class TestDeriveImageTag:
         entry = _entry(container_image=None)
         entry.variant.coverage = True
         assert derive_image_tag(entry) == "ubuntu-latest-gcc15-cov:latest"
+        assert (
+            derive_image_tag(entry, native_image_prefix=CAPY_NATIVE_IMAGE_PREFIX)
+            == "capy-ubuntu-latest-gcc15-cov:latest"
+        )
 
         entry.variant.coverage = False
         entry.variant.asan = True

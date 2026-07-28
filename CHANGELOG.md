@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`project` defaults** — `repo_full_name` and `native_image_prefix` no longer default to `cppalliance/capy` and `capy-` on the generic path (empty by default). `profile: capy` restores the previous Boost.Capy values unless overridden.
 - **x86 container architecture** — `linux/386` is requested only when no native image prefix is configured or the image tag does not start with `project.native_image_prefix` (empty prefix no longer suppresses 386 for all images).
 
+### Fixed
+
+- **`derive_image_tag()` prefix** — honours `project.native_image_prefix` instead of hardcoding `capy-`, completing the generic-profile default behaviour documented for Week 30.
+
 ## [0.1.0] - TBD
 
 Pre-release baseline. The CLI package version is `0.1.0` (`cli/pyproject.toml`).

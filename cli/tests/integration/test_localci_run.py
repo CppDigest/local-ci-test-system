@@ -77,6 +77,26 @@ def test_run_success(
     assert summary.results[0].status == JobStatus.PASSED
 
 
+@pytest.mark.usefixtures("capy_derived_image_tag")
+def test_run_success_capy_profile(
+    capy_integration_project: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project, logs_dir = capy_integration_project
+    monkeypatch.chdir(project)
+    result = _run_localci(project, ".github/workflows/test.yml")
+
+    assert result.exit_code == 0, result.output
+
+    last_run = logs_dir / "last-run.json"
+    assert last_run.exists(), "expected last-run.json after successful capy-profile run"
+
+    summary = ExecutionSummary.load(last_run)
+    assert summary.all_passed
+    assert summary.total == 1
+    assert summary.results[0].status == JobStatus.PASSED
+
+
 @pytest.mark.usefixtures("derived_image_tag")
 def test_run_failure(
     integration_project: tuple[Path, Path],

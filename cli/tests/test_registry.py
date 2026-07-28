@@ -360,6 +360,7 @@ jobs:
         analyzer = WorkflowAnalyzer()
         wf = analyzer.analyze(wf_path)
         builder = QueueBuilder(wf)
+        # Registry full match returns docker_tag as-is; prefix only affects derived tags.
         queue = builder.build(registry_path=registry_path)
         jobs = list(queue.get_all_jobs())
         assert len(jobs) == 1
