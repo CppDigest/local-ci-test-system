@@ -29,6 +29,16 @@ MARKS_PER_PACKAGE = 10
 MARKS_PER_TOOL = 20
 
 
+def _registry_timestamp(value: Any) -> str | None:
+    """Normalize YAML-parsed timestamps to ISO strings for JSON output."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        ts = value.astimezone(timezone.utc)
+        return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return str(value)
+
+
 @dataclass
 class RegistryEntry:
     """Single image entry in the registry (image-registry.yml schema)."""
@@ -64,8 +74,8 @@ class RegistryEntry:
             compilers=d.get("compilers") or [],
             tools=tools if isinstance(tools, list) else [],
             size_mb=d.get("size_mb"),
-            created=d.get("created"),
-            last_used=d.get("last_used"),
+            created=_registry_timestamp(d.get("created")),
+            last_used=_registry_timestamp(d.get("last_used")),
             usage_count=int(d.get("usage_count", 0)),
             variants=d.get("variants") or [],
             raw={

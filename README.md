@@ -45,6 +45,8 @@ cd cli/
 pip install .
 ```
 
+After install, `localci images` finds `image-registry.yml` by walking up from your current directory, or you can pass `--registry /path/to/image-registry.yml`. Image assets are not bundled in the wheel, so runs from outside a checkout (for example `/tmp` with a global venv) need an explicit `--registry` path.
+
 For editable install (development):
 
 ```bash

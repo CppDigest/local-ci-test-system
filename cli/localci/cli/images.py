@@ -24,16 +24,17 @@ from localci.utils.output import (
     print_success,
     print_warning,
 )
+from localci.utils.paths import resolve_images_dir, resolve_registry_path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-IMAGES_DIR = REPO_ROOT / "images" / "capy"
-REGISTRY_FILE = REPO_ROOT / "image-registry.yml"
+_IMAGES_MODULE = Path(__file__)
+
+
+def _resolve_registry_file(registry_path: Path | None = None) -> Path:
+    return resolve_registry_path(registry_path, module_file=_IMAGES_MODULE)
 
 
 def _get_registry(registry_path: Path | None = None) -> ImageRegistry:
-    path = registry_path or REGISTRY_FILE
-    if not path.exists():
-        raise FileNotFoundError(f"Registry file not found: {path}")
+    path = _resolve_registry_file(registry_path)
     registry = ImageRegistry(path)
     registry.load()
     return registry
@@ -155,6 +156,14 @@ def images_info(ctx: click.Context, image: str, registry_path: Path | None) -> N
 @images.command("build")
 @click.option("--all", "build_all", is_flag=True, help="Build all missing images.")
 @click.option("--force", is_flag=True, help="Rebuild even if image exists.")
+@click.option(
+    "--registry",
+    "-r",
+    "registry_path",
+    type=click.Path(path_type=Path, exists=True),
+    default=None,
+    help="Path to image-registry.yml.",
+)
 @click.argument("image_names", nargs=-1)
 @click.pass_context
 def images_build(
@@ -162,6 +171,7 @@ def images_build(
     build_all: bool,
     force: bool,
     image_names: tuple[str, ...],
+    registry_path: Path | None,
 ) -> None:
     """Build Docker images.
 
@@ -170,13 +180,24 @@ def images_build(
     if force:
         print_warning("--force is not yet implemented; proceeding without force logic.")
 
-    if not IMAGES_DIR.exists():
-        print_error(f"Images directory not found: {IMAGES_DIR}")
+    if not build_all and not image_names:
+        print_info("No images specified. Use --all or provide image names.")
+        return
+
+    try:
+        images_dir = resolve_images_dir(_resolve_registry_file(registry_path))
+    except FileNotFoundError as exc:
+        print_error(str(exc))
         ctx.exit(1)
         return
 
-    build_all_script = IMAGES_DIR / "build-all.sh"
-    build_one_script = IMAGES_DIR / "build-one.sh"
+    if not images_dir.exists():
+        print_error(f"Images directory not found: {images_dir}")
+        ctx.exit(1)
+        return
+
+    build_all_script = images_dir / "build-all.sh"
+    build_one_script = images_dir / "build-one.sh"
 
     if build_all:
         cmd = ["bash", str(build_all_script), "--save"]
@@ -198,8 +219,6 @@ def images_build(
                 return
             print_success(f"Built image: {image}")
         return
-
-    print_info("No images specified. Use --all or provide image names.")
 
 
 # ---------------------------------------------------------------------------
