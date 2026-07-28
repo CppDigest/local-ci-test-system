@@ -24,12 +24,14 @@ logger = logging.getLogger(__name__)
 def _resolve_image_tag_and_build(
     entry: MatrixEntry,
     registry: ImageRegistry | None,
+    *,
+    native_image_prefix: str = "",
 ) -> tuple[str | None, str | None, bool]:
     """Resolve (image_tag, base_image_tag, needs_build) via registry matching, or derive tag and no build.
 
     Returns (None, None, True) when no image tag can be derived (e.g. non-Linux runner).
     """
-    derived_tag = derive_image_tag(entry)
+    derived_tag = derive_image_tag(entry, native_image_prefix=native_image_prefix)
     if registry is None:
         if derived_tag is not None:
             return derived_tag, None, False
@@ -103,6 +105,7 @@ class QueueBuilder:
         entries_include: set[tuple[str, int]] | None = None,
         registry_path: Path | None = None,
         platform_config: PlatformConfig | None = None,
+        native_image_prefix: str = "",
     ) -> PriorityJobQueue:
         """Build queue. entries_include: when set, only (job_id, entry.index) in this set."""
         queue = PriorityJobQueue()
@@ -150,7 +153,9 @@ class QueueBuilder:
             platform_outcome = resolve_platform_outcome(entry, plat_cfg)
             if platform_outcome == PlatformOutcome.RUN:
                 image_tag, base_image_tag, needs_build = _resolve_image_tag_and_build(
-                    entry, registry
+                    entry,
+                    registry,
+                    native_image_prefix=native_image_prefix,
                 )
             else:
                 image_tag, base_image_tag, needs_build = None, None, False

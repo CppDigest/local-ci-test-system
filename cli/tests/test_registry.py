@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from localci.core.config import CAPY_NATIVE_IMAGE_PREFIX, GENERIC_NATIVE_IMAGE_PREFIX
+from localci.core.models import QueuedJob
 from localci.core.registry import (
     ImageRegistry,
     RegistryEntry,
@@ -268,6 +270,46 @@ class TestImageRegistryCRUD:
         assert e.last_used is not None
 
 
+_EMPTY_REGISTRY_GCC15_WORKFLOW = """
+name: CI
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - compiler: gcc
+            version: "15"
+            container: ubuntu:25.04
+"""
+
+
+def _queue_job_empty_registry(
+    tmp_path: Path,
+    *,
+    native_image_prefix: str,
+) -> QueuedJob:
+    from localci.core.queue_builder import QueueBuilder
+    from localci.core.workflow import WorkflowAnalyzer
+
+    registry_path = tmp_path / "image-registry.yml"
+    registry_path.write_text(
+        yaml.safe_dump({"version": "1.0", "images": []}),
+        encoding="utf-8",
+    )
+    wf_path = tmp_path / "ci.yml"
+    wf_path.write_text(_EMPTY_REGISTRY_GCC15_WORKFLOW, encoding="utf-8")
+    wf = WorkflowAnalyzer().analyze(wf_path)
+    queue = QueueBuilder(wf).build(
+        registry_path=registry_path,
+        native_image_prefix=native_image_prefix,
+    )
+    jobs = list(queue.get_all_jobs())
+    assert len(jobs) == 1
+    return jobs[0]
+
+
 class TestQueueBuilderWithRegistry:
     """QueueBuilder with registry_path sets image_tag, base_image_tag, needs_build."""
 
@@ -318,6 +360,7 @@ jobs:
         analyzer = WorkflowAnalyzer()
         wf = analyzer.analyze(wf_path)
         builder = QueueBuilder(wf)
+        # Registry full match returns docker_tag as-is; prefix only affects derived tags.
         queue = builder.build(registry_path=registry_path)
         jobs = list(queue.get_all_jobs())
         assert len(jobs) == 1
@@ -325,40 +368,33 @@ jobs:
         assert jobs[0].needs_build is False
         assert jobs[0].base_image_tag is None
 
-    def test_with_registry_no_match_needs_build(self, tmp_path: Path):
-        from localci.core.queue_builder import QueueBuilder
-        from localci.core.workflow import WorkflowAnalyzer
-
-        registry_path = tmp_path / "image-registry.yml"
-        registry_path.write_text(
-            yaml.safe_dump({"version": "1.0", "images": []}),
-            encoding="utf-8",
+    @pytest.mark.parametrize(
+        ("native_image_prefix", "expected_tag"),
+        [
+            pytest.param(
+                GENERIC_NATIVE_IMAGE_PREFIX,
+                "ubuntu-25.04-gcc15:latest",
+                id="generic",
+            ),
+            pytest.param(
+                CAPY_NATIVE_IMAGE_PREFIX,
+                "capy-ubuntu-25.04-gcc15:latest",
+                id="capy",
+            ),
+        ],
+    )
+    def test_with_registry_no_match_derived_tag(
+        self,
+        tmp_path: Path,
+        native_image_prefix: str,
+        expected_tag: str,
+    ) -> None:
+        job = _queue_job_empty_registry(
+            tmp_path,
+            native_image_prefix=native_image_prefix,
         )
-        wf_path = tmp_path / "ci.yml"
-        wf_path.write_text(
-            """
-name: CI
-on: [push]
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - compiler: gcc
-            version: "15"
-            container: ubuntu:25.04
-""",
-            encoding="utf-8",
-        )
-        analyzer = WorkflowAnalyzer()
-        wf = analyzer.analyze(wf_path)
-        builder = QueueBuilder(wf)
-        queue = builder.build(registry_path=registry_path)
-        jobs = list(queue.get_all_jobs())
-        assert len(jobs) == 1
-        assert jobs[0].needs_build is True
-        assert "gcc" in (jobs[0].image_tag or "")
+        assert job.needs_build is True
+        assert job.image_tag == expected_tag
 
     def test_non_linux_runner_no_image_tag(self, tmp_path: Path):
         """Non-Linux runners without container.image must not get a synthesized image tag."""
@@ -393,6 +429,4 @@ jobs:
         jobs = list(queue.get_all_jobs())
         assert len(jobs) == 1
         assert jobs[0].image_tag is None
-        assert (
-            jobs[0].needs_build is False or jobs[0].needs_build is True
-        )  # no image to build
+        assert jobs[0].needs_build is False

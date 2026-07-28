@@ -5,7 +5,7 @@
 # `localci run`, tag an act runner image as docker_tag (see examples/README.md).
 images:
   - name: validation-ubuntu-24.04-gcc15
-    docker_tag: capy-ubuntu-latest-gcc15:latest
+    docker_tag: ubuntu-latest-gcc15:latest
     # No file/tarball — tag the image manually (see examples/README.md).
     os: ubuntu:24.04
     architecture: x86_64

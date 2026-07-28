@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from localci.core.config import CAPY_NATIVE_IMAGE_PREFIX, GENERIC_NATIVE_IMAGE_PREFIX
 from localci.core.executor import JobExecutor
 from localci.core.image_tag import derive_image_tag
 from localci.errors import DockerNotAvailableError
@@ -66,18 +67,17 @@ def act_runner_image(require_act_and_docker: None) -> str:
     return ACT_RUNNER_IMAGE
 
 
-@pytest.fixture(scope="session")
-def capy_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
-    """Tag the act runner image as the derived capy name for localci run."""
+def _derived_tag_for_integration_workflow(native_image_prefix: str) -> str:
     from localci.core.workflow import WorkflowAnalyzer
 
-    # Derive tag from test.yml; test-fail.yml uses the same matrix.include shape today.
-    # If failure fixture matrix diverges, derive from that workflow (or both) instead.
     workflow_path = FIXTURE_PROJECT / ".github/workflows/test.yml"
     entry = WorkflowAnalyzer().analyze(workflow_path).jobs[INTEGRATION_JOB_ID].matrix[0]
-    tag = derive_image_tag(entry)
+    tag = derive_image_tag(entry, native_image_prefix=native_image_prefix)
     assert tag is not None
+    return tag
 
+
+def _tag_act_runner_image(act_runner_image: str, tag: str) -> str:
     try:
         tag_result = subprocess.run(
             ["docker", "tag", act_runner_image, tag],
@@ -97,6 +97,20 @@ def capy_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
     return tag
 
 
+@pytest.fixture(scope="session")
+def derived_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
+    """Tag the act runner as the generic-profile derived image for localci run."""
+    tag = _derived_tag_for_integration_workflow(GENERIC_NATIVE_IMAGE_PREFIX)
+    return _tag_act_runner_image(act_runner_image, tag)
+
+
+@pytest.fixture(scope="session")
+def capy_derived_image_tag(act_runner_image: str, require_act_and_docker: None) -> str:
+    """Tag the act runner as the capy-profile derived image for localci run."""
+    tag = _derived_tag_for_integration_workflow(CAPY_NATIVE_IMAGE_PREFIX)
+    return _tag_act_runner_image(act_runner_image, tag)
+
+
 @pytest.fixture
 def integration_project(tmp_path: Path) -> tuple[Path, Path]:
     """Copy fixture project and return (project_root, logs_dir)."""
@@ -112,3 +126,20 @@ def integration_project(tmp_path: Path) -> tuple[Path, Path]:
     config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
 
     return dest, logs_dir
+
+
+@pytest.fixture
+def capy_integration_project(
+    integration_project: tuple[Path, Path],
+) -> tuple[Path, Path]:
+    """Integration fixture project with ``patches.profile: capy``."""
+    project, logs_dir = integration_project
+    config_path = project / ".localci.yml"
+    config = yaml.safe_load(config_path.read_text())
+    patches = config.get("patches")
+    if not isinstance(patches, dict):
+        patches = {}
+    patches["profile"] = "capy"
+    config["patches"] = patches
+    config_path.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False))
+    return project, logs_dir

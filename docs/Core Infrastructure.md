@@ -121,7 +121,7 @@ Executes **one** workflow job locally by invoking [act](https://github.com/nekto
 
 - The workflow file (possibly a patched copy with cache mounts and bootstrap skip)
 - The target job name and matrix filters (compiler, version, name) so act runs the right matrix entry
-- Runner-to-image mapping (e.g. `ubuntu-latest` → `capy-ubuntu-25.04-gcc15:latest`) when using pre-built images
+- Runner-to-image mapping when using pre-built images (e.g. `ubuntu-latest` → `ubuntu-latest-gcc15:latest` on the generic profile, or `capy-ubuntu-25.04-gcc15:latest` with `profile: capy` or an explicit `native_image_prefix`)
 - Optional bind mounts (ccache, Boost, b2-source, CMake, APT) and environment variables (`CCACHE_DIR`, `BOOST_ROOT`, `LOCALCI_B2_SOURCE_DIR`, etc.)
 - Per-job act action cache directory to avoid parallel jobs corrupting a shared cache
 
@@ -156,7 +156,7 @@ The executor builds the act command, runs it, captures stdout/stderr, and return
 
 ### Image naming and registry
 
-Images are typically named like `capy-ubuntu-24.04-gcc13` or `capy-ubuntu-25.04-clang20`. The registry maps these to a base OS, compiler set, and optional variants (e.g. asan, coverage, x86). The executor maps the workflow’s `runs-on` (e.g. `ubuntu-latest`) to the chosen image tag so act uses your image instead of pulling the default container.
+Images are typically named like `ubuntu-24.04-gcc13` or `capy-ubuntu-25.04-clang20`, depending on `project.native_image_prefix` and the active patch profile. The registry maps these to a base OS, compiler set, and optional variants (e.g. asan, coverage, x86). The executor maps the workflow’s `runs-on` (e.g. `ubuntu-latest`) to the chosen image tag so act uses your image instead of pulling the default container.
 
 ---
 

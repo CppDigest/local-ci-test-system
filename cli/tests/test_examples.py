@@ -9,6 +9,8 @@ import pytest
 from click.testing import CliRunner
 
 from localci.cli.main import cli
+from localci.core.config import load_config
+from localci.core.queue_builder import QueueBuilder
 from localci.core.workflow import WorkflowAnalyzer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -69,3 +71,15 @@ def test_validation_dry_run(
     )
     assert result.exit_code == 0, result.output
     assert "Validation smoke" in result.output or "validate" in result.output.lower()
+    assert "ubuntu-latest-gcc15" in result.output
+    assert "capy-" not in result.output
+
+    cfg = load_config(CONFIG)
+    wf = WorkflowAnalyzer().analyze(WORKFLOW)
+    queue = QueueBuilder(wf).build(
+        registry_path=REGISTRY,
+        native_image_prefix=cfg.project.native_image_prefix,
+    )
+    jobs = list(queue.get_all_jobs())
+    assert len(jobs) == 1
+    assert jobs[0].image_tag == "ubuntu-latest-gcc15:latest"
