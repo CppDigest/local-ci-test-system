@@ -49,6 +49,23 @@ from localci.core.workflow import (
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def _assert_text_has_no_secret_plaintext(text: str, *secret_values: str) -> None:
+    """Ensure secret plaintext never appears in an arbitrary captured string."""
+    for value in secret_values:
+        if value:
+            assert value not in text, (
+                f"secret value leaked into captured text: {value!r}"
+            )
+
+
+def _assert_file_has_no_secret_plaintext(path: Path, *secret_values: str) -> None:
+    """Ensure secret plaintext never appears in a file's contents."""
+    _assert_text_has_no_secret_plaintext(
+        path.read_text(encoding="utf-8"),
+        *secret_values,
+    )
+
+
 def _assert_argv_has_no_secret_leaks(argv: list[str], *secret_values: str) -> None:
     """Ensure secret values and ``--secret`` flags never appear on argv."""
     for arg in argv:
@@ -56,11 +73,7 @@ def _assert_argv_has_no_secret_leaks(argv: list[str], *secret_values: str) -> No
         assert not arg.startswith("--secret="), (
             f"unexpected --secret= flag in argv: {arg!r}"
         )
-        for value in secret_values:
-            if value:
-                assert value not in arg, (
-                    f"secret value leaked into argv element: {arg!r}"
-                )
+        _assert_text_has_no_secret_plaintext(arg, *secret_values)
 
 
 def _make_entry(
