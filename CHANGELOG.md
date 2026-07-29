@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Config typo rejection (partial)** — unknown keys under the root and orchestrator sections (`parallel`, `execution`, `images`, `project`) raise a validation error at load time. Typos under `cache`, `logging`, `patches`, and other nested sections are still silently ignored; full-schema strict validation is planned for a later release.
+- **Config typo rejection (partial)** — unknown keys at the root, under orchestrator sections (`parallel`, `execution`, `images`, `project`), and nested orchestrator models (including `parallel.resource_limit`) raise a validation error at load time. Typos under unrelated sections such as `cache`, `logging`, and `patches` are still silently ignored; full-schema strict validation is planned for a later release.
 - **Default patch pipeline** — near-empty `.localci.yml` uses `patches.profile: generic`. Only `container_mounts`, `image_substitution`, and `codecov_skip` are enabled by default; Capy/B2 steps (`b2_source_cache`, `restore_capy_timestamps`, `capy_copy_preservation`, `b2_bootstrap_skip`) are off unless `profile: capy` or explicitly enabled.
 - **`project` defaults** — `repo_full_name` and `native_image_prefix` no longer default to `cppalliance/capy` and `capy-` on the generic path (empty by default). `profile: capy` restores the previous Boost.Capy values unless overridden.
 - **x86 container architecture** — `linux/386` is requested only when no native image prefix is configured or the image tag does not start with `project.native_image_prefix` (empty prefix no longer suppresses 386 for all images).
