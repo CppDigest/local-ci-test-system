@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from localci.core.config import LocalCIConfig
 from localci.core.models import (
     JobEventType,
     QueuedJob,
@@ -308,6 +309,14 @@ class TestPriorityConfig:
         job = make_job("Unknown")
         assert config.resolve_priority(job) == 7
 
+    def test_from_config_reads_priorities(self):
+        cfg = LocalCIConfig(
+            priorities={"GCC 15: C++20": 1, "Clang 20: C++20-23": 2},
+        )
+        pc = PriorityConfig.from_config(cfg)
+        assert pc.explicit == {"GCC 15: C++20": 1, "Clang 20: C++20-23": 2}
+        assert pc.default_priority == 5
+
 
 # ---------------------------------------------------------------------------
 # Thread safety
@@ -378,9 +387,9 @@ class TestQueueBuilderIntegration:
     def test_build_queue_with_priorities(self):
         analyzer = WorkflowAnalyzer()
         workflow = analyzer.analyze(FULL_WORKFLOW)
-        config = type(
-            "Config", (), {"priorities": {"GCC 15: C++20": 1, "GCC 12: C++20": 2}}
-        )()
+        config = LocalCIConfig(
+            priorities={"GCC 15: C++20": 1, "GCC 12: C++20": 2},
+        )
         priority_config = PriorityConfig.from_config(config)
         builder = QueueBuilder(workflow, priority_config=priority_config)
         queue = builder.build(platform_filter=Platform.LINUX)

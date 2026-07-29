@@ -384,7 +384,13 @@ class ProjectConfig(BaseModel):
 
 
 class LocalCIConfig(BaseModel):
-    """Root configuration model for .localci.yml."""
+    """Root configuration model for .localci.yml.
+
+    Unknown keys are rejected at the root and under orchestrator-related
+    sub-models (``parallel``, ``execution``, ``images``, ``project``).
+    Other sections (``cache``, ``logging``, ``patches``, etc.) still use
+    Pydantic's default ``extra="ignore"`` until strict validation widens.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

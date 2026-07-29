@@ -74,9 +74,11 @@ class PriorityConfig:
 
     @classmethod
     def from_config(cls, config: LocalCIConfig) -> PriorityConfig:
+        # Same pattern as OrchestratorConfig.from_config: read the validated model
+        # directly instead of getattr fallbacks on known schema fields.
         return cls(
             default_priority=5,
-            explicit=dict(getattr(config, "priorities", {}) or {}),
+            explicit=dict(config.priorities),
             rules=[],
         )
 

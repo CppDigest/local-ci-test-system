@@ -262,6 +262,7 @@ class TestConfigTypoRejection:
         with pytest.raises(ConfigValidationError) as exc_info:
             load_config(cfg_file)
         assert exc_info.value.path == cfg_file
+        assert "parallell" in str(exc_info.value.cause)
 
     def test_misspelled_nested_parallel_key_raises(self, tmp_path):
         cfg_file = tmp_path / ".localci.yml"
@@ -269,6 +270,14 @@ class TestConfigTypoRejection:
         with pytest.raises(ConfigValidationError) as exc_info:
             load_config(cfg_file)
         assert exc_info.value.path == cfg_file
+        assert "resource_limits" in str(exc_info.value.cause)
+
+    def test_misspelled_cache_key_still_ignored(self, tmp_path):
+        """cache: typos are out of scope for is-4; Week 32 widens extra forbid."""
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("cache:\n  enabledd: true\n")
+        cfg = load_config(cfg_file)
+        assert cfg.cache.enabled is True
 
 
 # ---------------------------------------------------------------------------

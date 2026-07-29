@@ -84,6 +84,9 @@ class OrchestratorConfig:
     @classmethod
     def from_config(cls, config: LocalCIConfig) -> OrchestratorConfig:
         rl = config.parallel.resource_limit
+        # disk_min_free_gb is omitted on purpose: ResourceLimitConfig has no field,
+        # so the dataclass default (10.0) applies. Class-level cpu/memory defaults
+        # (90/85) are aligned with ResourceLimitConfig in is-5.
         return cls(
             max_parallel=config.parallel.max_jobs,
             cpu_threshold=float(rl.cpu_percent),

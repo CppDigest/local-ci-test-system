@@ -12,6 +12,7 @@ from localci.core.config import (
     ParallelConfig,
     ProjectConfig,
     ResourceLimitConfig,
+    load_config,
 )
 from localci.core.executor import JobResult, JobStatus
 from localci.core.models import JobEventType, QueuedJobStatus
@@ -91,6 +92,26 @@ class TestOrchestratorConfigFromConfig:
         assert orch.native_image_prefix == "custom-"
         assert orch.image_registry_path == registry.resolve()
         assert orch.auto_build is False
+
+    def test_from_config_round_trips_yaml_file(self, tmp_path):
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text(
+            "parallel:\n"
+            "  max_jobs: 12\n"
+            "  resource_limit:\n"
+            "    cpu_percent: 75\n"
+            "    memory_percent: 65\n"
+            "execution:\n"
+            "  timeout: 1800\n"
+            "  keep_containers: true\n"
+        )
+        orch = OrchestratorConfig.from_config(load_config(cfg_file))
+        assert orch.max_parallel == 12
+        assert orch.cpu_threshold == 75.0
+        assert orch.memory_threshold == 65.0
+        assert orch.job_timeout == 1800
+        assert orch.keep_containers is True
+        assert orch.disk_min_free_gb == 10.0
 
 
 # ---------------------------------------------------------------------------
