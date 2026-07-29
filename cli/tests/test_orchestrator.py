@@ -5,6 +5,14 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from localci.core.config import (
+    ExecutionConfig,
+    ImagesConfig,
+    LocalCIConfig,
+    ParallelConfig,
+    ProjectConfig,
+    ResourceLimitConfig,
+)
 from localci.core.executor import JobResult, JobStatus
 from localci.core.models import JobEventType, QueuedJobStatus
 from localci.core.orchestrator import (
@@ -37,6 +45,52 @@ class TestOrchestratorConfig:
         )
         assert config.max_parallel == 20
         assert config.job_timeout == 1800
+
+
+class TestOrchestratorConfigFromConfig:
+    def test_from_config_default_localci_config(self):
+        cfg = LocalCIConfig()
+        orch = OrchestratorConfig.from_config(cfg)
+        assert orch.max_parallel == 8
+        assert orch.cpu_threshold == 80.0
+        assert orch.memory_threshold == 70.0
+        assert orch.disk_min_free_gb == 10.0
+        assert orch.job_timeout == 3600
+        assert orch.keep_containers is False
+        assert orch.stop_on_first_failure is False
+        assert orch.repo_full_name == ""
+        assert orch.native_image_prefix == ""
+        assert orch.auto_build is True
+
+    def test_from_config_maps_explicit_values(self, tmp_path):
+        registry = tmp_path / "registry.yml"
+        cfg = LocalCIConfig(
+            parallel=ParallelConfig(
+                max_jobs=16,
+                resource_limit=ResourceLimitConfig(cpu_percent=90, memory_percent=80),
+            ),
+            execution=ExecutionConfig(
+                timeout=7200,
+                keep_containers=True,
+                stop_on_first_failure=True,
+            ),
+            project=ProjectConfig(
+                repo_full_name="org/repo",
+                native_image_prefix="custom-",
+            ),
+            images=ImagesConfig(registry=registry, auto_build=False),
+        )
+        orch = OrchestratorConfig.from_config(cfg)
+        assert orch.max_parallel == 16
+        assert orch.cpu_threshold == 90.0
+        assert orch.memory_threshold == 80.0
+        assert orch.job_timeout == 7200
+        assert orch.keep_containers is True
+        assert orch.stop_on_first_failure is True
+        assert orch.repo_full_name == "org/repo"
+        assert orch.native_image_prefix == "custom-"
+        assert orch.image_registry_path == registry.resolve()
+        assert orch.auto_build is False
 
 
 # ---------------------------------------------------------------------------

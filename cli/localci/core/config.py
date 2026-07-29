@@ -12,7 +12,14 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from localci.errors import ConfigFileNotFoundError, ConfigIOError, ConfigValidationError
 
@@ -32,12 +39,16 @@ def _expand_path(v: Path) -> Path:
 class ResourceLimitConfig(BaseModel):
     """Resource limits for parallel execution."""
 
+    model_config = ConfigDict(extra="forbid")
+
     cpu_percent: int = Field(default=80, ge=1, le=100)
     memory_percent: int = Field(default=70, ge=1, le=100)
 
 
 class ParallelConfig(BaseModel):
     """Parallelism settings."""
+
+    model_config = ConfigDict(extra="forbid")
 
     max_jobs: int = Field(default=8, ge=1, le=64)
     resource_limit: ResourceLimitConfig = Field(
@@ -92,6 +103,8 @@ class ImageCleanupConfig(BaseModel):
 
 class ImagesConfig(BaseModel):
     """Docker image management settings."""
+
+    model_config = ConfigDict(extra="forbid")
 
     registry: Path = Field(default_factory=lambda: Path.home() / ".localci" / "images")
     auto_build: bool = True
@@ -183,6 +196,8 @@ class LoggingConfig(BaseModel):
 
 class ExecutionConfig(BaseModel):
     """Execution behaviour settings."""
+
+    model_config = ConfigDict(extra="forbid")
 
     timeout: int = Field(default=3600, ge=1)
     keep_containers: bool = False
@@ -357,6 +372,8 @@ class PatchesConfig(BaseModel):
 class ProjectConfig(BaseModel):
     """Project identity and image conventions for act command building."""
 
+    model_config = ConfigDict(extra="forbid")
+
     repo_full_name: str = GENERIC_REPO_FULL_NAME
     native_image_prefix: str = GENERIC_NATIVE_IMAGE_PREFIX
 
@@ -368,6 +385,8 @@ class ProjectConfig(BaseModel):
 
 class LocalCIConfig(BaseModel):
     """Root configuration model for .localci.yml."""
+
+    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="before")
     @classmethod
