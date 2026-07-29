@@ -333,13 +333,10 @@ jobs:
 
 # Global settings
 max_parallel_jobs: 20
-resource_limits:
-  cpu_per_job: 2
-  memory_per_job: 4GB
-  disk_per_job: 10GB
-  cpu_threshold: 90 # Pause new jobs if CPU usage exceeds this percentage
-  memory_threshold: 85 # Pause new jobs if memory usage exceeds this percentage
-  disk_min_free_gb: 10 # Minimum free disk space in GB before warning
+parallel:
+  resource_limit:
+    cpu_percent: 80 # Pause new jobs if CPU usage exceeds this percentage
+    memory_percent: 70 # Pause new jobs if memory usage exceeds this percentage
 ```
 
 ### C. Image Matching Algorithm

@@ -35,8 +35,22 @@ class TestOrchestratorConfig:
     def test_defaults(self):
         config = OrchestratorConfig()
         assert config.max_parallel == 8
-        assert config.cpu_threshold == 90.0
+        assert config.cpu_threshold == 80.0
+        assert config.memory_threshold == 70.0
         assert config.stop_on_first_failure is False
+
+    def test_manager_uses_default_thresholds_when_config_omitted(self, tmp_path):
+        with (
+            patch("localci.core.orchestrator.DockerManager"),
+            patch("localci.core.orchestrator.ResourceMonitor"),
+        ):
+            orchestrator = ParallelExecutionManager(
+                queue=PriorityJobQueue(),
+                workflow_file=Path("ci.yml"),
+                logs_dir=tmp_path / "logs",
+            )
+        assert orchestrator.config.cpu_threshold == 80.0
+        assert orchestrator.config.memory_threshold == 70.0
 
     def test_custom_config(self):
         config = OrchestratorConfig(

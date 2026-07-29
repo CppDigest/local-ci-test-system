@@ -27,15 +27,6 @@ class ResourceSnapshot:
     active_containers: int
     timestamp: datetime
 
-    @property
-    def is_healthy(self) -> bool:
-        """True if resources are within safe limits (threshold values are treated as healthy)."""
-        return (
-            self.cpu_percent <= 90.0
-            and self.memory_percent <= 85.0
-            and self.disk_free_gb >= 10.0
-        )
-
     def summary(self) -> str:
         return (
             f"CPU: {self.cpu_percent:.0f}% | "
@@ -82,8 +73,8 @@ class ResourceMonitor:
 
     def check_thresholds(
         self,
-        cpu_threshold: float = 90.0,
-        memory_threshold: float = 85.0,
+        cpu_threshold: float,
+        memory_threshold: float,
         disk_min_gb: float = 10.0,
     ) -> tuple[bool, list[str]]:
         """Check if resources are within thresholds. Returns (ok, warnings)."""

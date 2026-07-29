@@ -23,6 +23,7 @@ from localci.core.command_builder import ActCommandBuilder
 from localci.core.config import (
     GENERIC_NATIVE_IMAGE_PREFIX,
     GENERIC_REPO_FULL_NAME,
+    ResourceLimitConfig,
     resolve_cache_paths,
 )
 from localci.core.executor import JobExecutor, JobResult, JobStatus
@@ -40,6 +41,11 @@ if TYPE_CHECKING:
     from localci.core.config import CacheConfig, LocalCIConfig
 
 logger = logging.getLogger(__name__)
+
+_CPU_THRESHOLD_DEFAULT = float(ResourceLimitConfig.model_fields["cpu_percent"].default)
+_MEMORY_THRESHOLD_DEFAULT = float(
+    ResourceLimitConfig.model_fields["memory_percent"].default
+)
 
 
 # ---------------------------------------------------------------------------
@@ -64,8 +70,8 @@ class OrchestratorConfig:
     """Configuration for the parallel execution manager."""
 
     max_parallel: int = 8
-    cpu_threshold: float = 90.0
-    memory_threshold: float = 85.0
+    cpu_threshold: float = _CPU_THRESHOLD_DEFAULT
+    memory_threshold: float = _MEMORY_THRESHOLD_DEFAULT
     disk_min_free_gb: float = 10.0
     job_timeout: int = 3600
     keep_containers: bool = False
@@ -85,8 +91,7 @@ class OrchestratorConfig:
     def from_config(cls, config: LocalCIConfig) -> OrchestratorConfig:
         rl = config.parallel.resource_limit
         # disk_min_free_gb is omitted on purpose: ResourceLimitConfig has no field,
-        # so the dataclass default (10.0) applies. Class-level cpu/memory defaults
-        # (90/85) are aligned with ResourceLimitConfig in is-5.
+        # so the dataclass default (10.0) applies.
         return cls(
             max_parallel=config.parallel.max_jobs,
             cpu_threshold=float(rl.cpu_percent),
