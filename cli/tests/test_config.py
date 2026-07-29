@@ -21,6 +21,7 @@ from localci.core.config import (
     load_config,
     resolve_cache_paths,
 )
+from localci.errors import ConfigValidationError
 
 # ---------------------------------------------------------------------------
 # Default config
@@ -250,6 +251,33 @@ class TestValidation:
     def test_max_jobs_too_high(self):
         with pytest.raises(ValidationError):
             LocalCIConfig(parallel={"max_jobs": 100})
+
+
+class TestConfigTypoRejection:
+    """Unknown keys in orchestrator sections fail at load time."""
+
+    def test_misspelled_top_level_key_raises(self, tmp_path):
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("parallell:\n  max_jobs: 4\n")
+        with pytest.raises(ConfigValidationError) as exc_info:
+            load_config(cfg_file)
+        assert exc_info.value.path == cfg_file
+        assert "parallell" in str(exc_info.value.cause)
+
+    def test_misspelled_nested_parallel_key_raises(self, tmp_path):
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("parallel:\n  resource_limits:\n    cpu_percent: 50\n")
+        with pytest.raises(ConfigValidationError) as exc_info:
+            load_config(cfg_file)
+        assert exc_info.value.path == cfg_file
+        assert "resource_limits" in str(exc_info.value.cause)
+
+    def test_misspelled_cache_key_still_ignored(self, tmp_path):
+        """cache: typos are out of scope for is-4; Week 32 widens extra forbid."""
+        cfg_file = tmp_path / ".localci.yml"
+        cfg_file.write_text("cache:\n  enabledd: true\n")
+        cfg = load_config(cfg_file)
+        assert cfg.cache.enabled is True
 
 
 # ---------------------------------------------------------------------------

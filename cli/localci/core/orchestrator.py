@@ -83,31 +83,21 @@ class OrchestratorConfig:
 
     @classmethod
     def from_config(cls, config: LocalCIConfig) -> OrchestratorConfig:
-        rl = getattr(config.parallel, "resource_limit", None) or {}
-        cpu = getattr(rl, "cpu_percent", 90) if hasattr(rl, "cpu_percent") else 90.0
-        mem = (
-            getattr(rl, "memory_percent", 85) if hasattr(rl, "memory_percent") else 85.0
-        )
-        disk_gb = float(getattr(rl, "disk_min_free_gb", 10.0))
-        images = getattr(config, "images", None)
-        registry_path = getattr(images, "registry", None) if images else None
-        project = getattr(config, "project", None)
+        rl = config.parallel.resource_limit
+        # disk_min_free_gb is omitted on purpose: ResourceLimitConfig has no field,
+        # so the dataclass default (10.0) applies. Class-level cpu/memory defaults
+        # (90/85) are aligned with ResourceLimitConfig in is-5.
         return cls(
-            max_parallel=getattr(config.parallel, "max_jobs", 8),
-            cpu_threshold=float(cpu),
-            memory_threshold=float(mem),
-            disk_min_free_gb=disk_gb,
-            job_timeout=getattr(config.execution, "timeout", 3600),
-            keep_containers=getattr(config.execution, "keep_containers", False),
-            stop_on_first_failure=getattr(
-                config.execution, "stop_on_first_failure", False
-            ),
-            repo_full_name=getattr(project, "repo_full_name", GENERIC_REPO_FULL_NAME),
-            native_image_prefix=getattr(
-                project, "native_image_prefix", GENERIC_NATIVE_IMAGE_PREFIX
-            ),
-            image_registry_path=registry_path,
-            auto_build=getattr(images, "auto_build", True) if images else True,
+            max_parallel=config.parallel.max_jobs,
+            cpu_threshold=float(rl.cpu_percent),
+            memory_threshold=float(rl.memory_percent),
+            job_timeout=config.execution.timeout,
+            keep_containers=config.execution.keep_containers,
+            stop_on_first_failure=config.execution.stop_on_first_failure,
+            repo_full_name=config.project.repo_full_name,
+            native_image_prefix=config.project.native_image_prefix,
+            image_registry_path=config.images.registry,
+            auto_build=config.images.auto_build,
         )
 
 
