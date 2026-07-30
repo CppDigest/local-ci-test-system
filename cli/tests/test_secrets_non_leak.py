@@ -26,6 +26,21 @@ from .test_executor import (
 
 INVARIANT_SECRET = "localci-invariant-secret-7f3a9c2e"
 
+# Per-result keys ExecutionSummary.to_dict() serializes (no stdout/stderr).
+_SUMMARY_RESULT_JSON_KEYS = frozenset(
+    {
+        "job_id",
+        "matrix_index",
+        "matrix_name",
+        "status",
+        "exit_code",
+        "duration",
+        "image_used",
+        "log_file",
+        "error_message",
+    }
+)
+
 
 def _mock_popen_factory(
     *,
@@ -172,6 +187,8 @@ class TestSecretsNonLeakInvariant:
             started_at=datetime(2026, 7, 28, 10, 0, 0),
         )
         summary.results.append(result)
+        serialized = summary.to_dict()["results"][0]
+        assert set(serialized.keys()) == _SUMMARY_RESULT_JSON_KEYS
         summary_path = tmp_path / "results.json"
         summary.save(summary_path)
 
