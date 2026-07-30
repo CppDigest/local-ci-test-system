@@ -332,8 +332,8 @@ jobs:
     priority: 3
 
 # Global settings
-max_parallel_jobs: 20
 parallel:
+  max_jobs: 20
   resource_limit:
     cpu_percent: 80 # Pause new jobs if CPU usage exceeds this percentage
     memory_percent: 70 # Pause new jobs if memory usage exceeds this percentage

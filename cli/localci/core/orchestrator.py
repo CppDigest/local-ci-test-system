@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Int defaults from Field(default=...); revisit if ResourceLimitConfig switches to default_factory.
 _CPU_THRESHOLD_DEFAULT = float(ResourceLimitConfig.model_fields["cpu_percent"].default)
 _MEMORY_THRESHOLD_DEFAULT = float(
     ResourceLimitConfig.model_fields["memory_percent"].default

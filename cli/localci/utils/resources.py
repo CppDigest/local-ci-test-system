@@ -77,7 +77,11 @@ class ResourceMonitor:
         memory_threshold: float,
         disk_min_gb: float = 10.0,
     ) -> tuple[bool, list[str]]:
-        """Check if resources are within thresholds. Returns (ok, warnings)."""
+        """Check if resources are within thresholds. Returns (ok, warnings).
+
+        Callers must pass ``cpu_threshold`` and ``memory_threshold`` explicitly.
+        ``disk_min_gb`` defaults to 10.0 (orchestrator policy, not in ``ResourceLimitConfig``).
+        """
         snap = self.snapshot()
         warnings: list[str] = []
         ok = True
