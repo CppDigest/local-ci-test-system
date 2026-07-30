@@ -309,27 +309,25 @@ docker save -o images/beast2/ubuntu-25.04-base.tar beast2-ubuntu-25.04-base:late
 
 #### Configuration File
 
-Create `local-ci-config.yml`:
+Create `.localci.yml`:
 
 ```yaml
 # Configuration for local CI execution
 jobs:
-  - name: build
-    enabled: true
-    priority: 1 # Higher priority = execute first (1 is highest)
-    matrix_filters:
-      - compiler: gcc
-        version: 15
-      - container: ubuntu:25.04
-    max_parallel: 20
+  include:
+    - build
+  exclude:
+    - antora
 
-  - name: changelog
-    enabled: true
-    priority: 2 # Lower priority, waits for priority 1 jobs
+matrix:
+  include:
+    - compiler: gcc
+      version: "15"
+  exclude: []
 
-  - name: antora
-    enabled: false
-    priority: 3
+priorities:
+  "GCC 15: C++20": 1
+  "Clang 20: C++20-23": 2
 
 # Global settings
 parallel:
