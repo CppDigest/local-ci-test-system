@@ -92,6 +92,8 @@ class TestSecretsNonLeakInvariant:
             )
 
         assert exit_code == 0
+        assert "compile ok" in stdout
+        assert "warning: deprecated flag" in stderr
         _assert_text_has_no_secret_plaintext(stdout, INVARIANT_SECRET)
         _assert_text_has_no_secret_plaintext(stderr, INVARIANT_SECRET)
         _assert_file_has_no_secret_plaintext(log_file, INVARIANT_SECRET)
@@ -133,6 +135,8 @@ class TestSecretsNonLeakInvariant:
 
         assert result.status == JobStatus.PASSED
         assert result.log_file is not None
+        assert "compile ok" in result.stdout
+        assert "warning: deprecated flag" in result.stderr
         _assert_text_has_no_secret_plaintext(result.stdout, INVARIANT_SECRET)
         _assert_text_has_no_secret_plaintext(result.stderr, INVARIANT_SECRET)
         _assert_file_has_no_secret_plaintext(result.log_file, INVARIANT_SECRET)
@@ -176,6 +180,8 @@ class TestSecretsNonLeakInvariant:
             )
 
         assert result.status == JobStatus.FAILED
+        assert "act: starting job" in result.stdout
+        assert "Error: act job failed" in result.stderr
         assert result.error_message
         assert "Error: act job failed" in result.error_message
         _assert_text_has_no_secret_plaintext(result.error_message, INVARIANT_SECRET)
