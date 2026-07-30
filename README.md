@@ -24,7 +24,7 @@ Local CI parses your workflow file, runs selected jobs in containers with pre-bu
 
 ### Host platforms
 
-Local CI is **Linux-container-first**: workflows run Linux containers unless your jobs target Windows runners. We run GitHub Actions CI on Linux hosts only. Windows and macOS setups are covered in the Usage Guide and often work in practice, but we do not test those platforms in CI. On macOS or Windows, Docker Desktop provides the Linux runtime (use the **WSL2** backend on Windows). Setup varies by OS and Docker install; see **[Cross-platform prerequisites](cli/Usage%20Guide.md#cross-platform-prerequisites)** for per-OS caveats, install steps, a **preflight checklist**, and notes on **Windows, WSL2, and parallelism**.
+Local CI is **Linux-container-first**: workflows run Linux containers unless your jobs target Windows runners. We run GitHub Actions CI on Linux hosts only. Windows and macOS support is community-reported and not validated in CI. On macOS or Windows, Docker Desktop provides the Linux runtime (use the **WSL2** backend on Windows). Setup varies by OS and Docker install; see **[Cross-platform prerequisites](cli/Usage%20Guide.md#cross-platform-prerequisites)** for per-OS caveats, install steps, a **preflight checklist**, and notes on **Windows, WSL2, and parallelism**.
 
 ### yq (mikefarah/yq v4 or newer)
 
