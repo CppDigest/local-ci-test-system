@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+from localci.cli.images import _cleanup_targets
 from localci.cli.main import cli
 from localci.utils.paths import (
     IMAGES_CAPY_REL,
@@ -250,3 +251,295 @@ class TestImagesRegistryCli:
 
         assert result.exit_code == 0
         assert captured[0][1] == str(images_dir / "build-all.sh")
+
+
+def _docker_run_side_effect(
+    installed_tags: list[str],
+    *,
+    captured_rmi: list[list[str]] | None = None,
+):
+    """Stub _run for clean tests: fake image ls output, record rmi argv."""
+
+    def fake_run(cmd: list[str]) -> MagicMock:
+        if "image" in cmd and "ls" in cmd:
+            stdout = "\n".join(installed_tags)
+            if stdout:
+                stdout += "\n"
+            return MagicMock(returncode=0, stdout=stdout, stderr="")
+        if "rmi" in cmd:
+            if captured_rmi is not None:
+                captured_rmi.append(cmd)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    return fake_run
+
+
+class TestCleanupTargets:
+    def test_intersection_sorted(self) -> None:
+        installed = ["b:tag", "a:tag", "other:tag"]
+        registry = {"a:tag", "b:tag", "registry-only:tag"}
+        assert _cleanup_targets(installed, registry) == ["a:tag", "b:tag"]
+
+    def test_empty_when_no_match(self) -> None:
+        assert _cleanup_targets(["other:tag"], {"ubuntu-latest-gcc15:latest"}) == []
+
+
+class TestImagesClean:
+    def test_clean_generic_tag_removes_registry_match_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        registry = _write_registry_with_image(
+            repo, docker_tag="ubuntu-latest-gcc15:latest"
+        )
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        captured_rmi: list[list[str]] = []
+        fake_dm = MagicMock()
+        fake_dm.build_cmd.side_effect = lambda *args: ["docker", *args]
+
+        with (
+            patch("localci.cli.images.DockerManager", return_value=fake_dm),
+            patch(
+                "localci.cli.images._run",
+                side_effect=_docker_run_side_effect(
+                    ["ubuntu-latest-gcc15:latest", "other:tag"],
+                    captured_rmi=captured_rmi,
+                ),
+            ),
+        ):
+            result = runner.invoke(
+                cli,
+                ["images", "clean", "--all", "--registry", str(registry)],
+            )
+
+        assert result.exit_code == 0
+        assert len(captured_rmi) == 1
+        assert captured_rmi[0][-1] == "ubuntu-latest-gcc15:latest"
+        assert "other:tag" not in captured_rmi[0]
+
+    def test_clean_capy_tag_regression(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        registry = _write_registry_with_image(
+            repo, docker_tag="capy-ubuntu-25.04-gcc15:latest"
+        )
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        captured_rmi: list[list[str]] = []
+        fake_dm = MagicMock()
+        fake_dm.build_cmd.side_effect = lambda *args: ["docker", *args]
+
+        with (
+            patch("localci.cli.images.DockerManager", return_value=fake_dm),
+            patch(
+                "localci.cli.images._run",
+                side_effect=_docker_run_side_effect(
+                    [
+                        "capy-ubuntu-25.04-gcc15:latest",
+                        "capy-ubuntu-orphan:latest",
+                        "unrelated:tag",
+                    ],
+                    captured_rmi=captured_rmi,
+                ),
+            ),
+        ):
+            result = runner.invoke(
+                cli,
+                ["images", "clean", "--all", "--registry", str(registry)],
+            )
+
+        assert result.exit_code == 0
+        assert len(captured_rmi) == 1
+        assert captured_rmi[0][-1] == "capy-ubuntu-25.04-gcc15:latest"
+        assert "capy-ubuntu-orphan:latest" not in captured_rmi[0]
+        assert "unrelated:tag" not in captured_rmi[0]
+
+    def test_clean_dry_run_lists_targets_without_rmi(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        registry = _write_registry_with_image(
+            repo, docker_tag="ubuntu-latest-gcc15:latest"
+        )
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        captured_rmi: list[list[str]] = []
+        fake_dm = MagicMock()
+        fake_dm.build_cmd.side_effect = lambda *args: ["docker", *args]
+
+        with (
+            patch("localci.cli.images.DockerManager", return_value=fake_dm),
+            patch(
+                "localci.cli.images._run",
+                side_effect=_docker_run_side_effect(
+                    ["ubuntu-latest-gcc15:latest", "other:tag"],
+                    captured_rmi=captured_rmi,
+                ),
+            ),
+        ):
+            result = runner.invoke(
+                cli,
+                [
+                    "images",
+                    "clean",
+                    "--all",
+                    "--dry-run",
+                    "--registry",
+                    str(registry),
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert "ubuntu-latest-gcc15:latest" in result.output
+        assert "other:tag" not in result.output
+        assert "Dry-run" in result.output
+        assert captured_rmi == []
+
+    def test_clean_without_all_does_not_invoke_docker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        with patch("localci.cli.images._run") as mock_run:
+            result = runner.invoke(cli, ["images", "clean"])
+
+        mock_run.assert_not_called()
+        assert result.exit_code == 0
+        assert "Nothing to clean" in result.output
+
+    def test_clean_empty_intersection_reports_no_images(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        registry = _write_registry_with_image(
+            repo, docker_tag="ubuntu-latest-gcc15:latest"
+        )
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        captured_rmi: list[list[str]] = []
+        fake_dm = MagicMock()
+        fake_dm.build_cmd.side_effect = lambda *args: ["docker", *args]
+
+        with (
+            patch("localci.cli.images.DockerManager", return_value=fake_dm),
+            patch(
+                "localci.cli.images._run",
+                side_effect=_docker_run_side_effect(
+                    ["other:tag"],
+                    captured_rmi=captured_rmi,
+                ),
+            ),
+        ):
+            result = runner.invoke(
+                cli,
+                ["images", "clean", "--all", "--registry", str(registry)],
+            )
+
+        assert result.exit_code == 0
+        assert "No localci images found" in result.output
+        assert captured_rmi == []
+
+    def test_clean_uses_explicit_registry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        registry = _write_registry_with_image(repo, docker_tag="explicit:tag")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        captured_rmi: list[list[str]] = []
+        fake_dm = MagicMock()
+        fake_dm.build_cmd.side_effect = lambda *args: ["docker", *args]
+
+        with (
+            patch("localci.cli.images.DockerManager", return_value=fake_dm),
+            patch(
+                "localci.cli.images._run",
+                side_effect=_docker_run_side_effect(
+                    ["explicit:tag"],
+                    captured_rmi=captured_rmi,
+                ),
+            ),
+        ):
+            result = runner.invoke(
+                cli,
+                ["images", "clean", "--all", "--registry", str(registry)],
+            )
+
+        assert result.exit_code == 0
+        assert captured_rmi[0][-1] == "explicit:tag"
+
+    def test_clean_discovers_registry_from_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo = tmp_path / "repo"
+        nested = repo / "examples" / "validation-project"
+        nested.mkdir(parents=True)
+        _write_registry_with_image(repo, docker_tag="ubuntu-latest-gcc15:latest")
+        monkeypatch.chdir(nested)
+
+        captured_rmi: list[list[str]] = []
+        fake_dm = MagicMock()
+        fake_dm.build_cmd.side_effect = lambda *args: ["docker", *args]
+
+        with (
+            patch("localci.cli.images.DockerManager", return_value=fake_dm),
+            patch(
+                "localci.cli.images._run",
+                side_effect=_docker_run_side_effect(
+                    ["ubuntu-latest-gcc15:latest", "other:tag"],
+                    captured_rmi=captured_rmi,
+                ),
+            ),
+        ):
+            result = runner.invoke(cli, ["images", "clean", "--all"])
+
+        assert result.exit_code == 0
+        assert len(captured_rmi) == 1
+        assert captured_rmi[0][-1] == "ubuntu-latest-gcc15:latest"
+        assert "other:tag" not in captured_rmi[0]
+
+    def test_clean_all_without_discoverable_registry_fails_before_docker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        site_module = (
+            tmp_path
+            / "venv"
+            / "lib"
+            / "python3.10"
+            / "site-packages"
+            / "localci"
+            / "cli"
+            / "images.py"
+        )
+        site_module.parent.mkdir(parents=True, exist_ok=True)
+        site_module.write_text("# installed copy\n", encoding="utf-8")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        with (
+            patch("localci.cli.images._IMAGES_MODULE", site_module),
+            patch("localci.cli.images.DockerManager") as mock_dm,
+            patch("localci.cli.images._run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["images", "clean", "--all"])
+
+        assert result.exit_code == 1
+        assert REGISTRY_FILENAME in result.output
+        mock_dm.assert_not_called()
+        mock_run.assert_not_called()

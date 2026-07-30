@@ -226,18 +226,43 @@ def images_build(
 # ---------------------------------------------------------------------------
 
 
+def _cleanup_targets(installed_tags: list[str], registry_tags: set[str]) -> list[str]:
+    """Installed repo:tags that are also in the registry, sorted."""
+    return sorted(tag for tag in installed_tags if tag in registry_tags)
+
+
 @images.command("clean")
 @click.option("--all", "clean_all", is_flag=True, help="Remove all localci images.")
 @click.option("--dry-run", is_flag=True, help="Preview without removing.")
+@click.option(
+    "--registry",
+    "-r",
+    "registry_path",
+    type=click.Path(path_type=Path, exists=True),
+    default=None,
+    help="Path to image-registry.yml.",
+)
 @click.pass_context
 def images_clean(
     ctx: click.Context,
     clean_all: bool,
     dry_run: bool,
+    registry_path: Path | None,
 ) -> None:
     """Clean up Docker images."""
     if not clean_all:
         print_info("Nothing to clean. Use --all to remove localci images.")
+        return
+
+    try:
+        registry = _get_registry(registry_path)
+    except FileNotFoundError as exc:
+        print_error(str(exc))
+        ctx.exit(1)
+        return
+    except (OSError, yaml.YAMLError, TypeError, ValueError) as exc:
+        print_error(f"Could not load image registry: {exc}")
+        ctx.exit(1)
         return
 
     try:
@@ -253,13 +278,11 @@ def images_clean(
         ctx.exit(result.returncode)
         return
 
-    targets = [
-        line.strip()
-        for line in result.stdout.splitlines()
-        if line.strip().startswith("capy-ubuntu-")
-    ]
+    registry_tags = {e.docker_tag for e in registry.entries if e.docker_tag}
+    installed = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    targets = _cleanup_targets(installed, registry_tags)
     if not targets:
-        print_info("No localci capy images found.")
+        print_info("No localci images found.")
         return
 
     if dry_run:
