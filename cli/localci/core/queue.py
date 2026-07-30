@@ -351,7 +351,8 @@ class PriorityJobQueue:
 
     @property
     def is_done(self) -> bool:
-        return len(self._jobs) > 0 and len(self._completed_keys) >= len(self._jobs)
+        with self._lock:
+            return len(self._jobs) > 0 and len(self._completed_keys) >= len(self._jobs)
 
     @property
     def total_jobs(self) -> int:

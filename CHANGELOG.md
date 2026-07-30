@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **`derive_image_tag()` prefix** — honours `project.native_image_prefix` instead of hardcoding `capy-`, completing the generic-profile default behaviour documented for Week 30.
+- **`PriorityJobQueue.is_done`** — acquires `self._lock`, fixing a torn-read race when the dispatch loop polls completion during concurrent enqueue/complete.
 
 ## [0.1.0] - TBD
 

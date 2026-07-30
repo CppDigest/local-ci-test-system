@@ -10,6 +10,7 @@ from localci.core.config import LocalCIConfig
 from localci.core.models import (
     JobEventType,
     QueuedJob,
+    QueuedJobStatus,
 )
 from localci.core.queue import (
     CyclicDependencyError,
@@ -322,6 +323,17 @@ class TestPriorityConfig:
 # Thread safety
 # ---------------------------------------------------------------------------
 
+_TERMINAL_STATUSES = frozenset(
+    {
+        QueuedJobStatus.PASSED,
+        QueuedJobStatus.FAILED,
+        QueuedJobStatus.CANCELLED,
+        QueuedJobStatus.SKIPPED,
+        QueuedJobStatus.ERROR,
+        QueuedJobStatus.TIMEOUT,
+    }
+)
+
 
 class TestThreadSafety:
     def test_concurrent_enqueue(self):
@@ -340,6 +352,65 @@ class TestThreadSafety:
         for t in threads:
             t.join()
         assert queue.total_jobs == 100
+
+    def test_concurrent_is_done_invariant(self):
+        queue = PriorityJobQueue()
+        stop = threading.Event()
+        producers_done = threading.Event()
+        violations: list[str] = []
+        violations_lock = threading.Lock()
+
+        def record(msg: str) -> None:
+            with violations_lock:
+                violations.append(msg)
+
+        def monitor() -> None:
+            while not stop.is_set():
+                if queue.is_done:
+                    jobs = queue.get_all_jobs()
+                    if not jobs:
+                        record("is_done True with empty queue")
+                    elif not all(j.status in _TERMINAL_STATUSES for j in jobs):
+                        record("is_done True with non-terminal jobs")
+                time.sleep(0.001)
+
+        def enqueue_batch(start: int, count: int) -> None:
+            for i in range(start, start + count):
+                queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
+                time.sleep(0.001)
+
+        def consume() -> None:
+            while not (producers_done.is_set() and queue.is_done):
+                job = queue.next_ready()
+                if job is None:
+                    time.sleep(0.001)
+                    continue
+                queue.mark_running(job)
+                queue.mark_completed(job, success=True)
+
+        producers = [
+            threading.Thread(target=enqueue_batch, args=(0, 50)),
+            threading.Thread(target=enqueue_batch, args=(50, 50)),
+        ]
+        consumers = [threading.Thread(target=consume) for _ in range(4)]
+        monitor_thread = threading.Thread(target=monitor)
+
+        monitor_thread.start()
+        for t in producers:
+            t.start()
+        for t in consumers:
+            t.start()
+
+        for t in producers:
+            t.join()
+        producers_done.set()
+        for t in consumers:
+            t.join()
+        stop.set()
+        monitor_thread.join()
+
+        assert not violations, violations
+        assert queue.is_done is True
 
     def test_concurrent_dequeue(self):
         queue = PriorityJobQueue()
