@@ -512,3 +512,34 @@ class TestImagesClean:
         assert len(captured_rmi) == 1
         assert captured_rmi[0][-1] == "ubuntu-latest-gcc15:latest"
         assert "other:tag" not in captured_rmi[0]
+
+    def test_clean_all_without_discoverable_registry_fails_before_docker(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        site_module = (
+            tmp_path
+            / "venv"
+            / "lib"
+            / "python3.10"
+            / "site-packages"
+            / "localci"
+            / "cli"
+            / "images.py"
+        )
+        site_module.parent.mkdir(parents=True, exist_ok=True)
+        site_module.write_text("# installed copy\n", encoding="utf-8")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.chdir(outside)
+
+        with (
+            patch("localci.cli.images._IMAGES_MODULE", site_module),
+            patch("localci.cli.images.DockerManager") as mock_dm,
+            patch("localci.cli.images._run") as mock_run,
+        ):
+            result = runner.invoke(cli, ["images", "clean", "--all"])
+
+        assert result.exit_code == 1
+        assert REGISTRY_FILENAME in result.output
+        mock_dm.assert_not_called()
+        mock_run.assert_not_called()
