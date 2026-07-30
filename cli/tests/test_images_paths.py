@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from localci.cli.main import cli
 from localci.cli.images import _cleanup_targets
+from localci.cli.main import cli
 from localci.utils.paths import (
     IMAGES_CAPY_REL,
     REGISTRY_FILENAME,
