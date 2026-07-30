@@ -368,6 +368,9 @@ class TestThreadSafety:
             while not stop.is_set():
                 if queue.is_done:
                     jobs = queue.get_all_jobs()
+                    if not queue.is_done:
+                        time.sleep(0.001)
+                        continue
                     if not jobs:
                         record("is_done True with empty queue")
                     elif not all(j.status in _TERMINAL_STATUSES for j in jobs):
