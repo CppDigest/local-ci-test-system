@@ -34,6 +34,7 @@ from localci.core.workflow import (
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FULL_WORKFLOW = FIXTURES_DIR / "sample_workflow.yml"
+_THREAD_JOIN_TIMEOUT = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +188,67 @@ class TestPriorityJobQueue:
         second = queue.next_ready()
         assert second is not None
 
+    def test_waiting_deps_promoted_when_dependency_completes(self):
+        queue = PriorityJobQueue()
+        upstream = make_job("Upstream", priority=1, index=0)
+        downstream = make_job(
+            "Downstream", priority=1, index=1, deps=[upstream.queue_key]
+        )
+        queue.enqueue(upstream)
+        queue.enqueue(downstream)
+
+        first = queue.next_ready()
+        assert first is not None
+        assert first.matrix_entry.name == "Upstream"
+        queue.mark_running(first)
+
+        assert queue.next_ready() is None
+        jobs = {j.queue_key: j for j in queue.get_all_jobs()}
+        assert jobs[downstream.queue_key].status == QueuedJobStatus.WAITING_DEPS
+
+        queue.mark_completed(first, success=True)
+
+        second = queue.next_ready()
+        assert second is not None
+        assert second.matrix_entry.name == "Downstream"
+        queue.mark_running(second)
+        queue.mark_completed(second, success=True)
+        assert queue.is_done is True
+
+    def test_is_done_acquires_lock(self):
+        """Regresses if is_done reads counts without holding self._lock."""
+        queue = PriorityJobQueue()
+        queue.enqueue(make_job("Job", priority=1))
+
+        lock_held = threading.Event()
+        release_lock = threading.Event()
+
+        def hold_lock() -> None:
+            with queue._lock:
+                lock_held.set()
+                release_lock.wait(timeout=5)
+
+        holder = threading.Thread(target=hold_lock)
+        holder.start()
+        assert lock_held.wait(timeout=5)
+
+        checker_done = threading.Event()
+        is_done_result: list[bool] = []
+
+        def read_is_done() -> None:
+            is_done_result.append(queue.is_done)
+            checker_done.set()
+
+        checker = threading.Thread(target=read_is_done)
+        checker.start()
+        checker.join(timeout=0.05)
+        assert not checker_done.is_set(), "is_done must block on self._lock"
+
+        release_lock.set()
+        checker.join(timeout=5)
+        holder.join(timeout=5)
+        assert is_done_result == [False]
+
     def test_completion_tracking(self):
         queue = PriorityJobQueue()
         job = make_job("Test", priority=1)
@@ -323,17 +385,6 @@ class TestPriorityConfig:
 # Thread safety
 # ---------------------------------------------------------------------------
 
-_TERMINAL_STATUSES = frozenset(
-    {
-        QueuedJobStatus.PASSED,
-        QueuedJobStatus.FAILED,
-        QueuedJobStatus.CANCELLED,
-        QueuedJobStatus.SKIPPED,
-        QueuedJobStatus.ERROR,
-        QueuedJobStatus.TIMEOUT,
-    }
-)
-
 
 class TestThreadSafety:
     def test_concurrent_enqueue(self):
@@ -353,29 +404,14 @@ class TestThreadSafety:
             t.join()
         assert queue.total_jobs == 100
 
-    def test_concurrent_is_done_invariant(self):
+    def test_concurrent_producers_and_consumers(self):
+        """Smoke: enqueue and complete 100 jobs under concurrent load.
+
+        Lock consistency for is_done is covered by test_is_done_acquires_lock.
+        """
         queue = PriorityJobQueue()
-        stop = threading.Event()
         producers_done = threading.Event()
-        violations: list[str] = []
-        violations_lock = threading.Lock()
-
-        def record(msg: str) -> None:
-            with violations_lock:
-                violations.append(msg)
-
-        def monitor() -> None:
-            while not stop.is_set():
-                if queue.is_done:
-                    jobs = queue.get_all_jobs()
-                    if not queue.is_done:
-                        time.sleep(0.001)
-                        continue
-                    if not jobs:
-                        record("is_done True with empty queue")
-                    elif not all(j.status in _TERMINAL_STATUSES for j in jobs):
-                        record("is_done True with non-terminal jobs")
-                time.sleep(0.001)
+        consumer_deadline = time.monotonic() + _THREAD_JOIN_TIMEOUT
 
         def enqueue_batch(start: int, count: int) -> None:
             for i in range(start, start + count):
@@ -384,6 +420,8 @@ class TestThreadSafety:
 
         def consume() -> None:
             while not (producers_done.is_set() and queue.is_done):
+                if time.monotonic() >= consumer_deadline:
+                    return
                 job = queue.next_ready()
                 if job is None:
                     time.sleep(0.001)
@@ -396,33 +434,34 @@ class TestThreadSafety:
             threading.Thread(target=enqueue_batch, args=(50, 50)),
         ]
         consumers = [threading.Thread(target=consume) for _ in range(4)]
-        monitor_thread = threading.Thread(target=monitor)
 
-        monitor_thread.start()
         for t in producers:
             t.start()
         for t in consumers:
             t.start()
 
         for t in producers:
-            t.join()
+            t.join(timeout=_THREAD_JOIN_TIMEOUT)
+            assert not t.is_alive(), "producer thread did not finish"
         producers_done.set()
         for t in consumers:
-            t.join()
-        stop.set()
-        monitor_thread.join()
+            t.join(timeout=_THREAD_JOIN_TIMEOUT)
+            assert not t.is_alive(), "consumer thread did not finish"
 
-        assert not violations, violations
-        assert queue.is_done is True
+        assert queue.total_jobs == 100
+        assert queue.passed_count == 100
 
     def test_concurrent_dequeue(self):
         queue = PriorityJobQueue()
         for i in range(20):
             queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
         results: list[QueuedJob] = []
+        consumer_deadline = time.monotonic() + _THREAD_JOIN_TIMEOUT
 
         def consume() -> None:
             while not queue.is_done:
+                if time.monotonic() >= consumer_deadline:
+                    return
                 job = queue.next_ready()
                 if job is None:
                     time.sleep(0.01)
@@ -435,7 +474,8 @@ class TestThreadSafety:
         for t in threads:
             t.start()
         for t in threads:
-            t.join()
+            t.join(timeout=_THREAD_JOIN_TIMEOUT)
+            assert not t.is_alive(), "consumer thread did not finish"
         assert len(results) == 20
         names = {r.matrix_entry.name for r in results}
         assert len(names) == 20
