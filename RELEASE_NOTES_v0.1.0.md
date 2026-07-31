@@ -17,8 +17,9 @@ First public pre-release of Local CI — run GitHub Actions workflows locally in
 ## Install
 
 ```bash
-cd cli
-pip install -e .
+git clone --branch v0.1.0 https://github.com/cppalliance/local-ci-test-system.git
+cd local-ci-test-system/cli
+pip install .
 ```
 
 See [README.md](README.md) for prerequisites (Docker, act, mikefarah/yq v4+).
