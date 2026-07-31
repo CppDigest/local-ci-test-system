@@ -41,6 +41,13 @@ class Platform(Enum):
     UNKNOWN = "unknown"
 
 
+PLATFORM_CLI_MAP: dict[str, Platform] = {
+    "linux": Platform.LINUX,
+    "windows": Platform.WINDOWS,
+    "macos": Platform.MACOS,
+}
+
+
 class CompilerFamily(Enum):
     """Compiler family classification."""
 

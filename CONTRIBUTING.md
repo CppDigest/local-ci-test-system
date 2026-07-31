@@ -93,10 +93,35 @@ pre-commit run -a
 
 ## Pull requests
 
-1. Branch from `develop` (or `main` for release fixes).
+1. Branch from `develop`.
 2. Keep changes focused; link related issues in the PR description.
-3. Ensure CI is green — lint, typecheck, unit tests, and integration tests must pass.
+3. Ensure CI is green: lint, typecheck, unit tests, and integration tests must pass.
 4. Request review from at least one maintainer. PRs need **at least one approving review** before merge.
+5. Update `CHANGELOG.md` for user-visible changes under `## [Unreleased]`.
+
+## Branching and releases
+
+- `develop` is the default branch where day-to-day work lands and releases are cut from.
+- To cut release `X.Y.Z` when `cli/pyproject.toml` already declares that version:
+  1. Move the `## [Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under a new
+     `## [X.Y.Z] - YYYY-MM-DD` heading, leave `## [Unreleased]` empty, and update
+     the link references at the bottom.
+  2. Create `RELEASE_NOTES_vX.Y.Z.md` from the new `## [X.Y.Z]` section (see
+     [RELEASE_NOTES_v0.1.0.md](RELEASE_NOTES_v0.1.0.md) for the format).
+  3. Merge the changelog and release-notes update to `develop` via PR; wait for CI
+     to be green.
+  4. Create an annotated tag `vX.Y.Z` on the merged `develop` commit and push it
+     (`git tag -a vX.Y.Z` then `git push origin vX.Y.Z`). If `vX.Y.Z` already
+     exists, stop and verify `git rev-parse vX.Y.Z^{commit}` matches the merged
+     release commit (`git rev-parse origin/develop`); do not publish from a tag
+     that points elsewhere.
+  5. Validate the tag: confirm `git show vX.Y.Z:CHANGELOG.md` has
+     `## [X.Y.Z] - YYYY-MM-DD` (not `TBD`) and CI is green on the tagged commit.
+  6. Publish the GitHub Release
+     (`gh release create vX.Y.Z --notes-file RELEASE_NOTES_vX.Y.Z.md`) only after
+     steps 4–5 confirm the tag points to the merged release commit.
+  7. Confirm the `[Unreleased]` and `[X.Y.Z]` compare links at the bottom of
+     [CHANGELOG.md](CHANGELOG.md) resolve after the new tag is created.
 
 ## Maintainers
 

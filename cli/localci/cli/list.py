@@ -12,6 +12,7 @@ from pathlib import Path
 import click
 
 from localci.core.workflow import (
+    PLATFORM_CLI_MAP,
     CompilerFamily,
     Platform,
     WorkflowAnalyzer,
@@ -28,12 +29,6 @@ from localci.utils.output import (
 # =====================================================================
 # Helpers
 # =====================================================================
-
-_PLATFORM_MAP = {
-    "linux": Platform.LINUX,
-    "windows": Platform.WINDOWS,
-    "macos": Platform.MACOS,
-}
 
 _COMPILER_MAP = {
     "gcc": CompilerFamily.GCC,
@@ -165,7 +160,7 @@ def list_cmd(
     entries = wf.all_matrix_entries()
 
     if platform != "all":
-        target = _PLATFORM_MAP.get(platform)
+        target = PLATFORM_CLI_MAP.get(platform)
         if target:
             entries = [e for e in entries if e.platform == target]
 

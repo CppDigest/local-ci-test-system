@@ -2,19 +2,19 @@
 
 ## Supported Versions
 
-Local CI is in pre-release development. There are no tagged stable releases yet
-(`pyproject.toml` declares `0.1.0`, not yet tagged).
+| Version | Supported          |
+| ------- | ------------------ |
+| 0.1.x   | :white_check_mark: |
 
-Security fixes are produced only against the latest commit on the
+Security fixes land only on the latest commit on
 [`develop`](https://github.com/cppalliance/local-ci-test-system/tree/develop)
-branch. Once a `v0.1.0` tag is cut, this section will be reformatted as a
-semver-style support table.
+for the current 0.1.x line.
 
 ## Reporting a Vulnerability
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** (preferred), or email **will@cppalliance.org** if you do not have a GitHub account.
+Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** or email **will@cppalliance.org**.
 
 If you need an encrypted channel, mention this in your initial email and a
 maintainer will reply with a current PGP key fingerprint or arrange another

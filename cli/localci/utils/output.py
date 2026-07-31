@@ -105,11 +105,3 @@ def make_table(*columns: str, title: str | None = None) -> Table:
     for col in columns:
         table.add_column(col)
     return table
-
-
-def print_not_implemented(command: str) -> None:
-    """Placeholder for commands whose backend is not yet built."""
-    print_warning(
-        f"[muted]{command}[/muted] is not yet implemented. "
-        "It will be available once the corresponding module is built."
-    )

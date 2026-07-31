@@ -7,8 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-31
+
+First public pre-release. The CLI package version is `0.1.0` (`cli/pyproject.toml`).
+
 ### Added
 
+- `localci` CLI — analyze, list, run, status, logs, images, cache, and config commands
+- Configurable workflow patch pipeline for local act execution
+- Docker image management and caching (ccache, Boost, CMake, APT)
+- CI: ruff lint/format, mypy strict typecheck, unit tests, and act/Docker integration tests
+- Runnable validation example under `examples/`
+- README yq disambiguation and per-OS install matrix for [mikefarah/yq](https://github.com/mikefarah/yq) v4+
 - `CONTRIBUTING.md` — developer onboarding (setup, tests, lint, pre-commit, PR expectations)
 - `CHANGELOG.md` — this file
 - `.github/CODEOWNERS` — maintainer routing for reviews
@@ -31,19 +41,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PriorityJobQueue.cancel_all` emits `JOB_CANCELLED` for each cancelled job, matching `cancel()`.
 - `DependencyResolver.all_dependencies_met` treats `FAILED` and `CANCELLED` dependencies as unmet; dependents no longer start after a failed or cancelled `needs` job.
 - `PriorityJobQueue` event listeners run after `self._lock` is released, so callbacks can safely call back into the queue.
-
-## [0.1.0] - TBD
-
-Pre-release baseline. The CLI package version is `0.1.0` (`cli/pyproject.toml`).
-
-### Added
-
-- `localci` CLI — analyze, list, run, status, logs, images, cache, and config commands
-- Configurable workflow patch pipeline for local act execution
-- Docker image management and caching (ccache, Boost, CMake, APT)
-- CI: ruff lint/format, mypy strict typecheck, unit tests, and act/Docker integration tests
-- Runnable validation example under `examples/`
-- README yq disambiguation and per-OS install matrix for [mikefarah/yq](https://github.com/mikefarah/yq) v4+
 
 ### Pre-release stability (before 1.0)
 
