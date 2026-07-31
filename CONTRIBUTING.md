@@ -112,9 +112,9 @@ pre-commit run -a
      to be green.
   4. Create an annotated tag `vX.Y.Z` on the merged `develop` commit and push it
      (`git tag -a vX.Y.Z` then `git push origin vX.Y.Z`). If `vX.Y.Z` already
-     exists, stop and verify `git rev-parse vX.Y.Z` matches the merged release
-     commit (`git rev-parse develop`); do not publish from a tag that points
-     elsewhere.
+     exists, stop and verify `git rev-parse vX.Y.Z^{commit}` matches the merged
+     release commit (`git rev-parse origin/develop`); do not publish from a tag
+     that points elsewhere.
   5. Validate the tag: confirm `git show vX.Y.Z:CHANGELOG.md` has
      `## [X.Y.Z] - YYYY-MM-DD` (not `TBD`) and CI is green on the tagged commit.
   6. Publish the GitHub Release
