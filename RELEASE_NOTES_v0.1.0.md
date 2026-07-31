@@ -1,5 +1,9 @@
 # localci v0.1.0
 
+<!-- Maintainer: merge the release PR to develop, tag v0.1.0 on that commit, confirm
+     CHANGELOG.md at the tag shows ## [0.1.0] - 2026-07-31 (not TBD) and CI is green,
+     then publish with: gh release create v0.1.0 --notes-file RELEASE_NOTES_v0.1.0.md -->
+
 First public pre-release of Local CI — run GitHub Actions workflows locally in Docker via [act](https://github.com/nektos/act).
 
 ## Highlights

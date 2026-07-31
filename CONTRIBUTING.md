@@ -107,14 +107,14 @@ pre-commit run -a
      `## [X.Y.Z] - YYYY-MM-DD` heading, leave `## [Unreleased]` empty, and update
      the link references at the bottom.
   2. Merge the changelog update to `develop` via PR; wait for CI to be green.
-  3. Publish a GitHub Release for a **new** tag `vX.Y.Z` targeting `develop` — in the UI,
-     or `gh release create vX.Y.Z --target develop --title vX.Y.Z --notes-file ...`
-     using the new `## [X.Y.Z]` section as the release notes source.
-     `--target develop` only selects the commit when the release *creates* the tag: if
-     `vX.Y.Z` already exists, GitHub publishes from wherever that tag points. Ensure
-     `vX.Y.Z` does not yet exist so the release creates it on the merged `develop` commit.
-  4. Confirm [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is green on the tagged commit.
-  5. Confirm the `[Unreleased]` and `[X.Y.Z]` compare links at the bottom of
+  3. Create an annotated tag `vX.Y.Z` on the merged `develop` commit and push it
+     (`git tag -a vX.Y.Z` then `git push origin vX.Y.Z`).
+  4. Validate the tag: confirm `git show vX.Y.Z:CHANGELOG.md` has
+     `## [X.Y.Z] - YYYY-MM-DD` (not `TBD`) and CI is green on the tagged commit.
+  5. Publish the GitHub Release (`gh release create vX.Y.Z --notes-file ...`) using
+     the new `## [X.Y.Z]` section as the release notes source. If the tag already
+     exists, GitHub publishes from that commit.
+  6. Confirm the `[Unreleased]` and `[X.Y.Z]` compare links at the bottom of
      [CHANGELOG.md](CHANGELOG.md) resolve after the new tag is created.
 
 ## Maintainers
