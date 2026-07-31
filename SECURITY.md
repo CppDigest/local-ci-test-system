@@ -14,7 +14,7 @@ branch for the current 0.1.x line.
 
 **Please do not open a public GitHub issue for security vulnerabilities.**
 
-Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** (preferred), or email **will@cppalliance.org** if you do not have a GitHub account.
+Report security issues through **[GitHub private vulnerability reporting](https://github.com/cppalliance/local-ci-test-system/security/advisories/new)** or email **will@cppalliance.org**.
 
 If you need an encrypted channel, mention this in your initial email and a
 maintainer will reply with a current PGP key fingerprint or arrange another
