@@ -2,13 +2,13 @@
 
 ## Supported Versions
 
-Local CI is in pre-release development. There are no tagged stable releases yet
-(`pyproject.toml` declares `0.1.0`, not yet tagged).
+| Version | Supported          |
+| ------- | ------------------ |
+| 0.1.x   | :white_check_mark: |
 
 Security fixes are produced only against the latest commit on the
 [`develop`](https://github.com/cppalliance/local-ci-test-system/tree/develop)
-branch. Once a `v0.1.0` tag is cut, this section will be reformatted as a
-semver-style support table.
+branch for the current 0.1.x line.
 
 ## Reporting a Vulnerability
 
