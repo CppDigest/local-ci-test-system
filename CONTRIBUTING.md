@@ -104,14 +104,18 @@ pre-commit run -a
 - `develop` is the default branch where day-to-day work lands and releases are cut from.
 - To cut release `X.Y.Z` when `cli/pyproject.toml` already declares that version:
   1. Move the `## [Unreleased]` entries in [CHANGELOG.md](CHANGELOG.md) under a new
-     `## [X.Y.Z] - YYYY-MM-DD` heading and update the link references at the bottom.
+     `## [X.Y.Z] - YYYY-MM-DD` heading, leave `## [Unreleased]` empty, and update
+     the link references at the bottom.
   2. Merge the changelog update to `develop` via PR; wait for CI to be green.
   3. Publish a GitHub Release for a **new** tag `vX.Y.Z` targeting `develop` — in the UI,
-     or `gh release create vX.Y.Z --target develop --title vX.Y.Z --notes-file ...`.
+     or `gh release create vX.Y.Z --target develop --title vX.Y.Z --notes-file ...`
+     using the new `## [X.Y.Z]` section as the release notes source.
      `--target develop` only selects the commit when the release *creates* the tag: if
      `vX.Y.Z` already exists, GitHub publishes from wherever that tag points. Ensure
      `vX.Y.Z` does not yet exist so the release creates it on the merged `develop` commit.
   4. Confirm [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is green on the tagged commit.
+  5. Confirm the `[Unreleased]` and `[X.Y.Z]` compare links at the bottom of
+     [CHANGELOG.md](CHANGELOG.md) resolve after the new tag is created.
 
 ## Maintainers
 
