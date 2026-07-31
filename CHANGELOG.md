@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`derive_image_tag()` prefix** honours `project.native_image_prefix` instead of hardcoding `capy-`, completing the generic-profile default behaviour documented for Week 30.
 - `PriorityJobQueue`: jobs in `WAITING_DEPS` return to `QUEUED` when their dependencies finish. Same-priority `needs` chains were leaving dependents stuck.
 - `PriorityJobQueue.cancel_all` drops cancelled keys from `_running_keys`. A `READY` job from `next_ready()` no longer counts as running after cancel.
+- `PriorityJobQueue.cancel_all` emits `JOB_CANCELLED` for each cancelled job, matching `cancel()`.
+- `DependencyResolver.all_dependencies_met` treats `FAILED` and `CANCELLED` dependencies as unmet; dependents no longer start after a failed or cancelled `needs` job.
+- `PriorityJobQueue` event listeners run after `self._lock` is released, so callbacks can safely call back into the queue.
 
 ## [0.1.0] - TBD
 

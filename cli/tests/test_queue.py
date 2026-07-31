@@ -8,6 +8,7 @@ import pytest
 
 from localci.core.config import LocalCIConfig
 from localci.core.models import (
+    JobEvent,
     JobEventType,
     QueuedJob,
     QueuedJobStatus,
@@ -142,11 +143,28 @@ class TestDependencyResolver:
 
     def test_all_dependencies_met(self):
         resolver = DependencyResolver()
-        resolver.add_job("a", [])
-        resolver.add_job("b", ["a"])
-        assert resolver.all_dependencies_met("a", set()) is True
-        assert resolver.all_dependencies_met("b", set()) is False
-        assert resolver.all_dependencies_met("b", {"a"}) is True
+        upstream = make_job("Upstream", priority=1, index=0)
+        downstream = make_job(
+            "Downstream", priority=1, index=1, deps=[upstream.queue_key]
+        )
+        resolver.add_job(upstream.queue_key, [])
+        resolver.add_job(downstream.queue_key, [upstream.queue_key])
+        jobs = {upstream.queue_key: upstream, downstream.queue_key: downstream}
+        assert resolver.all_dependencies_met(upstream.queue_key, jobs) is True
+        assert resolver.all_dependencies_met(downstream.queue_key, jobs) is False
+        upstream.status = QueuedJobStatus.PASSED
+        assert resolver.all_dependencies_met(downstream.queue_key, jobs) is True
+        upstream.status = QueuedJobStatus.FAILED
+        assert resolver.all_dependencies_met(downstream.queue_key, jobs) is False
+        upstream.status = QueuedJobStatus.CANCELLED
+        assert resolver.all_dependencies_met(downstream.queue_key, jobs) is False
+        upstream.status = QueuedJobStatus.SKIPPED
+        assert resolver.all_dependencies_met(downstream.queue_key, jobs) is True
+        jobs_missing_upstream = {downstream.queue_key: downstream}
+        assert (
+            resolver.all_dependencies_met(downstream.queue_key, jobs_missing_upstream)
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +244,43 @@ class TestPriorityJobQueue:
         queue.mark_running(second)
         queue.mark_completed(second, success=True)
         assert queue.is_done is True
+
+    def test_dependent_stays_waiting_when_dependency_failed(self):
+        queue = PriorityJobQueue()
+        upstream = make_job("Upstream", priority=1, index=0)
+        downstream = make_job(
+            "Downstream", priority=1, index=1, deps=[upstream.queue_key]
+        )
+        queue.enqueue(upstream)
+        queue.enqueue(downstream)
+
+        first = queue.next_ready()
+        assert first is not None
+        queue.mark_running(first)
+        queue.mark_completed(first, success=False)
+
+        assert queue.next_ready() is None
+        jobs = {j.queue_key: j for j in queue.get_all_jobs()}
+        assert jobs[downstream.queue_key].status == QueuedJobStatus.WAITING_DEPS
+
+    def test_listener_can_acquire_lock_during_callback(self) -> None:
+        queue = PriorityJobQueue()
+        queue.enqueue(make_job("Job 1", priority=1, index=0))
+        acquired = threading.Event()
+
+        def listener(_event: JobEvent) -> None:
+            with queue._lock:
+                acquired.set()
+
+        queue.add_listener(listener)
+        worker = threading.Thread(
+            target=lambda: queue.enqueue(make_job("Job 2", priority=1, index=1)),
+            daemon=True,
+        )
+        worker.start()
+        worker.join(timeout=_THREAD_JOIN_TIMEOUT)
+        assert not worker.is_alive(), "enqueue worker thread hung"
+        assert acquired.wait(timeout=5)
 
     def test_is_done_acquires_lock(self):
         queue = PriorityJobQueue()
@@ -315,6 +370,17 @@ class TestPriorityJobQueue:
         assert queue.running_count == 0
         assert queue.pending_count >= 0
         assert queue.is_done is True
+
+    def test_cancel_all_emits_cancelled_for_each_job(self):
+        events: list[JobEvent] = []
+        queue = PriorityJobQueue()
+        queue.add_listener(lambda e: events.append(e))
+        for i in range(3):
+            queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
+        count = queue.cancel_all()
+        assert count == 3
+        cancelled = [e for e in events if e.event_type == JobEventType.JOB_CANCELLED]
+        assert len(cancelled) == 3
 
     def test_event_emission(self):
         events = []
