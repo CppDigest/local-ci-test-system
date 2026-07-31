@@ -108,12 +108,15 @@ pre-commit run -a
      the link references at the bottom.
   2. Merge the changelog update to `develop` via PR; wait for CI to be green.
   3. Create an annotated tag `vX.Y.Z` on the merged `develop` commit and push it
-     (`git tag -a vX.Y.Z` then `git push origin vX.Y.Z`).
+     (`git tag -a vX.Y.Z` then `git push origin vX.Y.Z`). If `vX.Y.Z` already
+     exists, stop and verify `git rev-parse vX.Y.Z` matches the merged release
+     commit (`git rev-parse develop`); do not publish from a tag that points
+     elsewhere.
   4. Validate the tag: confirm `git show vX.Y.Z:CHANGELOG.md` has
      `## [X.Y.Z] - YYYY-MM-DD` (not `TBD`) and CI is green on the tagged commit.
   5. Publish the GitHub Release (`gh release create vX.Y.Z --notes-file ...`) using
-     the new `## [X.Y.Z]` section as the release notes source. If the tag already
-     exists, GitHub publishes from that commit.
+     the new `## [X.Y.Z]` section as the release notes source, only after steps
+     3–4 confirm the tag points to the merged release commit.
   6. Confirm the `[Unreleased]` and `[X.Y.Z]` compare links at the bottom of
      [CHANGELOG.md](CHANGELOG.md) resolve after the new tag is created.
 
