@@ -249,8 +249,7 @@ class PriorityJobQueue:
                 self._failed_keys.add(key)
                 self._completed_keys.add(key)
             self._running_keys.discard(key)
-            self._promote_waiting_deps()
-            self._check_priority_advance()
+            self._after_job_terminal_state_change()
 
     def mark_skipped(self, job: QueuedJob) -> None:
         with self._lock:
@@ -258,8 +257,7 @@ class PriorityJobQueue:
             job.status = QueuedJobStatus.SKIPPED
             self._completed_keys.add(key)
             self._running_keys.discard(key)
-            self._promote_waiting_deps()
-            self._check_priority_advance()
+            self._after_job_terminal_state_change()
 
     def mark_running(self, job: QueuedJob) -> None:
         with self._lock:
@@ -285,8 +283,7 @@ class PriorityJobQueue:
             job.status = QueuedJobStatus.CANCELLED
             self._completed_keys.add(key)
             self._emit(JobEventType.JOB_CANCELLED, job)
-            self._promote_waiting_deps()
-            self._check_priority_advance()
+            self._after_job_terminal_state_change()
             return True
 
     def cancel_all(self) -> int:
@@ -301,11 +298,15 @@ class PriorityJobQueue:
                 ):
                     job.status = QueuedJobStatus.CANCELLED
                     self._completed_keys.add(key)
+                    self._running_keys.discard(key)
                     count += 1
             if count > 0:
-                self._promote_waiting_deps()
-                self._check_priority_advance()
+                self._after_job_terminal_state_change()
         return count
+
+    def _after_job_terminal_state_change(self) -> None:
+        self._promote_waiting_deps()
+        self._check_priority_advance()
 
     def _promote_waiting_deps(self) -> None:
         if self._current_priority is None:

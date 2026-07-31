@@ -35,6 +35,18 @@ from localci.core.workflow import (
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 FULL_WORKFLOW = FIXTURES_DIR / "sample_workflow.yml"
 _THREAD_JOIN_TIMEOUT = 30.0
+_CONCURRENT_JOB_COUNT = 100
+_CONCURRENT_BATCH_SIZE = _CONCURRENT_JOB_COUNT // 2
+
+
+def _join_threads(threads: list[threading.Thread], label: str) -> None:
+    for thread in threads:
+        thread.join(timeout=_THREAD_JOIN_TIMEOUT)
+        assert not thread.is_alive(), f"{label} thread did not finish"
+
+
+def _consumer_deadline() -> float:
+    return time.monotonic() + _THREAD_JOIN_TIMEOUT
 
 
 # ---------------------------------------------------------------------------
@@ -216,12 +228,12 @@ class TestPriorityJobQueue:
         assert queue.is_done is True
 
     def test_is_done_acquires_lock(self):
-        """Regresses if is_done reads counts without holding self._lock."""
         queue = PriorityJobQueue()
         queue.enqueue(make_job("Job", priority=1))
 
         lock_held = threading.Event()
         release_lock = threading.Event()
+        about_to_read = threading.Event()
 
         def hold_lock() -> None:
             with queue._lock:
@@ -236,17 +248,20 @@ class TestPriorityJobQueue:
         is_done_result: list[bool] = []
 
         def read_is_done() -> None:
+            about_to_read.set()
             is_done_result.append(queue.is_done)
             checker_done.set()
 
         checker = threading.Thread(target=read_is_done)
         checker.start()
-        checker.join(timeout=0.05)
+        assert about_to_read.wait(timeout=5), "checker never reached is_done read"
         assert not checker_done.is_set(), "is_done must block on self._lock"
 
         release_lock.set()
         checker.join(timeout=5)
+        assert not checker.is_alive()
         holder.join(timeout=5)
+        assert not holder.is_alive()
         assert is_done_result == [False]
 
     def test_completion_tracking(self):
@@ -287,6 +302,18 @@ class TestPriorityJobQueue:
             queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
         count = queue.cancel_all()
         assert count == 5
+        assert queue.is_done is True
+
+    def test_cancel_all_after_next_ready_clears_running_keys(self):
+        queue = PriorityJobQueue()
+        for i in range(3):
+            queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
+        ready = queue.next_ready()
+        assert ready is not None
+        count = queue.cancel_all()
+        assert count == 3
+        assert queue.running_count == 0
+        assert queue.pending_count >= 0
         assert queue.is_done is True
 
     def test_event_emission(self):
@@ -395,23 +422,21 @@ class TestThreadSafety:
                 queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
 
         threads = [
-            threading.Thread(target=enqueue_batch, args=(0, 50)),
-            threading.Thread(target=enqueue_batch, args=(50, 50)),
+            threading.Thread(target=enqueue_batch, args=(0, _CONCURRENT_BATCH_SIZE)),
+            threading.Thread(
+                target=enqueue_batch,
+                args=(_CONCURRENT_BATCH_SIZE, _CONCURRENT_BATCH_SIZE),
+            ),
         ]
         for t in threads:
             t.start()
-        for t in threads:
-            t.join()
-        assert queue.total_jobs == 100
+        _join_threads(threads, "producer")
+        assert queue.total_jobs == _CONCURRENT_JOB_COUNT
 
     def test_concurrent_producers_and_consumers(self):
-        """Smoke: enqueue and complete 100 jobs under concurrent load.
-
-        Lock consistency for is_done is covered by test_is_done_acquires_lock.
-        """
         queue = PriorityJobQueue()
         producers_done = threading.Event()
-        consumer_deadline = time.monotonic() + _THREAD_JOIN_TIMEOUT
+        consumer_deadline = _consumer_deadline()
 
         def enqueue_batch(start: int, count: int) -> None:
             for i in range(start, start + count):
@@ -430,8 +455,11 @@ class TestThreadSafety:
                 queue.mark_completed(job, success=True)
 
         producers = [
-            threading.Thread(target=enqueue_batch, args=(0, 50)),
-            threading.Thread(target=enqueue_batch, args=(50, 50)),
+            threading.Thread(target=enqueue_batch, args=(0, _CONCURRENT_BATCH_SIZE)),
+            threading.Thread(
+                target=enqueue_batch,
+                args=(_CONCURRENT_BATCH_SIZE, _CONCURRENT_BATCH_SIZE),
+            ),
         ]
         consumers = [threading.Thread(target=consume) for _ in range(4)]
 
@@ -440,23 +468,19 @@ class TestThreadSafety:
         for t in consumers:
             t.start()
 
-        for t in producers:
-            t.join(timeout=_THREAD_JOIN_TIMEOUT)
-            assert not t.is_alive(), "producer thread did not finish"
+        _join_threads(producers, "producer")
         producers_done.set()
-        for t in consumers:
-            t.join(timeout=_THREAD_JOIN_TIMEOUT)
-            assert not t.is_alive(), "consumer thread did not finish"
+        _join_threads(consumers, "consumer")
 
-        assert queue.total_jobs == 100
-        assert queue.passed_count == 100
+        assert queue.total_jobs == _CONCURRENT_JOB_COUNT
+        assert queue.passed_count == _CONCURRENT_JOB_COUNT
 
     def test_concurrent_dequeue(self):
         queue = PriorityJobQueue()
         for i in range(20):
             queue.enqueue(make_job(f"Job {i}", priority=1, index=i))
         results: list[QueuedJob] = []
-        consumer_deadline = time.monotonic() + _THREAD_JOIN_TIMEOUT
+        consumer_deadline = _consumer_deadline()
 
         def consume() -> None:
             while not queue.is_done:
@@ -473,9 +497,7 @@ class TestThreadSafety:
         threads = [threading.Thread(target=consume) for _ in range(4)]
         for t in threads:
             t.start()
-        for t in threads:
-            t.join(timeout=_THREAD_JOIN_TIMEOUT)
-            assert not t.is_alive(), "consumer thread did not finish"
+        _join_threads(threads, "consumer")
         assert len(results) == 20
         names = {r.matrix_entry.name for r in results}
         assert len(names) == 20
