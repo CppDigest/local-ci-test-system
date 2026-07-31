@@ -6,9 +6,9 @@
 | ------- | ------------------ |
 | 0.1.x   | :white_check_mark: |
 
-Security fixes are produced only against the latest commit on the
+Security fixes land only on the latest commit on
 [`develop`](https://github.com/cppalliance/local-ci-test-system/tree/develop)
-branch for the current 0.1.x line.
+for the current 0.1.x line.
 
 ## Reporting a Vulnerability
 

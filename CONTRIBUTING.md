@@ -95,7 +95,7 @@ pre-commit run -a
 
 1. Branch from `develop`.
 2. Keep changes focused; link related issues in the PR description.
-3. Ensure CI is green — lint, typecheck, unit tests, and integration tests must pass.
+3. Ensure CI is green: lint, typecheck, unit tests, and integration tests must pass.
 4. Request review from at least one maintainer. PRs need **at least one approving review** before merge.
 5. Update `CHANGELOG.md` for user-visible changes under `## [Unreleased]`.
 

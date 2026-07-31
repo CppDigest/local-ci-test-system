@@ -14,8 +14,6 @@ from functools import lru_cache
 from importlib.metadata import entry_points
 from typing import TYPE_CHECKING
 
-from localci.core.config import PATCH_STEP_NAMES
-
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -38,13 +36,3 @@ def get_patch_step_registry() -> dict[str, type[PatchStep]]:
                 "Failed to load localci.patch_steps entry point %r", ep.name
             )
     return registry
-
-
-def clear_patch_step_registry_cache() -> None:
-    """Clear the registry cache (for tests that register plugins at runtime)."""
-    get_patch_step_registry.cache_clear()
-
-
-def is_builtin_patch_step(name: str) -> bool:
-    """Return True when *name* is a built-in (non-plugin) patch step."""
-    return name in PATCH_STEP_NAMES

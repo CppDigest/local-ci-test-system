@@ -13,15 +13,10 @@ from localci.core.executor import JobExecutor
 from localci.core.github_token import resolve_github_token, warn_sentinel_github_token
 from localci.core.models import JobEvent, JobEventType
 from localci.core.results import ExecutionSummary
-from localci.core.workflow import MatrixEntry, Platform, Workflow
+from localci.core.workflow import PLATFORM_CLI_MAP, MatrixEntry, Workflow
 from localci.errors import ActNotFoundError, DockerNotAvailableError, WorkflowError
 from localci.utils.output import print_error, print_info, print_warning
-
-_PLATFORM_MAP = {
-    "linux": Platform.LINUX,
-    "windows": Platform.WINDOWS,
-    "macos": Platform.MACOS,
-}
+from localci.utils.paths import REGISTRY_FILENAME, find_file_upward
 
 
 def execute_run(
@@ -73,13 +68,10 @@ def execute_run(
         return 0
 
     priority_config = container.priority_config_factory(cfg)
-    registry_candidate = project_dir / "image-registry.yml"
-    registry_path: Path | None = (
-        registry_candidate if registry_candidate.exists() else None
-    )
+    registry_path = find_file_upward(REGISTRY_FILENAME, project_dir)
 
     matrix_include, matrix_exclude = _resolve_matrix_filters(options, cfg)
-    plat_filter = _PLATFORM_MAP.get(options.platform) if options.platform else None
+    plat_filter = PLATFORM_CLI_MAP.get(options.platform) if options.platform else None
     compiler_filter = options.compiler.lower() if options.compiler else None
     selected_set = {(jid, e.index) for jid, e in selected}
     job_filter_list = list({jid for jid, _ in selected})
@@ -197,7 +189,7 @@ def _filter_matrix_pairs(
 ) -> list[tuple[str, MatrixEntry]]:
     selected = list(all_pairs)
     if platform:
-        target_plat = _PLATFORM_MAP.get(platform)
+        target_plat = PLATFORM_CLI_MAP.get(platform)
         selected = [(jid, e) for jid, e in selected if e.platform == target_plat]
 
     compiler_filter = compiler.lower() if compiler else None
