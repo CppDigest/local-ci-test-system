@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+Listener = Callable[[JobEvent], None]
+PendingEmit = tuple[JobEvent, list[Listener]]
+
+_SATISFIED_DEP_STATUSES = frozenset({QueuedJobStatus.PASSED, QueuedJobStatus.SKIPPED})
+
 
 # ---------------------------------------------------------------------------
 # Priority assignment
@@ -145,8 +150,12 @@ class DependencyResolver:
     def get_dependents(self, job_id: str) -> list[str]:
         return self._reverse.get(job_id, [])
 
-    def all_dependencies_met(self, job_id: str, completed: set[str]) -> bool:
-        return all(dep in completed for dep in self.get_dependencies(job_id))
+    def all_dependencies_met(self, job_id: str, jobs: dict[str, QueuedJob]) -> bool:
+        return all(
+            (dep_job := jobs.get(dep_id)) is not None
+            and dep_job.status in _SATISFIED_DEP_STATUSES
+            for dep_id in self.get_dependencies(job_id)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -172,20 +181,27 @@ class PriorityJobQueue:
         self._failed_keys: set[str] = set()
         self._running_keys: set[str] = set()
         self._dep_resolver = DependencyResolver()
-        self._listeners: list[Callable[[JobEvent], None]] = []
+        self._listeners: list[Listener] = []
 
-    def add_listener(self, callback: Callable[[JobEvent], None]) -> None:
+    def add_listener(self, callback: Listener) -> None:
         self._listeners.append(callback)
 
-    def _emit(self, event_type: JobEventType, job: QueuedJob, **data: object) -> None:
+    def _prepare_emit(
+        self, event_type: JobEventType, job: QueuedJob, **data: object
+    ) -> PendingEmit:
         event = JobEvent(event_type=event_type, job=job, data=dict(data))
-        for listener in self._listeners:
-            try:
-                listener(event)
-            except Exception as e:
-                logger.warning("Event listener error: %s", e)
+        return event, list(self._listeners)
+
+    def _dispatch_emits(self, pending: list[PendingEmit]) -> None:
+        for event, listeners in pending:
+            for listener in listeners:
+                try:
+                    listener(event)
+                except Exception as e:
+                    logger.warning("Event listener error: %s", e)
 
     def enqueue(self, job: QueuedJob) -> None:
+        pending: list[PendingEmit] = []
         with self._lock:
             key = job.queue_key
             self._jobs[key] = job
@@ -201,13 +217,14 @@ class PriorityJobQueue:
                 job.status = QueuedJobStatus.QUEUED
             else:
                 job.status = QueuedJobStatus.WAITING_PRIORITY
-            self._emit(JobEventType.JOB_QUEUED, job)
+            pending.append(self._prepare_emit(JobEventType.JOB_QUEUED, job))
             logger.debug(
                 "Enqueued: %s (priority=%s, deps=%s)",
                 job.matrix_entry.name,
                 job.priority,
                 job.dependencies,
             )
+        self._dispatch_emits(pending)
 
     def enqueue_batch(self, jobs: list[QueuedJob]) -> None:
         for job in jobs:
@@ -219,6 +236,8 @@ class PriorityJobQueue:
         )
 
     def next_ready(self) -> QueuedJob | None:
+        pending: list[PendingEmit] = []
+        result: QueuedJob | None = None
         with self._lock:
             if self._current_priority is None:
                 return None
@@ -227,18 +246,19 @@ class PriorityJobQueue:
                 job = self._jobs[key]
                 if job.status != QueuedJobStatus.QUEUED:
                     continue
-                if not self._dep_resolver.all_dependencies_met(
-                    key, self._completed_keys
-                ):
+                if not self._dep_resolver.all_dependencies_met(key, self._jobs):
                     job.status = QueuedJobStatus.WAITING_DEPS
                     continue
                 job.status = QueuedJobStatus.READY
                 self._running_keys.add(key)
-                self._emit(JobEventType.JOB_READY, job)
-                return job
-            return None
+                pending.append(self._prepare_emit(JobEventType.JOB_READY, job))
+                result = job
+                break
+        self._dispatch_emits(pending)
+        return result
 
     def mark_completed(self, job: QueuedJob, success: bool = True) -> None:
+        pending: list[PendingEmit] = []
         with self._lock:
             key = job.queue_key
             if success:
@@ -249,27 +269,36 @@ class PriorityJobQueue:
                 self._failed_keys.add(key)
                 self._completed_keys.add(key)
             self._running_keys.discard(key)
-            self._after_job_terminal_state_change()
+            pending.extend(self._after_job_terminal_state_change())
+        self._dispatch_emits(pending)
 
     def mark_skipped(self, job: QueuedJob) -> None:
+        pending: list[PendingEmit] = []
         with self._lock:
             key = job.queue_key
             job.status = QueuedJobStatus.SKIPPED
             self._completed_keys.add(key)
             self._running_keys.discard(key)
-            self._after_job_terminal_state_change()
+            pending.extend(self._after_job_terminal_state_change())
+        self._dispatch_emits(pending)
 
     def mark_running(self, job: QueuedJob) -> None:
+        pending: list[PendingEmit] = []
         with self._lock:
             job.status = QueuedJobStatus.RUNNING
-            self._emit(JobEventType.JOB_STARTED, job)
+            pending.append(self._prepare_emit(JobEventType.JOB_STARTED, job))
+        self._dispatch_emits(pending)
 
     def mark_preparing(self, job: QueuedJob) -> None:
+        pending: list[PendingEmit] = []
         with self._lock:
             job.status = QueuedJobStatus.PREPARING
-            self._emit(JobEventType.JOB_PREPARING, job)
+            pending.append(self._prepare_emit(JobEventType.JOB_PREPARING, job))
+        self._dispatch_emits(pending)
 
     def cancel(self, key: str) -> bool:
+        pending: list[PendingEmit] = []
+        cancelled = False
         with self._lock:
             job = self._jobs.get(key)
             if job is None:
@@ -282,11 +311,14 @@ class PriorityJobQueue:
                 return False
             job.status = QueuedJobStatus.CANCELLED
             self._completed_keys.add(key)
-            self._emit(JobEventType.JOB_CANCELLED, job)
-            self._after_job_terminal_state_change()
-            return True
+            pending.append(self._prepare_emit(JobEventType.JOB_CANCELLED, job))
+            pending.extend(self._after_job_terminal_state_change())
+            cancelled = True
+        self._dispatch_emits(pending)
+        return cancelled
 
     def cancel_all(self) -> int:
+        pending: list[PendingEmit] = []
         count = 0
         with self._lock:
             for key, job in list(self._jobs.items()):
@@ -299,14 +331,16 @@ class PriorityJobQueue:
                     job.status = QueuedJobStatus.CANCELLED
                     self._completed_keys.add(key)
                     self._running_keys.discard(key)
+                    pending.append(self._prepare_emit(JobEventType.JOB_CANCELLED, job))
                     count += 1
             if count > 0:
-                self._after_job_terminal_state_change()
+                pending.extend(self._after_job_terminal_state_change())
+        self._dispatch_emits(pending)
         return count
 
-    def _after_job_terminal_state_change(self) -> None:
+    def _after_job_terminal_state_change(self) -> list[PendingEmit]:
         self._promote_waiting_deps()
-        self._check_priority_advance()
+        return self._check_priority_advance()
 
     def _promote_waiting_deps(self) -> None:
         if self._current_priority is None:
@@ -315,12 +349,13 @@ class PriorityJobQueue:
             job = self._jobs[key]
             if job.status != QueuedJobStatus.WAITING_DEPS:
                 continue
-            if self._dep_resolver.all_dependencies_met(key, self._completed_keys):
+            if self._dep_resolver.all_dependencies_met(key, self._jobs):
                 job.status = QueuedJobStatus.QUEUED
 
-    def _check_priority_advance(self) -> None:
+    def _check_priority_advance(self) -> list[PendingEmit]:
+        pending: list[PendingEmit] = []
         if self._current_priority is None:
-            return
+            return pending
         current_keys = self._by_priority.get(self._current_priority, [])
         terminal = (
             QueuedJobStatus.PASSED,
@@ -332,18 +367,20 @@ class PriorityJobQueue:
         )
         all_done = all(self._jobs[k].status in terminal for k in current_keys)
         if not all_done:
-            return
+            return pending
         logger.info(
             "Priority level %s complete (%d jobs)",
             self._current_priority,
             len(current_keys),
         )
         if current_keys:
-            self._emit(
-                JobEventType.PRIORITY_LEVEL_COMPLETE,
-                self._jobs[current_keys[0]],
-                priority=self._current_priority,
-                count=len(current_keys),
+            pending.append(
+                self._prepare_emit(
+                    JobEventType.PRIORITY_LEVEL_COMPLETE,
+                    self._jobs[current_keys[0]],
+                    priority=self._current_priority,
+                    count=len(current_keys),
+                )
             )
         idx = self._priority_levels.index(self._current_priority)
         if idx + 1 < len(self._priority_levels):
@@ -357,7 +394,10 @@ class PriorityJobQueue:
             self._current_priority = None
             if self._jobs:
                 first_key = next(iter(self._jobs))
-                self._emit(JobEventType.ALL_COMPLETE, self._jobs[first_key])
+                pending.append(
+                    self._prepare_emit(JobEventType.ALL_COMPLETE, self._jobs[first_key])
+                )
+        return pending
 
     @property
     def is_empty(self) -> bool:
