@@ -158,6 +158,13 @@ class TestDependencyResolver:
         assert resolver.all_dependencies_met(downstream.queue_key, jobs) is False
         upstream.status = QueuedJobStatus.CANCELLED
         assert resolver.all_dependencies_met(downstream.queue_key, jobs) is False
+        upstream.status = QueuedJobStatus.SKIPPED
+        assert resolver.all_dependencies_met(downstream.queue_key, jobs) is True
+        jobs_missing_upstream = {downstream.queue_key: downstream}
+        assert (
+            resolver.all_dependencies_met(downstream.queue_key, jobs_missing_upstream)
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +273,13 @@ class TestPriorityJobQueue:
                 acquired.set()
 
         queue.add_listener(listener)
-        queue.enqueue(make_job("Job 2", priority=1, index=1))
+        worker = threading.Thread(
+            target=lambda: queue.enqueue(make_job("Job 2", priority=1, index=1)),
+            daemon=True,
+        )
+        worker.start()
+        worker.join(timeout=_THREAD_JOIN_TIMEOUT)
+        assert not worker.is_alive(), "enqueue worker thread hung"
         assert acquired.wait(timeout=5)
 
     def test_is_done_acquires_lock(self):
